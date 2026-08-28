@@ -40,7 +40,7 @@ interface NavLink {
 
 /** Single destinations, in workflow order: observe, then diagnose. */
 const PRIMARY: NavLink[] = [
-  { href: "/", label: "Command Center", exact: true },
+  { href: "/command-center", label: "Command Center" },
   { href: "/player-explorer", label: "Players" },
   { href: "/team-outlook", label: "Teams" },
 ];

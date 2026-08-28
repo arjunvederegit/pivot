@@ -6,11 +6,43 @@ import { expect, test } from "@playwright/test";
  * `make import-stats-csv` for full coverage). No NBA.com calls happen here.
  */
 
-test("overview presents the platform with honest data status", async ({ page }) => {
-  // The Pivot restructure rewrote this page's copy — headline, calls to action, and the
-  // tool launcher, which became the four-step decision workflow. The assertions below
-  // are the same six intents against the strings that actually ship.
+test("the narrative homepage tells the story and hands over to the product", async ({ page }) => {
+  // `/` is the scroll narrative while this experiment is on the branch. It is a marketing
+  // surface, so what is worth pinning is that it says what Pivot is, that every act is
+  // present as a real section, and — the part that actually matters — that it does not
+  // claim a capability Pivot has not built.
   await page.goto("/");
+  await expect(page.getByRole("link", { name: "Pivot — home" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Basketball intelligence for better decisions." }),
+  ).toBeVisible();
+
+  // All eight acts render, in order, as real sections.
+  for (const id of ["pivot", "observe", "diagnose", "compare", "simulate", "recommend", "explain", "enter"]) {
+    await expect(page.locator(`#${id}`)).toHaveCount(1);
+  }
+
+  // The narrative ends by opening the product, not by looping back on itself.
+  await expect(
+    page.getByRole("link", { name: "Open the Command Center" }),
+  ).toBeVisible();
+
+  // Pivot AI is not built, and the page says so rather than implying it ships.
+  await expect(page.getByText("Product direction — not shipped")).toBeVisible();
+
+  // Scrolling is never taken away: the document scrolls natively and nothing pins the
+  // window at the top.
+  const moved = await page.evaluate(async () => {
+    window.scrollTo(0, 2000);
+    await new Promise((r) => setTimeout(r, 250));
+    return window.scrollY;
+  });
+  expect(moved).toBeGreaterThan(500);
+});
+
+test("overview presents the platform with honest data status", async ({ page }) => {
+  // The Command Center moved to its own route when `/` became the narrative.
+  await page.goto("/command-center");
   await expect(page.getByRole("link", { name: "Pivot — home" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Know what your roster is. Then change it." }),

@@ -58,7 +58,10 @@ describe("the nav points only at routes that exist", () => {
   });
 
   it("leads with the Command Center", () => {
-    expect(hrefsIn("PRIMARY")[0]).toBe("/");
+    // `/` is the narrative homepage while the scroll experiment is on this branch, so the
+    // Command Center has its own route. What is being asserted is unchanged: the product
+    // surface a returning user wants is the first thing in the bar.
+    expect(hrefsIn("PRIMARY")[0]).toBe("/command-center");
   });
 });
 
@@ -70,7 +73,7 @@ describe("the nav follows the decision workflow", () => {
    */
   it("puts the observe steps before the act steps", () => {
     const primary = hrefsIn("PRIMARY");
-    expect(primary).toEqual(["/", "/player-explorer", "/team-outlook"]);
+    expect(primary).toEqual(["/command-center", "/player-explorer", "/team-outlook"]);
   });
 
   it("groups the GM Lab modules rather than promoting one of them", () => {
