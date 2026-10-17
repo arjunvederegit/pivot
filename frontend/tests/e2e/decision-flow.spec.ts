@@ -6,46 +6,44 @@ import { expect, test } from "@playwright/test";
  * `make import-stats-csv` for full coverage). No NBA.com calls happen here.
  */
 
-test("the narrative homepage tells the story and hands over to the product", async ({ page }) => {
-  // `/` is the scroll narrative while this experiment is on the branch. It is a marketing
-  // surface, so what is worth pinning is that it says what Pivot is, that every act is
-  // present as a real section, and — the part that actually matters — that it does not
-  // claim a capability Pivot has not built.
+test("the home dashboard says what Pivot is and opens the core tools", async ({ page }) => {
+  // `/` is the intelligence dashboard: an editorial hero over an illustrated arena, then the
+  // working modules. What is worth pinning is that it names the product's purpose, opens
+  // the core tool, shows the real workflow, and does not claim a capability Pivot lacks.
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Pivot — home" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Basketball intelligence for better decisions." }),
+    page.getByRole("heading", { level: 1, name: /Sharper decisions\.\s*Better basketball\./ }),
   ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open the Trade Evaluator" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Start with your roster" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "The decision workflow" })).toBeVisible();
 
-  // All eight acts render, in order, as real sections.
-  for (const id of ["pivot", "observe", "diagnose", "compare", "simulate", "recommend", "explain", "enter"]) {
-    await expect(page.locator(`#${id}`)).toHaveCount(1);
+  // Unbuilt modules are named as unbuilt, not implied.
+  await expect(page.getByText("Not built yet")).toBeVisible();
+
+  // Every core tool is one click away in the sidebar.
+  const nav = page.getByRole("navigation", { name: "Primary" });
+  for (const name of ["Scouting", "Teams", "Trade Evaluator", "Strategy Lab", "Cap Center"]) {
+    await expect(nav.getByRole("link", { name })).toBeVisible();
   }
 
-  // The narrative ends by opening the product, not by looping back on itself.
-  await expect(
-    page.getByRole("link", { name: "Open the Command Center" }),
-  ).toBeVisible();
-
-  // Pivot AI is not built, and the page says so rather than implying it ships.
-  await expect(page.getByText("Product direction — not shipped")).toBeVisible();
-
-  // Scrolling is never taken away: the document scrolls natively and nothing pins the
-  // window at the top.
+  // Scrolling is native: nothing pins the window at the top.
   const moved = await page.evaluate(async () => {
-    window.scrollTo(0, 2000);
+    window.scrollTo(0, 800);
     await new Promise((r) => setTimeout(r, 250));
     return window.scrollY;
   });
-  expect(moved).toBeGreaterThan(500);
+  expect(moved).toBeGreaterThan(300);
 });
 
 test("overview presents the platform with honest data status", async ({ page }) => {
-  // The Command Center moved to its own route when `/` became the narrative.
+  // `/command-center` is the home dashboard's former address and still serves it.
   await page.goto("/command-center");
   await expect(page.getByRole("link", { name: "Pivot — home" })).toBeVisible();
+  // The Command Center's old address serves the home dashboard.
   await expect(
-    page.getByRole("heading", { name: "Know what your roster is. Then change it." }),
+    page.getByRole("heading", { level: 1, name: /Sharper decisions\.\s*Better basketball\./ }),
   ).toBeVisible();
   // primary and secondary calls to action
   await expect(page.getByRole("link", { name: "Start with your roster" })).toBeVisible();

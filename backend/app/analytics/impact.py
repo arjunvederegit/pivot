@@ -7,8 +7,10 @@ migration and a breaking API change in exchange for nothing a reader gains, so t
 expansion is corrected everywhere it is written out — TradeLab, then RosterLab, now Pivot
 Estimated Impact — and the three letters stay.
 
-TEI is this project's own portfolio-model estimate of per-100-possession player impact.
-It is NOT RAPTOR, EPM, LEBRON, BPM, or any proprietary metric, and it is documented as
+TEI is this project's own portfolio-model estimate of player impact, on a unitless index
+scale (a weighted z-score composite × 2.5) — not points per 100 possessions; a team's
+minutes-weighted TEI converts to net rating only through the fitted coefficient in
+`projection.py`. It is NOT RAPTOR, EPM, LEBRON, BPM, or any proprietary metric, and it is documented as
 an estimate with uncertainty (see docs/model-card-player-impact.md).
 
 **The transparent weighted z-score index is the production metric (R3-1).** A ridge

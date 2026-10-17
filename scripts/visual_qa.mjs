@@ -45,6 +45,8 @@ const player = players.players?.[0];
 
 const ROUTES = [
   { name: "overview", path: "/" },
+  // The home dashboard's former address; it must keep rendering the dashboard.
+  { name: "command-center", path: "/command-center" },
   { name: "trade-empty", path: "/trade-evaluator" },
   { name: "trade-populated", path: `/trade-evaluator?team=${team.id}` },
   { name: "strategy-lab", path: "/strategy-lab" },
@@ -96,9 +98,22 @@ for (const viewport of VIEWPORTS) {
       clientWidth: document.documentElement.clientWidth,
     }));
 
+    // Logos and photos load lazily, so a full-page capture taken from the top shows empty
+    // plates for everything below the fold. Walk the page a screen at a time first, the
+    // way a reader would, then return to the top for the capture.
+    await page.evaluate(async () => {
+      const step = Math.max(200, window.innerHeight - 120);
+      for (let y = 0; y < document.documentElement.scrollHeight; y += step) {
+        window.scrollTo(0, y);
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      window.scrollTo(0, 0);
+    });
+    await page.waitForTimeout(600);
+
     await page.screenshot({
       path: `${OUT}${route.name}__${viewport.name}.png`,
-      fullPage: viewport.width >= 1024,
+      fullPage: true,
     });
 
     // A designed not-found state must actually render something; a blank body means
@@ -127,12 +142,17 @@ for (const viewport of VIEWPORTS) {
 await browser.close();
 
 const problems = report.filter(
-  (r) => r.horizontalOverflowPx > 0 || r.consoleErrors.length > 0 || r.emptyBody,
+  (r) =>
+    r.horizontalOverflowPx > 0 ||
+    r.consoleErrors.length > 0 ||
+    r.emptyBody,
 );
 writeFileSync(`${OUT}report.json`, JSON.stringify({ report, problems }, null, 2));
 console.log(`captured ${report.length} screenshots into ${OUT}`);
 if (problems.length === 0) {
-  console.log("CLEAN: no horizontal overflow, no console errors, no empty pages");
+  console.log(
+    "CLEAN: no horizontal overflow, no console errors, no empty pages",
+  );
 } else {
   console.log(`PROBLEMS (${problems.length}):`);
   for (const p of problems) {

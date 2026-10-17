@@ -23,6 +23,28 @@ minutes-weighted index converts to net-rating points through a fitted coefficien
 ≈15 (R3-2); calling the raw index "points per 100" asserts that coefficient is 1.0, and
 it is not.
 
+## How the product presents it (terminal redesign)
+
+The raw index is not shown on its own. It is placed in the **scored league**: every estimate
+for the current season under the active version (n = 512 on the 2025-26 snapshot), served by
+`GET /players/impact-distribution`.
+
+- **League impact percentile:** a mid-rank percentile, where tied players count as half.
+  It is never displayed as 0 or 100.
+- **Competition rank:** for example "T-#11" when tied.
+- **Likely range:** the 10–90% band placed in the same population.
+- **Position descriptor:** a plain fraction such as "Top 5%". It is not a tier.
+
+The raw index is shown in each player readout and roster row and beside each percentile
+on the saved-deal report; every compact percentile carries it in its tooltip. The
+population definition, method, model version and limitations travel with the readouts. Unscored players are shown as unscored and never
+ranked.
+
+These are positions among measured players, not calibrated ratings. Because the likely range
+is shown with them, they are not presented as authoritative rankings. Precedent `tei` is a
+different, single-season quantity and is never placed in this population. Details and the
+modeling follow-ups are in `docs/pivot/impact-metric-findings.md`.
+
 ## Excluded uses
 
 Player valuation for real transactions or contracts · performance management ·

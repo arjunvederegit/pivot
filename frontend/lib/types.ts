@@ -50,6 +50,10 @@ export interface RosterPlayer {
   height_inches: number | null;
   years_experience: number | null;
   tei: number | null;
+  /** The estimate's 10th / 90th percentile band; null exactly when `tei` is null. Optional
+   *  because servers older than the impact-reference change did not send it. */
+  tei_low?: number | null;
+  tei_high?: number | null;
   /** Cluster label only; the full assignment lives on the player detail. */
   archetype: string | null;
   availability: number | null;

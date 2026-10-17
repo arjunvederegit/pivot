@@ -57,11 +57,15 @@ describe("the nav points only at routes that exist", () => {
     expect(new Set(nav).size).toBe(nav.length);
   });
 
-  it("leads with the Command Center", () => {
-    // `/` is the narrative homepage while the scroll experiment is on this branch, so the
-    // Command Center has its own route. What is being asserted is unchanged: the product
-    // surface a returning user wants is the first thing in the bar.
-    expect(hrefsIn("PRIMARY")[0]).toBe("/command-center");
+  it("leads with the home dashboard", () => {
+    // `/` is the intelligence dashboard (it absorbed the Command Center). What is asserted is
+    // unchanged in spirit: the surface a returning user wants is the first thing in the nav.
+    expect(hrefsIn("PRIMARY")[0]).toBe("/");
+  });
+
+  it("keeps the Command Center's old address serving the dashboard", () => {
+    // Error pages, shared links and older docs point at /command-center.
+    expect(existsSync(join(APP, "command-center", "page.tsx"))).toBe(true);
   });
 });
 
@@ -73,7 +77,7 @@ describe("the nav follows the decision workflow", () => {
    */
   it("puts the observe steps before the act steps", () => {
     const primary = hrefsIn("PRIMARY");
-    expect(primary).toEqual(["/command-center", "/player-explorer", "/team-outlook"]);
+    expect(primary).toEqual(["/", "/player-explorer", "/team-outlook"]);
   });
 
   it("groups the GM Lab modules rather than promoting one of them", () => {

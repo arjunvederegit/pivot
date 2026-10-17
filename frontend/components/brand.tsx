@@ -1,11 +1,7 @@
 /**
- * Pivot mark: a ball's seams where one seam has become a rising line of data, turning
- * about a fixed point — the pivot foot. Orange holds the ball, cyan holds the analysis —
- * the same division of labor the whole palette uses.
- *
- * The geometry is inherited from the RosterLab mark and deliberately not redrawn: the
- * visual language developed through R1–R7 is the part of this product that was already
- * right. What changed is where the data line turns, and the anchored foot it turns on.
+ * Pivot mark: a basketball drawn as a single fine line, with the pivot foot — the one
+ * planted point a move turns on — marked in mint. Quiet enough to sit beside a serif
+ * wordmark, distinct enough to stand alone as the favicon.
  */
 
 export const PRODUCT_NAME = "Pivot";
@@ -22,39 +18,24 @@ export function BrandMark({ size = 30 }: { size?: number }) {
       className="shrink-0"
       fill="none"
     >
-      <circle cx="20" cy="20" r="18" stroke="var(--leather)" strokeWidth="2" />
-      {/* seams */}
-      <path d="M20 2v13M20 25v13" stroke="var(--leather)" strokeWidth="1.5" opacity="0.55" />
-      <path
-        d="M6.5 7.5c4.2 4.4 4.2 20.6 0 25M33.5 7.5c-4.2 4.4-4.2 20.6 0 25"
-        stroke="var(--leather)"
-        strokeWidth="1.5"
-        opacity="0.55"
-      />
-      {/* the seam that became data, turning about the planted foot */}
-      <path
-        d="M7 29l7-9 6 5 13-15"
-        stroke="var(--signal)"
-        strokeWidth="2.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* the pivot point: the foot the turn happens on */}
-      <circle cx="14" cy="20" r="2.6" fill="var(--signal)" />
-      <circle cx="33" cy="10" r="3" fill="var(--signal)" />
+      <rect x="0.5" y="0.5" width="39" height="39" rx="10" fill="#1c2220" stroke="#2d3531" />
+      <g stroke="#f0eee8" strokeWidth="1.5" strokeLinecap="round">
+        <circle cx="20" cy="20" r="11" />
+        <path d="M20 9v22M9 20h22" opacity="0.7" />
+        <path d="M12.6 12.4c3.4 4.1 3.4 11.1 0 15.2M27.4 12.4c-3.4 4.1-3.4 11.1 0 15.2" opacity="0.7" />
+      </g>
+      <circle cx="20" cy="20" r="3" fill="#86c9a5" />
     </svg>
   );
 }
 
 export function BrandWordmark({ compact = false }: { compact?: boolean }) {
   return (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span className="display text-[1.35rem] leading-none tracking-tight text-foreground">
-        PIV<span className="text-brand">O</span>T
-      </span>
+    <span className="flex min-w-0 flex-col">
+      <span className="font-serif text-[1.6rem] leading-none text-foreground">Pivot</span>
       {!compact && (
-        <span className="eyebrow hidden whitespace-nowrap text-[0.6rem] text-faint xl:inline">
-          {PRODUCT_TAGLINE}
+        <span className="mt-1 truncate text-[10px] font-medium uppercase tracking-[0.12em] text-faint">
+          Basketball intelligence
         </span>
       )}
     </span>

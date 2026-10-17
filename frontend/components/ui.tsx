@@ -3,11 +3,13 @@
 /**
  * Pivot interface primitives.
  *
- * Two rules run through everything here:
- *  - Status is never carried by color alone — every status badge also carries a
+ * Three rules run through everything here:
+ *  - Status is never carried by colour alone — every status badge also carries a
  *    glyph and a word.
- *  - Panels are lit from their top edge rather than boxed on four sides, so a
- *    dense page doesn't read as a grid of identical rectangles.
+ *  - Cards are quiet charcoal surfaces with a hairline frame; in team context a thin
+ *    team-coloured line runs along the top edge.
+ *  - Headlines speak in the editorial serif; everything a person operates or reads as
+ *    data is set in the UI sans with tabular figures.
  */
 
 import clsx from "clsx";
@@ -32,7 +34,7 @@ export function Panel({
   title?: React.ReactNode;
   subtitle?: React.ReactNode;
   actions?: React.ReactNode;
-  /** Top-edge light color — pass a team color inside team context. */
+  /** Top-edge tab colour — pass a team colour inside team context. */
   accent?: string;
   as?: "section" | "div" | "article" | "aside";
   padded?: boolean;
@@ -43,15 +45,17 @@ export function Panel({
       style={accent ? ({ "--edge": accent } as React.CSSProperties) : undefined}
     >
       {(title || actions) && (
-        <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-hairline px-4 py-3">
+        <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-hairline px-5 py-4">
           <div className="min-w-0">
             {title && <h2 className="title-md truncate text-foreground">{title}</h2>}
-            {subtitle && <div className="mt-1 text-xs leading-relaxed text-muted">{subtitle}</div>}
+            {subtitle && (
+              <div className="mt-1 text-[12.5px] leading-relaxed text-muted">{subtitle}</div>
+            )}
           </div>
           {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
         </header>
       )}
-      <div className={padded ? "p-4" : undefined}>{children}</div>
+      <div className={padded ? "p-5" : undefined}>{children}</div>
     </Tag>
   );
 }
@@ -77,39 +81,61 @@ export function PageHeader({
   accent?: string;
 }) {
   return (
-    <header className="mb-5">
-      <div
-        className="h-px w-full"
-        style={{
-          background: `linear-gradient(90deg, ${accent ?? "var(--signal)"}, transparent 60%)`,
-        }}
-      />
-      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 pt-3">
+    <header className="relative mb-7 border-b border-hairline pb-6 lg:mb-9">
+      <div className="relative flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="min-w-0">
-          {eyebrow && <div className="eyebrow mb-1.5">{eyebrow}</div>}
-          {/* Not `whitespace-nowrap`: `title-lg` floors at 24px (globals.css), so a
-              heading that cannot wrap forces the whole page to scroll sideways on a
-              375px viewport. `text-balance` keeps it tidy where it does wrap. */}
-          <h1 className="title-lg text-balance text-foreground">{title}</h1>
-          {lede && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted">{lede}</p>}
+          {eyebrow && (
+            <div className="eyebrow mb-3 flex items-center gap-2">
+              <span
+                aria-hidden
+                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                style={{ background: accent ?? "var(--signal)" }}
+              />
+              {eyebrow}
+            </div>
+          )}
+          {/* Not `whitespace-nowrap`: a heading that cannot wrap forces the whole page to
+              scroll sideways at 375px. `text-balance` keeps it tidy where it wraps. */}
+          {/* One step above the title-lg section headings pages use under it. */}
+          <h1 className="title-xl text-balance text-foreground">{title}</h1>
+          {lede && (
+            <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-muted">{lede}</p>
+          )}
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {meta && <div className="mt-2.5 flex flex-wrap items-center gap-2">{meta}</div>}
+      {meta && <div className="relative mt-4 flex flex-wrap items-center gap-2">{meta}</div>}
     </header>
+  );
+}
+
+/** A section heading inside a page: quiet caps label, hairline rule, optional right slot. */
+export function SectionLabel({
+  children,
+  aside,
+  className,
+}: {
+  children: React.ReactNode;
+  aside?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={clsx("mb-3 flex items-center gap-3", className)}>
+      <span className="eyebrow shrink-0 text-foreground">{children}</span>
+      <span aria-hidden className="h-px min-w-6 flex-1 bg-line" />
+      {aside && <span className="shrink-0">{aside}</span>}
+    </div>
   );
 }
 
 /* ------------------------------------------------------------------ actions */
 
 const BUTTON_VARIANTS: Record<string, string> = {
-  primary:
-    "bg-brand text-court font-semibold hover:brightness-110 active:brightness-95 border border-transparent",
-  signal:
-    "bg-signal text-court font-semibold hover:brightness-110 active:brightness-95 border border-transparent",
-  secondary: "border border-line bg-panel2 text-foreground hover:border-signal/50 hover:bg-panel3",
+  primary: "bg-volt text-ink font-medium border border-volt hover:bg-[#9bd6b6] active:bg-volt2",
+  signal: "bg-volt text-ink font-medium border border-volt hover:bg-[#9bd6b6] active:bg-volt2",
+  secondary: "border border-line bg-panel2 text-foreground hover:bg-panel3 hover:border-[#3a433f]",
   ghost: "border border-transparent text-muted hover:bg-panel2 hover:text-foreground",
-  danger: "border border-illegal/40 bg-illegal/10 text-illegal hover:bg-illegal/20",
+  danger: "border border-illegal/45 bg-illegal/10 text-illegal hover:bg-illegal/20",
 };
 
 type ButtonProps = {
@@ -121,8 +147,8 @@ type ButtonProps = {
 
 function buttonClass(variant: string, size: string, className?: string) {
   return clsx(
-    "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md transition-[filter,background-color,border-color] duration-150 disabled:cursor-not-allowed disabled:opacity-40",
-    size === "sm" ? "px-3 py-1.5 text-[13px]" : "px-4 py-2 text-sm",
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg transition-[background-color,border-color,color] duration-150 disabled:cursor-not-allowed disabled:opacity-40",
+    size === "sm" ? "px-3 py-1.5 text-[13px]" : "px-4 py-2.5 text-[14px]",
     BUTTON_VARIANTS[variant] ?? BUTTON_VARIANTS.secondary,
     className,
   );
@@ -134,7 +160,11 @@ export function Button({
   className,
   children,
   ...rest
-}: ButtonProps & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+}: ButtonProps &
+  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    /** React 19 passes `ref` as a prop; it reaches the <button> through `rest`. */
+    ref?: React.Ref<HTMLButtonElement>;
+  }) {
   return (
     <button className={buttonClass(variant, size, className)} {...rest}>
       {children}
@@ -168,26 +198,26 @@ interface StatusStyle {
 }
 
 const STATUS: Record<string, StatusStyle> = {
-  pass: { className: "border-legal/40 bg-legal/12 text-legal", glyph: "✓" },
-  verified_legal: { className: "border-legal/40 bg-legal/12 text-legal", glyph: "✓" },
-  succeeded: { className: "border-legal/40 bg-legal/12 text-legal", glyph: "✓" },
-  fresh: { className: "border-legal/40 bg-legal/12 text-legal", glyph: "✓" },
-  fail: { className: "border-illegal/40 bg-illegal/12 text-illegal", glyph: "✕" },
-  verified_illegal: { className: "border-illegal/40 bg-illegal/12 text-illegal", glyph: "✕" },
-  failed: { className: "border-illegal/40 bg-illegal/12 text-illegal", glyph: "✕" },
-  error: { className: "border-illegal/40 bg-illegal/12 text-illegal", glyph: "✕" },
-  warning: { className: "border-conditional/40 bg-conditional/12 text-conditional", glyph: "!" },
+  pass: { className: "border-legal/45 bg-legal/10 text-legal", glyph: "✓" },
+  verified_legal: { className: "border-legal/45 bg-legal/10 text-legal", glyph: "✓" },
+  succeeded: { className: "border-legal/45 bg-legal/10 text-legal", glyph: "✓" },
+  fresh: { className: "border-legal/45 bg-legal/10 text-legal", glyph: "✓" },
+  fail: { className: "border-illegal/45 bg-illegal/10 text-illegal", glyph: "✕" },
+  verified_illegal: { className: "border-illegal/45 bg-illegal/10 text-illegal", glyph: "✕" },
+  failed: { className: "border-illegal/45 bg-illegal/10 text-illegal", glyph: "✕" },
+  error: { className: "border-illegal/45 bg-illegal/10 text-illegal", glyph: "✕" },
+  warning: { className: "border-conditional/45 bg-conditional/10 text-conditional", glyph: "!" },
   conditionally_valid: {
-    className: "border-conditional/40 bg-conditional/12 text-conditional",
+    className: "border-conditional/45 bg-conditional/10 text-conditional",
     glyph: "~",
   },
-  stale: { className: "border-conditional/40 bg-conditional/12 text-conditional", glyph: "!" },
-  incomplete: { className: "border-conditional/40 bg-conditional/12 text-conditional", glyph: "~" },
-  unavailable: { className: "border-unavail/40 bg-unavail/12 text-unavail", glyph: "—" },
-  not_evaluated: { className: "border-unavail/40 bg-unavail/12 text-unavail", glyph: "—" },
-  derived: { className: "border-signal/40 bg-signal/12 text-signal", glyph: "≈" },
-  info: { className: "border-signal/40 bg-signal/12 text-signal", glyph: "•" },
-  running: { className: "border-signal/40 bg-signal/12 text-signal", glyph: "•" },
+  stale: { className: "border-conditional/45 bg-conditional/10 text-conditional", glyph: "!" },
+  incomplete: { className: "border-conditional/45 bg-conditional/10 text-conditional", glyph: "~" },
+  unavailable: { className: "border-unavail/45 bg-unavail/10 text-unavail", glyph: "—" },
+  not_evaluated: { className: "border-unavail/45 bg-unavail/10 text-unavail", glyph: "—" },
+  derived: { className: "border-foreground/25 bg-foreground/5 text-foreground", glyph: "≈" },
+  info: { className: "border-foreground/25 bg-foreground/5 text-foreground", glyph: "•" },
+  running: { className: "border-signal/45 bg-signal/10 text-signal", glyph: "•" },
 };
 
 export function Badge({
@@ -205,13 +235,13 @@ export function Badge({
   return (
     <span
       className={clsx(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium leading-tight",
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-[3px] text-[11px] font-medium leading-tight",
         style.className,
         className,
       )}
     >
       {glyph && (
-        <span aria-hidden className="font-mono text-[10px] leading-none">
+        <span aria-hidden className="text-[10px] leading-none opacity-90">
           {style.glyph}
         </span>
       )}
@@ -222,7 +252,7 @@ export function Badge({
 
 /* --------------------------------------------------------------- scoreboard */
 
-/** A single scoreboard-style metric: quiet label, loud number, optional note. */
+/** A single instrument reading: quiet label, loud number, optional note. */
 export function StatBlock({
   label,
   value,
@@ -249,19 +279,19 @@ export function StatBlock({
       )}
       title={title}
     >
-      <div className="eyebrow truncate text-[0.625rem]">{label}</div>
+      <div className="eyebrow truncate">{label}</div>
       <div
         className={clsx(
-          "numeral mt-1 leading-none",
-          size === "sm" && "text-xl",
-          size === "md" && "text-[1.75rem]",
-          size === "lg" && "text-[2.5rem]",
+          "mt-2 leading-none",
+          size === "sm" && "numeral text-[1.2rem]",
+          size === "md" && "stat-serif text-[2.1rem]",
+          size === "lg" && "stat-serif text-[2.9rem]",
         )}
         style={accent ? { color: accent } : undefined}
       >
         {value}
       </div>
-      {note && <div className="mt-1 text-[11px] leading-snug text-muted">{note}</div>}
+      {note && <div className="mt-2 text-[12px] leading-snug text-muted">{note}</div>}
     </div>
   );
 }
@@ -286,11 +316,11 @@ export function SourceRail({
   return (
     <div
       className={clsx(
-        "mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-hairline pt-2 text-[11px] text-faint",
+        "mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-hairline pt-3 text-[11.5px] text-faint",
         className,
       )}
     >
-      <span className="font-mono text-[10px] uppercase tracking-wider">source</span>
+      <span className="font-medium text-muted">Source</span>
       <span className="text-muted">{source}</span>
       {retrievedAt !== undefined && (
         <>
@@ -313,7 +343,7 @@ export function SourceLine({
   className?: string;
 }) {
   return (
-    <p className={clsx("text-[11px] text-faint", className)}>
+    <p className={clsx("text-[11.5px] text-faint", className)}>
       Source: {source} · Updated {formatDate(retrievedAt)}
     </p>
   );
@@ -338,8 +368,8 @@ export function FreshnessBadge({
 
 export function Spinner({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="flex items-center gap-2 py-8 text-sm text-muted" role="status">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-signal" />
+    <div className="flex items-center gap-2 py-8 text-[13px] text-muted" role="status">
+      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-line border-t-signal" />
       {label}
     </div>
   );
@@ -362,8 +392,13 @@ export function SkeletonRows({ rows = 5, height = "h-11" }: { rows?: number; hei
 export function ErrorState({ message, action }: { message: string; action?: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-illegal/40 bg-illegal/8 px-4 py-3">
-      <p className="text-sm text-illegal">{message}</p>
-      {action && <div className="mt-2">{action}</div>}
+      <p className="flex items-start gap-2 text-sm text-illegal">
+        <span aria-hidden className="text-[12px] leading-5">
+          ✕
+        </span>
+        <span>{message}</span>
+      </p>
+      {action && <div className="mt-2.5 pl-5">{action}</div>}
     </div>
   );
 }
@@ -383,13 +418,22 @@ export function EmptyState({
   return (
     <div
       className={clsx(
-        "court-grid relative overflow-hidden rounded-lg border border-dashed border-line px-6 py-10 text-center",
+        "court-grid relative overflow-hidden rounded-lg border border-dashed border-line bg-panel px-6 py-12 text-center",
         className,
       )}
     >
-      <p className="title-md text-foreground">{title}</p>
+      <svg
+        aria-hidden
+        viewBox="0 0 120 40"
+        className="mx-auto mb-3 h-7 w-24 text-faint"
+        fill="none"
+      >
+        <path d="M4 38h112M40 38V14h40v24M30 38a30 30 0 0 1 60 0" stroke="currentColor" strokeWidth="1.3" />
+        <circle cx="60" cy="30" r="3" stroke="currentColor" strokeWidth="1.3" />
+      </svg>
+      <p className="font-serif text-[1.5rem] leading-tight text-foreground">{title}</p>
       {hint && <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-muted">{hint}</p>}
-      {action && <div className="mt-4 flex justify-center gap-2">{action}</div>}
+      {action && <div className="mt-4 flex flex-wrap justify-center gap-2">{action}</div>}
     </div>
   );
 }
@@ -402,9 +446,9 @@ export function UnavailableNotice({
   steps?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-unavail/35 bg-unavail/8 px-4 py-3">
+    <div className="rounded-lg border border-dashed border-unavail/50 bg-unavail/6 px-4 py-3">
       <p className="flex items-start gap-2 text-sm text-muted">
-        <span aria-hidden className="mt-0.5 font-mono text-unavail">
+        <span aria-hidden className="mt-0.5 text-unavail">
           —
         </span>
         <span>
@@ -414,6 +458,33 @@ export function UnavailableNotice({
       </p>
       {steps && <div className="mt-2.5 border-t border-hairline pt-2.5">{steps}</div>}
     </div>
+  );
+}
+
+/** Click-to-reveal explanation. Native `<details>`, so it works with a keyboard and
+ *  without JavaScript; the summary is the only thing a reader must see. */
+export function Explainer({
+  summary,
+  children,
+  className,
+}: {
+  summary: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <details className={clsx("group", className)}>
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[12px] font-medium text-muted transition-colors hover:text-foreground">
+        <span
+          aria-hidden
+          className="inline-block w-3 text-center transition-transform group-open:rotate-90"
+        >
+          ›
+        </span>
+        {summary}
+      </summary>
+      <div className="mt-2 pl-[18px] text-[12px] leading-relaxed text-muted">{children}</div>
+    </details>
   );
 }
 
@@ -434,7 +505,7 @@ export function Tabs({
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className="scroll-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-px"
+      className="scroll-thin -mx-1 flex gap-0.5 overflow-x-auto border-b border-hairline px-1"
     >
       {tabs.map((tab) => {
         const selected = tab.id === active;
@@ -445,10 +516,17 @@ export function Tabs({
             type="button"
             aria-selected={selected}
             onClick={() => onChange(tab.id)}
+            // A partly visible tab is not scrolled into view on focus by every browser,
+            // so keyboard users could land on a tab hidden past the strip's edge.
+            onFocus={(event) =>
+              event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })
+            }
             className={clsx(
-              "whitespace-nowrap rounded-t-md border-b-2 px-3 py-2 text-[13px] transition-colors",
+              // The strip scrolls sideways, which clips anything drawn outside a tab, so the
+              // focus ring is drawn inside it.
+              "-mb-px whitespace-nowrap border-b-2 px-3 py-2.5 text-[13.5px] transition-colors focus-visible:outline-offset-[-3px]",
               selected
-                ? "border-signal font-semibold text-foreground"
+                ? "border-signal font-medium text-foreground"
                 : "border-transparent text-muted hover:text-foreground",
             )}
           >
@@ -475,7 +553,7 @@ export function SegmentedControl({
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className="inline-flex rounded-md border border-line bg-panel2 p-0.5"
+      className="inline-flex rounded-lg border border-hairline bg-panel2 p-0.5"
     >
       {options.map((option) => (
         <button
@@ -485,9 +563,9 @@ export function SegmentedControl({
           aria-checked={value === option.value}
           onClick={() => onChange(option.value)}
           className={clsx(
-            "whitespace-nowrap rounded px-2.5 py-1 text-[12px] transition-colors",
+            "whitespace-nowrap rounded-md px-3 py-1.5 text-[12.5px] transition-colors",
             value === option.value
-              ? "bg-signal/15 font-semibold text-signal"
+              ? "bg-panel3 font-medium text-foreground"
               : "text-muted hover:text-foreground",
           )}
         >
@@ -539,7 +617,7 @@ export function PlayerAvatar({ name, size = 32 }: { name: string; size?: number 
     <span
       aria-hidden
       className="numeral flex items-center justify-center rounded-full bg-panel3 text-muted"
-      style={{ width: size, height: size, fontSize: size * 0.4 }}
+      style={{ width: size, height: size, fontSize: size * 0.36 }}
     >
       {initials}
     </span>
@@ -559,7 +637,7 @@ export function Th({
     <th
       scope="col"
       className={clsx(
-        "eyebrow whitespace-nowrap px-2 py-2 text-[0.625rem]",
+        "eyebrow whitespace-nowrap px-2 py-2.5",
         numeric ? "text-right" : "text-left",
         className,
       )}

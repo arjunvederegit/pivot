@@ -67,7 +67,7 @@ export function TeamLogo({
         aria-label={decorative ? undefined : `${label} crest`}
         aria-hidden={decorative || undefined}
         className={clsx(
-          "numeral flex shrink-0 items-center justify-center rounded-md",
+          "numeral flex shrink-0 items-center justify-center rounded-sm",
           className,
         )}
         style={{
@@ -93,7 +93,9 @@ export function TeamLogo({
       height={size}
       loading="lazy"
       decoding="async"
-      className={clsx("shrink-0 object-contain", className)}
+      // Every logo sits on the same small off-white plate: source assets mix transparent and
+      // white backgrounds, and dark marks (Brooklyn, San Antonio) vanish on an ink tile.
+      className={clsx("shrink-0 rounded-[3px] bg-paperhi object-contain p-[2px]", className)}
       style={{ width: size, height: size }}
       onError={() => setFailed(true)}
     />
@@ -153,18 +155,34 @@ export function PlayerPhoto({
       .filter(Boolean)
       .slice(0, 2)
       .join("");
+    // No headshot on file: a player silhouette at portrait sizes, initials at row sizes
+    // (where a silhouette would be an unreadable smudge). Either way it reads as "no photo",
+    // never as somebody else's face.
+    const portrait = size >= 48;
     return (
       <span
         role="img"
         aria-label={`${name} — no photo available`}
         className={clsx(
-          "numeral flex shrink-0 items-center justify-center bg-panel3 text-muted",
+          "relative flex shrink-0 items-center justify-center overflow-hidden border border-hairline bg-gradient-to-b from-panel3 to-panel2 text-muted",
           shape,
           className,
         )}
-        style={{ width: size, height: size, fontSize: size * 0.38 }}
+        style={{ width: size, height: size, fontSize: Math.max(10, size * 0.34) }}
       >
-        {initials}
+        {portrait ? (
+          <>
+            <svg viewBox="0 0 64 64" className="absolute inset-x-0 bottom-0 h-[88%] w-full text-[#3a433f]" aria-hidden>
+              <circle cx="32" cy="24" r="11" fill="currentColor" />
+              <path d="M10 64c1.5-14 10.5-22 22-22s20.5 8 22 22Z" fill="currentColor" />
+            </svg>
+            <span className="numeral relative mt-auto mb-[8%] text-[0.42em] tracking-[0.06em] text-muted">
+              {initials}
+            </span>
+          </>
+        ) : (
+          <span className="numeral">{initials}</span>
+        )}
       </span>
     );
   }

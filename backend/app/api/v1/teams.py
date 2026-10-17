@@ -156,6 +156,12 @@ def get_roster(team_id: str, db: Session = Depends(get_db)) -> dict:
                 height_inches=entry.player.height_inches,
                 years_experience=entry.player.years_experience,
                 tei=round(impact.tei, 2) if impact else None,
+                tei_low=round(impact.tei_low, 2)
+                if impact and impact.tei_low is not None
+                else None,
+                tei_high=round(impact.tei_high, 2)
+                if impact and impact.tei_high is not None
+                else None,
                 archetype=archetypes.get(entry.player_id),
                 availability=round(impact.availability, 3)
                 if impact and impact.availability is not None

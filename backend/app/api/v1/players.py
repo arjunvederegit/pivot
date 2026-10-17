@@ -18,6 +18,7 @@ from app.db.models import (
     Team,
 )
 from app.integrations.contracts import get_contract_provider
+from app.services.impact_reference import impact_reference
 
 router = APIRouter(prefix="/players", tags=["players"])
 
@@ -84,6 +85,14 @@ def list_players(
         "offset": offset,
         "players": [_player_out(db, p).model_dump() for p in players],
     }
+
+
+@router.get("/impact-distribution")
+def get_impact_distribution(db: Session = Depends(get_db)) -> dict:
+    """The scored league as a sorted list of served TEI values, with how it was chosen.
+
+    Declared before `/{player_id}`, which would otherwise capture the path."""
+    return impact_reference(db)
 
 
 @router.get("/{player_id}")
@@ -166,7 +175,10 @@ def get_player(player_id: str, db: Session = Depends(get_db)) -> dict:
             "proprietary metric. See /methodology.",
         }
         if impact
-        else {"note": "No impact estimate — player below minutes threshold or model not trained."},
+        else {
+            "note": "No impact estimate — the player is below the 200-minute window, is neither "
+            "on a current roster nor listed as active, or the model has not been trained."
+        },
         "archetype": {"label": archetype.label, "role_id": archetype.role_id}
         if archetype
         else None,

@@ -1,28 +1,28 @@
 import type { Metadata } from "next";
-import { Archivo, Barlow_Condensed, IBM_Plex_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { AppNav, AppFooter } from "@/components/shell";
+import { AppShell } from "@/components/shell";
 import { ToastProvider } from "@/components/toast";
 
-/** Three typographic roles: condensed athletic display (jersey/scoreboard),
- *  a grotesque for interface text, and tabular mono for box-score data. */
-const display = Barlow_Condensed({
-  variable: "--font-barlow-condensed",
+/** Two voices. An editorial serif for statements — hero lines, page titles, the headline
+ *  figure on a scouting card — and a precise UI sans for everything a person operates or
+ *  reads as data. Geist Mono appears only where something is literally code. */
+const serif = Instrument_Serif({
+  variable: "--font-instrument-serif",
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: "400",
+  style: ["normal", "italic"],
   display: "swap",
 });
-const sans = Archivo({
-  variable: "--font-archivo",
+const sans = Geist({
+  variable: "--font-geist",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
-const mono = IBM_Plex_Mono({
-  variable: "--font-plex-mono",
+const mono = Geist_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
   display: "swap",
 });
 
@@ -36,22 +36,18 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html
       lang="en"
-      className={`${display.variable} ${sans.variable} ${mono.variable} h-full antialiased`}
+      className={`${serif.variable} ${sans.variable} ${mono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">
+      <body className="min-h-full">
         <Providers>
           <ToastProvider>
             <a
               href="#main"
-              className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-[100] focus:rounded-md focus:bg-signal focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-court"
+              className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-[100] focus:rounded-md focus:bg-volt focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-ink"
             >
               Skip to content
             </a>
-            <AppNav />
-            <main id="main" className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 lg:px-8">
-              {children}
-            </main>
-            <AppFooter />
+            <AppShell>{children}</AppShell>
           </ToastProvider>
         </Providers>
       </body>

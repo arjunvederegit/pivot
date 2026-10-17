@@ -488,3 +488,31 @@ model would otherwise produce.
 **Consequences:** no LLM exists and none is implied. The six unbuilt tools are the concrete
 R8 work list, because each is blocked by a real structural problem (most importantly: the
 evaluation composite has no single entry point, being duplicated across four API handlers).
+
+## ADR-29 · An editorial dark system, and a league percentile beside the impact index
+
+**Context:** the "court terminal" system (light graph-paper canvas, volt green, expanded
+display face, mono labels) read as an instrument panel rather than a basketball product,
+and the scroll-driven homepage put a narrative between a returning user and their work.
+Separately, the impact index (TEI) was shown as a bare signed number that users read as
+points per 100 possessions, which it is not.
+
+**Decision:** one dark editorial system (`docs/design-system.md`): near-black ground,
+charcoal cards, warm white text, a single subdued mint accent, Instrument Serif for titles
+and headline statistics, Geist for everything operational, and a persistent left sidebar.
+The homepage is an intelligence dashboard behind one static illustrated arena; it shows only
+served data and says what is missing. Impact is placed as a league percentile and rank
+among every scored player, from a new read-only endpoint (`GET /players/impact-distribution`)
+that serves the scored population, with the raw index kept at 2 dp beside it.
+
+**Alternatives:** keep the two-scope paper/terminal system and only restyle the home page
+(rejected: the product would carry two visual languages); a photographic arena hero
+(rejected: no licensed image in the repository, and a downloaded asset is a dependency the
+brief did not ask for); a 0–100 "overall" player rating (rejected: arbitrary, and it would
+merge on-court impact, team fit and projected wins, which the product keeps separate).
+
+**Consequences:** token names from the old system are kept and re-valued, so no page needed
+a rename to restyle. The scroll-home experiment is preserved on `feat/pivot-scroll-home`;
+this branch removes its components. `/command-center` keeps serving the dashboard so old
+links still land. The percentile is mid-rank with ties shared, clamped to 1–99 on display,
+and is never applied to a precedent's `tei`, which is a different quantity.

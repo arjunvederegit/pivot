@@ -1,20 +1,22 @@
 "use client";
 
 /**
- * The seven panels behind the evaluation's tab strip.
+ * The panels behind the evaluation's tab strip — rendered inside the Trade Evaluator's
+ * team-perspective panel and the saved-deal report.
  *
- * Extracted from `app/trade-evaluator/page.tsx` in R7. The page was 2,964 lines and grew
- * in every release since R4; these are the part of it with the cleanest boundary — each
- * one takes a `TeamEvaluation` (and, where it needs it, one typed section of its detail
- * bag), renders, and holds no state the builder shares. The only page-local helper they
- * used was `sectionOf`, which moved to `lib/evaluationDetail.ts` because reading a typed
- * section out of the detail bag is not a rendering concern.
+ * Each one takes a `TeamEvaluation` (and, where it needs it, one typed section of its
+ * detail bag), renders, and holds no state the caller shares. `PrecedentTab` owns its
+ * query and is meant to be mounted only while its tab is selected, which is what keeps
+ * the comparable-trade search on demand.
  *
- * Nothing here changed behaviour. It is a move, and the page imports them back under the
- * same names.
+ * Every tab is built from the same editorial language as the evaluator: a quiet raised
+ * card with a small caps label, the number that matters first, the caveat right under it,
+ * and long-form explanation behind an Explainer. Nothing here estimates: an absent section
+ * renders its own unavailable state.
  */
 
 import { useQuery } from "@tanstack/react-query";
+import clsx from "clsx";
 import { useMemo } from "react";
 import { api } from "@/lib/api";
 import { sectionOf } from "@/lib/evaluationDetail";
@@ -47,7 +49,98 @@ import {
   UncertaintyStrip,
 } from "@/components/charts";
 import { PrecedentPanel, RosterShapePanel } from "@/components/precedent";
-import { ButtonLink, MeterBar, StatBlock, UnavailableNotice } from "@/components/ui";
+import { direction, signed } from "@/components/reference/format";
+import { ButtonLink, Explainer, StatBlock, UnavailableNotice } from "@/components/ui";
+
+/* ------------------------------------------------------------------ pieces */
+
+/** A raised card: quiet caps label, optional aside, content. */
+function Block({
+  label,
+  aside,
+  children,
+  className,
+}: {
+  label?: React.ReactNode;
+  aside?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={clsx("min-w-0 rounded-xl border border-hairline bg-panel2/40 p-4", className)}>
+      {(label || aside) && (
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          {label && <span className="title-sm text-foreground">{label}</span>}
+          {aside && <span className="text-[11.5px] text-faint">{aside}</span>}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+/** A row of StatBlocks separated by hairlines — the evaluator's ledger row. */
+function StatStrip({ children, cols = 4 }: { children: React.ReactNode; cols?: 2 | 3 | 4 }) {
+  return (
+    <div
+      className={clsx(
+        "grid gap-px overflow-hidden rounded-xl border border-hairline bg-hairline",
+        "grid-cols-2",
+        // Three cells on a phone: two up, the third across the row — labels such as
+        // "Roster spots" do not fit a third of 358px.
+        cols === 3 && "sm:grid-cols-3 [&>*:nth-child(3)]:col-span-2 sm:[&>*:nth-child(3)]:col-span-1",
+        cols === 4 && "sm:grid-cols-4",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function StatCell(props: React.ComponentProps<typeof StatBlock>) {
+  return (
+    <div className="min-w-0 bg-panel px-4 py-3">
+      <StatBlock size="sm" {...props} />
+    </div>
+  );
+}
+
+/** ▲ / ▼ / ■ — direction as a glyph and a word for screen readers, never colour alone. */
+function DirectionGlyph({ value, digits = 2 }: { value: number; digits?: number }) {
+  const d = direction(value, digits);
+  return (
+    <>
+      <span aria-hidden className={d > 0 ? "text-legal" : d < 0 ? "text-illegal" : "text-faint"}>
+        {d > 0 ? "▲" : d < 0 ? "▼" : "■"}
+      </span>
+      <span className="sr-only">{d > 0 ? "improves" : d < 0 ? "worsens" : "unchanged"}</span>
+    </>
+  );
+}
+
+/** A bar centred on zero, filled toward the value; `scale` is the |value| at full width. */
+function DivergingBar({ value, scale, className }: { value: number; scale: number; className?: string }) {
+  const width = Math.min(50, (Math.abs(value) / (scale || 1)) * 50);
+  const d = direction(value, 2);
+  return (
+    <span aria-hidden className={clsx("relative block h-1.5 rounded-full bg-panel3", className)}>
+      <span className="absolute -inset-y-1 left-1/2 w-px bg-faint" />
+      {d !== 0 && (
+        <span
+          className="absolute inset-y-0 rounded-full"
+          style={{
+            left: d > 0 ? "50%" : `${50 - width}%`,
+            width: `${Math.max(1, width)}%`,
+            background: d > 0 ? "var(--signal)" : "var(--illegal)",
+            opacity: 0.85,
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
+/* --------------------------------------------------------------- precedent */
 
 export function PrecedentTab({
   focalTeamId,
@@ -84,6 +177,20 @@ export function PrecedentTab({
   );
 }
 
+/* ------------------------------------------------------------------ impact */
+
+/** True when the simulation produced a 10th–90th band to print beside a wins figure. */
+function hasBand(teamEval: TeamEvaluation): boolean {
+  const u = teamEval.uncertainty;
+  return Boolean(
+    u &&
+      u.prob_positive !== null &&
+      u.prob_positive !== undefined &&
+      Number.isFinite(u.p10) &&
+      Number.isFinite(u.p90),
+  );
+}
+
 export function ImpactTab({ teamEval, perf }: { teamEval: TeamEvaluation; perf: PerformanceDetail }) {
   const shape = sectionOf<RosterShapeDetail>(teamEval.detail, "roster_shape");
   const rows = useMemo(() => {
@@ -103,47 +210,65 @@ export function ImpactTab({ teamEval, perf }: { teamEval: TeamEvaluation; perf: 
   }, [perf]);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div className="min-w-0">
-        {/* Cyan is the chart voice; the diverging red already means "below neutral". */}
-        <ComponentBars components={teamEval.components} excluded={teamEval.excluded_components} />
-        <dl className="mt-3 space-y-1.5 text-[11px] leading-snug text-muted">
-          {Object.entries(COMPONENT_EXPLAIN).map(([key, explanation]) => (
-            <div key={key}>
-              <dt className="inline font-semibold text-foreground">{COMPONENT_LABEL[key]}: </dt>
-              <dd className="inline">{explanation}</dd>
-            </div>
-          ))}
-        </dl>
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="min-w-0 space-y-4">
+        <Block>
+          <ComponentBars components={teamEval.components} excluded={teamEval.excluded_components} />
+          <Explainer summary="What each component measures" className="mt-3">
+            <dl className="space-y-1.5">
+              {Object.entries(COMPONENT_EXPLAIN).map(([key, explanation]) => (
+                <div key={key}>
+                  <dt className="inline font-semibold text-foreground">{COMPONENT_LABEL[key]}: </dt>
+                  <dd className="inline">{explanation}</dd>
+                </div>
+              ))}
+            </dl>
+          </Explainer>
+        </Block>
+        <RosterShapePanel shape={shape} />
       </div>
-      <div className="min-w-0">
-        {rows.length > 0 ? (
-          <BeforeAfterBars
-            rows={rows}
-            title="Rotation minutes — before vs after"
-            unit="projected minutes per game"
-            why="Where the deal actually changes who plays; a trade that never reaches the floor can't move the record."
-          />
-        ) : (
-          <UnavailableNotice reason="This evaluation did not return a rotation breakdown, so the before-and-after minutes chart can't be drawn." />
-        )}
-        {perf.delta_wins !== undefined && (
-          <p className="mt-3 text-[12px] leading-relaxed text-muted">
-            Reallocating those minutes moves the projection by{" "}
-            <span className="data text-foreground">
-              {perf.delta_wins >= 0 ? "+" : ""}
-              {perf.delta_wins.toFixed(1)}
-            </span>{" "}
-            wins before uncertainty is applied.
-          </p>
-        )}
-        <div className="mt-4">
-          <RosterShapePanel shape={shape} />
-        </div>
+      <div className="min-w-0 space-y-4">
+        <Block>
+          {rows.length > 0 ? (
+            <BeforeAfterBars
+              rows={rows}
+              title="Rotation minutes — before vs after"
+              unit="projected minutes per game"
+              why="Where the deal actually changes who plays; a trade that never reaches the floor can't move the record."
+            />
+          ) : (
+            <UnavailableNotice reason="This evaluation did not return a rotation breakdown, so the before-and-after minutes chart can't be drawn." />
+          )}
+          {perf.delta_wins !== undefined && (
+            // A projected wins change never travels without its band: the point figure
+            // here is the reallocation alone, so the simulated 10th–90th range sits beside it.
+            <p className="mt-3 border-t border-hairline pt-2.5 text-[12px] leading-relaxed text-muted">
+              Reallocating those minutes moves the projection by{" "}
+              <span className="numeral text-foreground">{signed(perf.delta_wins, 1)}</span> wins
+              before uncertainty is applied
+              {hasBand(teamEval) ? (
+                <>
+                  {" "}(10th–90th percentile with it:{" "}
+                  <span className="numeral text-foreground">
+                    {signed(teamEval.uncertainty.p10, 1)} to {signed(teamEval.uncertainty.p90, 1)}
+                  </span>{" "}
+                  wins over a full 82-game season).
+                </>
+              ) : (
+                <>
+                  . No 10th–90th band accompanies it:{" "}
+                  {teamEval.uncertainty.unavailable ?? "the simulation produced no outcome distribution"}.
+                </>
+              )}
+            </p>
+          )}
+        </Block>
       </div>
     </div>
   );
 }
+
+/* --------------------------------------------------------------------- fit */
 
 export function FitTab({ teamEval }: { teamEval: TeamEvaluation }) {
   const fit = sectionOf<FitDetail>(teamEval.detail, "fit");
@@ -168,12 +293,15 @@ export function FitTab({ teamEval }: { teamEval: TeamEvaluation }) {
   const rankedNeeds = Object.entries(needs)
     .filter(([, severity]) => severity > 0)
     .sort((a, b) => b[1] - a[1]);
+  const maxSeverity = Math.max(0.001, ...rankedNeeds.map(([, s]) => s));
+  const rankedSkills = Object.entries(skills).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const skillScale = Math.max(0.25, ...rankedSkills.map(([, v]) => Math.abs(v)));
+  const penalised = Object.entries(redundancies).filter(([, v]) => v > 0);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div className="min-w-0">
-        <h4 className="title-md text-foreground">Needs this deal addresses</h4>
-        <p className="mt-1 text-[12px] leading-snug text-muted">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <Block label="Needs this deal addresses" aside="bar = severity · number = movement">
+        <p className="-mt-1 text-[12px] leading-snug text-muted">
           Only needs the model measured as real for this roster are listed. The bar is how severe
           the need is; the number is how far this deal moves it.
         </p>
@@ -185,79 +313,124 @@ export function FitTab({ teamEval }: { teamEval: TeamEvaluation }) {
         ) : (
           <ul className="mt-3 space-y-2.5">
             {rankedNeeds.map(([key, severity]) => {
+              // Three states, not two. A need whose skill is not measured on both sides of
+              // the deal is absent from `needs_addressed` (fit.py skips it) without being
+              // "not addressable" — that is a missing comparison, not a movement of 0.00.
+              const unscored = key in notAddressable;
+              const compared = key in addressed;
               const delta = addressed[key] ?? 0;
               return (
                 <li key={key}>
                   <div className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 truncate text-[13px]">{NEED_LABEL[key] ?? key}</span>
-                    <span
-                      className={`data shrink-0 text-[12px] ${
-                        delta > 0 ? "text-legal" : delta < 0 ? "text-illegal" : "text-faint"
-                      }`}
-                    >
-                      {delta > 0 ? "+" : ""}
-                      {delta.toFixed(3)}
+                    <span className="min-w-0 truncate text-[13px] text-foreground">
+                      {NEED_LABEL[key] ?? key}
                     </span>
+                    {unscored ? (
+                      <span className="shrink-0 text-[12px] text-unavail">not scored</span>
+                    ) : !compared ? (
+                      <span
+                        className="shrink-0 text-[12px] text-unavail"
+                        title="The skill that answers this need is not measured for the players on both sides of the deal, so no movement is computed."
+                      >
+                        not compared
+                      </span>
+                    ) : (
+                      <span className="numeral flex shrink-0 items-baseline gap-1.5 text-[13px]">
+                        <DirectionGlyph value={delta} />
+                        <span
+                          className={
+                            direction(delta, 2) > 0
+                              ? "text-legal"
+                              : direction(delta, 2) < 0
+                                ? "text-illegal"
+                                : "text-faint"
+                          }
+                        >
+                          {signed(delta, 2)}
+                        </span>
+                      </span>
+                    )}
                   </div>
-                  <MeterBar
-                    value={severity}
-                    max={Math.max(...rankedNeeds.map(([, s]) => s), 0.001)}
-                    color="var(--signal)"
-                    className="mt-1"
-                    label={`${NEED_LABEL[key] ?? key} severity`}
-                  />
+                  <div
+                    className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-panel3"
+                    role="img"
+                    aria-label={`${NEED_LABEL[key] ?? key} severity ${severity.toFixed(2)} of 1`}
+                  >
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.max(2, (severity / maxSeverity) * 100)}%`,
+                        background: unscored || !compared ? "var(--unknown)" : "var(--signal)",
+                        opacity: unscored || !compared ? 0.6 : 0.85,
+                      }}
+                    />
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
         {Object.keys(notAddressable).length > 0 && (
-          <div className="mt-3 border-t border-hairline pt-2.5">
+          <div className="mt-3 space-y-1 border-t border-hairline pt-2.5">
             {Object.entries(notAddressable).map(([key, reason]) => (
-              <p key={key} className="text-[11px] leading-snug text-faint">
+              <p key={key} className="text-[11.5px] leading-snug text-faint">
                 <span className="text-muted">{NEED_LABEL[key] ?? key}</span> is measured for
                 this roster but not scored here — {reason}.
               </p>
             ))}
           </div>
         )}
-      </div>
-      <div className="min-w-0">
-        <h4 className="title-md text-foreground">Skill balance change</h4>
-        <p className="mt-1 text-[12px] leading-snug text-muted">
-          Minutes-weighted skill profile arriving minus the profile leaving.
+      </Block>
+
+      <Block label="Skill balance change" aside="arriving − leaving · minutes-weighted">
+        <p className="-mt-1 text-[12px] leading-snug text-muted">
+          Minutes-weighted skill profile arriving minus the profile leaving. Right of the centre
+          line the roster gains the skill; left, it gives it up.
         </p>
-        <ul className="mt-3 space-y-1.5">
-          {Object.entries(skills)
-            .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
-            .map(([key, value]) => (
-              <li key={key} className="flex items-center justify-between gap-3 text-[13px]">
-                <span className="min-w-0 truncate">{SKILL_LABEL[key] ?? key.replaceAll("_", " ")}</span>
+        {rankedSkills.length === 0 ? (
+          <p className="mt-3 text-[13px] text-muted">No skill profile was returned for this deal.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {rankedSkills.map(([key, value]) => (
+              <li
+                key={key}
+                className="grid grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)_3.25rem] items-center gap-3"
+              >
+                <span className="truncate text-[12.5px] text-foreground">
+                  {SKILL_LABEL[key] ?? key.replaceAll("_", " ")}
+                </span>
+                <DivergingBar value={value} scale={skillScale} />
                 <span
-                  className={`data shrink-0 text-[12px] ${
-                    value > 0 ? "text-legal" : value < 0 ? "text-illegal" : "text-faint"
-                  }`}
+                  className={clsx(
+                    "numeral text-right text-[13px]",
+                    direction(value, 2) > 0
+                      ? "text-legal"
+                      : direction(value, 2) < 0
+                        ? "text-illegal"
+                        : "text-faint",
+                  )}
                 >
-                  {value > 0 ? "+" : ""}
-                  {value.toFixed(2)}
+                  {signed(value, 2)}
                 </span>
               </li>
             ))}
-        </ul>
+          </ul>
+        )}
         {Object.keys(redundancies).length > 0 && (
-          <p className="mt-3 border-t border-hairline pt-2.5 text-[11px] leading-snug text-faint">
+          <p className="mt-3 border-t border-hairline pt-2.5 text-[11.5px] leading-snug text-faint">
             Redundancy penalty applied to:{" "}
-            {Object.entries(redundancies)
-              .filter(([, v]) => v > 0)
+            {penalised
               .map(([k, v]) => `${SKILL_LABEL[k] ?? k.replaceAll("_", " ")} (${v.toFixed(2)})`)
               .join(", ") || "none"}
             .
           </p>
         )}
-      </div>
+      </Block>
     </div>
   );
 }
+
+/* --------------------------------------------------------------------- cap */
 
 /**
  * Partial contract coverage in the cap tab (R2c). Payroll appears as a floor with the
@@ -275,27 +448,24 @@ export function PartialCapPosition({ legality }: { legality: TeamLegality }) {
   const shownAfter = payrollDisclosure(legality.payroll_after, legality.payroll_known_after, after);
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatBlock size="sm" label="Payroll before" value={shownBefore.value} note={shownBefore.note} />
-        <StatBlock
-          size="sm"
+      <StatStrip>
+        <StatCell label="Payroll before" value={shownBefore.value} note={shownBefore.note} />
+        <StatCell
           label="Payroll after"
           value={shownAfter.value}
           note={after ? shownAfter.note : "a traded salary is unknown"}
         />
-        <StatBlock
-          size="sm"
+        <StatCell
           label="Apron before"
           value={legality.apron_status_at_least_before ?? "not proven"}
           note={legality.apron_status_at_least_before ? "at least" : "known salaries clear no line"}
         />
-        <StatBlock
-          size="sm"
+        <StatCell
           label="Apron after"
           value={legality.apron_status_at_least_after ?? "not proven"}
           note={legality.apron_status_at_least_after ? "at least" : "known salaries clear no line"}
         />
-      </div>
+      </StatStrip>
       <UnavailableNotice
         reason={
           <>
@@ -317,21 +487,23 @@ export function CapTab({ teamEval }: { teamEval: TeamEvaluation }) {
   const assets = sectionOf<AssetsDetail>(teamEval.detail, "assets");
   const legality = teamEval.legality;
   const known = legality.payroll_before !== null && legality.payroll_after !== null;
+  // A floor needs at least one priced contract to be a floor. With none on file the
+  // honest statement is "not imported", not a coverage line reading "0 of 16".
+  const partial =
+    legality.payroll_known_before !== null &&
+    legality.payroll_coverage_before?.players_known !== 0;
+  const picks = [...(assets.picks_priced ?? []), ...(assets.picks_not_priced ?? [])];
 
   return (
     <div className="space-y-4">
       {known ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatBlock size="sm" label="Payroll before" value={money(legality.payroll_before)} />
-          <StatBlock size="sm" label="Payroll after" value={money(legality.payroll_after)} />
-          <StatBlock
-            size="sm"
-            label="Apron before"
-            value={legality.apron_status_before ?? "—"}
-          />
-          <StatBlock size="sm" label="Apron after" value={legality.apron_status_after ?? "—"} />
-        </div>
-      ) : legality.payroll_known_before !== null ? (
+        <StatStrip>
+          <StatCell label="Payroll before" value={money(legality.payroll_before)} />
+          <StatCell label="Payroll after" value={money(legality.payroll_after)} />
+          <StatCell label="Apron before" value={legality.apron_status_before ?? "—"} />
+          <StatCell label="Apron after" value={legality.apron_status_after ?? "—"} />
+        </StatStrip>
+      ) : partial ? (
         <PartialCapPosition legality={legality} />
       ) : (
         <UnavailableNotice
@@ -350,39 +522,41 @@ export function CapTab({ teamEval }: { teamEval: TeamEvaluation }) {
       {contract.net_surplus_cap_share !== undefined && (
         <p className="text-[13px] leading-relaxed text-muted">
           Net contract surplus{" "}
-          <span className="data text-foreground">
-            {contract.net_surplus_cap_share >= 0 ? "+" : ""}
-            {(contract.net_surplus_cap_share * 100).toFixed(2)}%
+          <span className="numeral text-foreground">
+            {signed(contract.net_surplus_cap_share * 100, 2)}%
           </span>{" "}
           of the cap. {contract.method}
         </p>
       )}
 
-      <div className="rounded-lg border border-hairline bg-panel2/40 p-3.5">
-        <div className="eyebrow">Draft capital &amp; flexibility</div>
-        <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <StatBlock size="sm" label="Picks in" value={assets.picks_in ?? 0} note="in this deal" />
-          <StatBlock size="sm" label="Picks out" value={assets.picks_out ?? 0} note="in this deal" />
-          <StatBlock
-            size="sm"
+      <Block label="Draft capital & flexibility" aside="in this deal">
+        <StatStrip cols={3}>
+          {/* The backend always counts picks when it returns this section; if the section
+              is missing, the count is unknown — a dash, not a zero. */}
+          <StatCell label="Picks in" value={assets.picks_in ?? "—"} note="received" />
+          <StatCell label="Picks out" value={assets.picks_out ?? "—"} note="sent" />
+          <StatCell
             label="Roster spots"
-            value={
-              assets.roster_spots_delta !== undefined
-                ? `${assets.roster_spots_delta > 0 ? "+" : ""}${assets.roster_spots_delta}`
-                : "—"
-            }
+            value={assets.roster_spots_delta !== undefined ? signed(assets.roster_spots_delta, 0) : "—"}
             note="net change"
           />
-        </div>
+        </StatStrip>
 
-        {(assets.picks_priced?.length ?? 0) + (assets.picks_not_priced?.length ?? 0) > 0 && (
-          <ul className="mt-3 space-y-1.5 text-[12px]">
-            {[...(assets.picks_priced ?? []), ...(assets.picks_not_priced ?? [])].map((p, i) => (
-              <li key={`${p.pick}-${p.direction}-${i}`} className="flex flex-wrap items-baseline gap-x-2">
-                <span className="text-muted">
-                  {p.direction === "in" ? "→" : "←"} {p.pick}
+        {picks.length > 0 && (
+          <ul className="mt-3 divide-y divide-hairline rounded-lg border border-hairline bg-panel">
+            {picks.map((p, i) => (
+              <li
+                key={`${p.pick}-${p.direction}-${i}`}
+                className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 py-2.5 text-[12px]"
+              >
+                <span className="text-[12px] font-medium text-foreground">
+                  <span aria-hidden className={p.direction === "in" ? "text-signal" : "text-muted"}>
+                    {p.direction === "in" ? "← " : "→ "}
+                  </span>
+                  {p.direction === "in" ? "In" : "Out"}
                 </span>
-                <span className="data text-foreground">
+                <span className="min-w-0 text-foreground">{p.pick}</span>
+                <span className="numeral text-foreground">
                   {p.point !== null
                     ? `${p.point.toFixed(2)} (${p.low.toFixed(2)}–${p.high.toFixed(2)})`
                     : `${p.low.toFixed(2)}–${p.high.toFixed(2)}`}
@@ -396,30 +570,30 @@ export function CapTab({ teamEval }: { teamEval: TeamEvaluation }) {
           </ul>
         )}
 
-        {assets.unavailable ? (
-          <p className="mt-2.5 text-[11px] leading-snug text-faint">{assets.unavailable}</p>
-        ) : (
-          assets.precision_note && (
-            <p className="mt-2.5 text-[11px] leading-snug text-faint">{assets.precision_note}</p>
-          )
-        )}
-        {assets.payroll_delta !== undefined && (
-          <p className="mt-1 text-[11px] leading-snug text-faint">
-            Payroll change{" "}
-            <span className="data text-muted">
-              {assets.payroll_delta >= 0 ? "+" : "−"}
-              {money(Math.abs(assets.payroll_delta))}
-            </span>
-            . {assets.payroll_scored_note}.
-          </p>
-        )}
-        {assets.payroll_note && (
-          <p className="mt-1 text-[11px] leading-snug text-faint">{assets.payroll_note}.</p>
-        )}
-      </div>
+        <div className="mt-3 space-y-1 text-[11.5px] leading-snug text-faint">
+          {assets.unavailable ? (
+            <p>{assets.unavailable}</p>
+          ) : (
+            assets.precision_note && <p>{assets.precision_note}</p>
+          )}
+          {assets.payroll_delta !== undefined && (
+            <p>
+              Payroll change{" "}
+              <span className="numeral text-muted">
+                {assets.payroll_delta >= 0 ? "+" : "−"}
+                {money(Math.abs(assets.payroll_delta))}
+              </span>
+              . {assets.payroll_scored_note}.
+            </p>
+          )}
+          {assets.payroll_note && <p>{assets.payroll_note}.</p>}
+        </div>
+      </Block>
     </div>
   );
 }
+
+/* ---------------------------------------------------------------- timeline */
 
 export function TimelineTab({ teamEval }: { teamEval: TeamEvaluation }) {
   const timeline = sectionOf<TimelineDetail>(teamEval.detail, "timeline");
@@ -433,36 +607,112 @@ export function TimelineTab({ teamEval }: { teamEval: TeamEvaluation }) {
       />
     );
   }
-  const delta = (timeline.incoming_alignment ?? 0) - (timeline.outgoing_alignment ?? 0);
+  const arriving = timeline.incoming_alignment ?? 0;
+  const departing = timeline.outgoing_alignment ?? 0;
+  const delta = arriving - departing;
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatBlock
-          size="sm"
-          label="Strategy"
-          value={(timeline.strategy ?? "custom").replaceAll("_", " ")}
-        />
-        <StatBlock
-          size="sm"
-          label="Arriving fit"
-          value={(timeline.incoming_alignment ?? 0).toFixed(2)}
-          note="0–1 · age vs window"
-        />
-        <StatBlock
-          size="sm"
-          label="Departing fit"
-          value={(timeline.outgoing_alignment ?? 0).toFixed(2)}
-          note="0–1 · age vs window"
-        />
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <Block label="Age against the competitive window" aside="0 = misaligned · 1 = aligned">
+        {/* Two readings on one 0–1 track, so the comparison is a distance, not two numbers. */}
+        <div className="relative mt-5 h-8" aria-hidden>
+          <span className="absolute inset-x-0 top-1/2 h-px bg-line" />
+          {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+            <span
+              key={t}
+              className="absolute top-1/2 h-2 w-px -translate-y-1/2 bg-faint"
+              style={{ left: `${t * 100}%` }}
+            />
+          ))}
+          <span
+            className="absolute top-1/2 h-px -translate-y-1/2 bg-signal/60"
+            style={{
+              left: `${Math.min(arriving, departing) * 100}%`,
+              width: `${Math.abs(delta) * 100}%`,
+            }}
+          />
+          <TimelineMarker at={departing} label="out" tone="var(--series-b)" above />
+          <TimelineMarker at={arriving} label="in" tone="var(--signal)" />
+        </div>
+        <div className="numeral mt-1 flex justify-between text-[10px] font-medium text-faint" aria-hidden>
+          <span>0</span>
+          <span>0.5</span>
+          <span>1</span>
+        </div>
+        <p className="mt-3 text-[13px] leading-relaxed text-muted">
+          {delta > 0.02
+            ? "The players arriving align better with this team's stated window than the players leaving."
+            : delta < -0.02
+              ? "The players leaving aligned better with this team's stated window than the players arriving."
+              : "Arriving and departing players sit at roughly the same point in this team's window."}{" "}
+          Alignment is a documented age-vs-strategy curve, not a projection of future production.
+        </p>
+      </Block>
+      <StatStrip cols={3}>
+        <StatCell label="Strategy" value={(timeline.strategy ?? "custom").replaceAll("_", " ")} />
+        <StatCell label="Arriving" value={arriving.toFixed(2)} note="alignment, 0–1" />
+        <StatCell label="Departing" value={departing.toFixed(2)} note="alignment, 0–1" />
+      </StatStrip>
+    </div>
+  );
+}
+
+function TimelineMarker({
+  at,
+  label,
+  tone,
+  above = false,
+}: {
+  at: number;
+  label: string;
+  tone: string;
+  above?: boolean;
+}) {
+  return (
+    <span
+      className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
+      style={{ left: `${Math.min(1, Math.max(0, at)) * 100}%` }}
+    >
+      <span className="block h-3 w-3 rounded-full border-2" style={{ borderColor: tone, background: "var(--arena)" }} />
+      <span
+        className={clsx(
+          "absolute left-1/2 -translate-x-1/2 text-[11px] font-medium",
+          above ? "bottom-full mb-0.5" : "top-full mt-0.5",
+        )}
+        style={{ color: tone }}
+      >
+        {label}
+      </span>
+    </span>
+  );
+}
+
+/* -------------------------------------------------------------------- risk */
+
+function AvailabilityBar({
+  label,
+  value,
+  note,
+  tone,
+}: {
+  label: string;
+  value: number | null | undefined;
+  note: string;
+  tone: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="eyebrow">{label}</span>
+        <span className="numeral text-[15px] text-foreground">
+          {value === null || value === undefined ? "—" : `${(value * 100).toFixed(0)}%`}
+        </span>
       </div>
-      <p className="text-[13px] leading-relaxed text-muted">
-        {delta > 0.02
-          ? "The players arriving align better with this team's stated window than the players leaving."
-          : delta < -0.02
-            ? "The players leaving aligned better with this team's stated window than the players arriving."
-            : "Arriving and departing players sit at roughly the same point in this team's window."}{" "}
-        Alignment is a documented age-vs-strategy curve, not a projection of future production.
-      </p>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-panel3" aria-hidden>
+        {value !== null && value !== undefined && (
+          <div className="h-full rounded-full" style={{ width: `${value * 100}%`, background: tone }} />
+        )}
+      </div>
+      <p className="mt-1 text-[11px] leading-snug text-muted">{note}</p>
     </div>
   );
 }
@@ -476,89 +726,109 @@ export function RiskTab({ teamEval }: { teamEval: TeamEvaluation }) {
   const pct = (v: number | null | undefined) =>
     v === null || v === undefined ? "—" : `${(v * 100).toFixed(0)}%`;
   const delta = risk.availability_delta;
+  const arrivingMeasured = risk.incoming_availability !== null && risk.incoming_availability !== undefined;
+  const departingMeasured = risk.outgoing_availability !== null && risk.outgoing_availability !== undefined;
+
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div className="min-w-0">
-        <UncertaintyStrip u={teamEval.uncertainty} />
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <StatBlock
-            size="sm"
-            label="Arriving availability"
-            value={pct(risk.incoming_availability ?? risk.roster_availability)}
-            note={
-              risk.incoming_availability === null || risk.incoming_availability === undefined
-                ? `no arriving player with a games-played history — priced at this roster's ${pct(
-                    risk.roster_availability,
-                  )}`
-                : `${risk.incoming_availability_players ?? 0} player(s), minutes-weighted`
-            }
-          />
-          <StatBlock
-            size="sm"
-            label="Departing availability"
-            value={pct(risk.outgoing_availability ?? risk.roster_availability)}
-            note={
-              risk.outgoing_availability === null || risk.outgoing_availability === undefined
-                ? `no departing player with a games-played history — priced at this roster's ${pct(
-                    risk.roster_availability,
-                  )}`
-                : `${risk.outgoing_availability_players ?? 0} player(s), minutes-weighted`
-            }
-          />
-        </div>
-        {delta !== undefined && (
-          <p className="mt-2 text-[12px] leading-snug text-muted">
-            The risk score is this <span className="data text-foreground">
-              {delta >= 0 ? "+" : ""}
-              {(delta * 100).toFixed(1)} pt
-            </span>{" "}
-            change in the availability of the minutes involved — nothing else.{" "}
-            {delta > 0.02
-              ? "This deal sheds games-missed exposure."
-              : delta < -0.02
-                ? "This deal takes on games-missed exposure."
-                : "Exposure is roughly unchanged."}{" "}
-            Availability is historical games played, not a medical prediction.
-          </p>
-        )}
-        <p className="mt-2 text-[11px] leading-snug text-faint">
-          <span className="data text-muted">{pct(probPositive)}</span> of{" "}
-          {teamEval.uncertainty.n_draws.toLocaleString()}
-          {" simulations produce a positive win impact. That is the projection’s own "}
-          {"uncertainty and is reported here, not scored: it is the performance component "}
-          {"restated as a probability, and counting it as risk made the two components "}
-          {"0.86-correlated."}
-        </p>
-        {risk.legality_verification && risk.legality_verification.share !== null && (
-          <p className="mt-1 text-[11px] leading-snug text-faint">
-            {risk.legality_verification.rules_with_a_definite_verdict} of{" "}
-            {risk.legality_verification.rules_evaluated} implemented CBA checks reached a verdict
-            for this team. Reported, never scored — what moves it is which contract fields the
-            configured provider supplies, not the deal.
-          </p>
-        )}
-        {teamEval.uncertainty.top_uncertainty_drivers.length > 0 && (
-          <ul className="mt-3 space-y-1 text-[12px] text-muted">
-            {teamEval.uncertainty.top_uncertainty_drivers.map((d) => (
-              <li key={d.side} className="flex items-center justify-between gap-3">
-                <span className="capitalize">{d.side} side spread</span>
-                <span className="data text-foreground">±{d.spread_wins.toFixed(2)} wins</span>
-              </li>
-            ))}
-          </ul>
-        )}
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="min-w-0 space-y-4">
+        <Block label="Availability exposure · the risk score" aside="historical games played">
+          {risk.unavailable ? (
+            <UnavailableNotice reason={`${risk.unavailable}.`} />
+          ) : (
+            <>
+              <div className="space-y-3">
+                <AvailabilityBar
+                  label="Arriving"
+                  value={risk.incoming_availability ?? risk.roster_availability}
+                  tone="var(--signal)"
+                  note={
+                    arrivingMeasured
+                      ? `${risk.incoming_availability_players ?? 0} player(s), minutes-weighted`
+                      : `no arriving player with a games-played history — priced at this roster's ${pct(
+                          risk.roster_availability,
+                        )}`
+                  }
+                />
+                <AvailabilityBar
+                  label="Departing"
+                  value={risk.outgoing_availability ?? risk.roster_availability}
+                  tone="var(--series-b)"
+                  note={
+                    departingMeasured
+                      ? `${risk.outgoing_availability_players ?? 0} player(s), minutes-weighted`
+                      : `no departing player with a games-played history — priced at this roster's ${pct(
+                          risk.roster_availability,
+                        )}`
+                  }
+                />
+              </div>
+              {delta !== undefined && (
+                <p className="mt-3 border-t border-hairline pt-2.5 text-[12px] leading-snug text-muted">
+                  The risk score is this{" "}
+                  <span className="numeral text-foreground">{signed(delta * 100, 1)} pt</span> change
+                  in the availability of the minutes involved — nothing else.{" "}
+                  {delta > 0.02
+                    ? "This deal sheds games-missed exposure, so the score sits above 50."
+                    : delta < -0.02
+                      ? "This deal takes on games-missed exposure, so the score sits below 50."
+                      : "Exposure is roughly unchanged."}{" "}
+                  Availability is historical games played, not a medical prediction.
+                </p>
+              )}
+            </>
+          )}
+        </Block>
+
+        <Block label="Projection uncertainty" aside="reported, not scored">
+          <UncertaintyStrip u={teamEval.uncertainty} />
+          {teamEval.uncertainty.top_uncertainty_drivers.length > 0 && (
+            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+              {teamEval.uncertainty.top_uncertainty_drivers.map((d) => (
+                <li
+                  key={d.side}
+                  className="flex items-baseline justify-between gap-3 rounded-lg bg-panel px-3 py-2 text-[12px]"
+                >
+                  <span className="text-muted">
+                    {d.side.charAt(0).toUpperCase() + d.side.slice(1)} side spread
+                  </span>
+                  <span className="numeral text-foreground">±{d.spread_wins.toFixed(1)} wins</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Explainer summary="Why the chance it helps is not the risk score" className="mt-3">
+            <p>
+              <span className="numeral text-foreground">{pct(probPositive)}</span> of{" "}
+              {teamEval.uncertainty.n_draws.toLocaleString()}
+              {" "}simulations produce a positive win
+              impact. That is the projection&apos;s own uncertainty and is reported here, not scored:
+              it is the performance component restated as a probability, and counting it as risk
+              made the two components 0.86-correlated.
+            </p>
+            {risk.legality_verification && risk.legality_verification.share !== null && (
+              <p className="mt-1.5">
+                {risk.legality_verification.rules_with_a_definite_verdict} of{" "}
+                {risk.legality_verification.rules_evaluated} implemented CBA checks reached a verdict
+                for this team. Reported, never scored — what moves it is which contract fields the
+                configured provider supplies, not the deal.
+              </p>
+            )}
+          </Explainer>
+        </Block>
       </div>
-      <div className="min-w-0">
+
+      <Block className="self-start">
         {teamEval.sensitivity_tornado.length > 0 ? (
           <TornadoChart bars={teamEval.sensitivity_tornado} />
         ) : (
           <UnavailableNotice reason="No sensitivity range was returned for this evaluation." />
         )}
-        <p className="mt-2 text-[11px] leading-snug text-faint">
-          Each bar swings one priority weight by ±50%. A wide bar means the verdict depends on your
-          priorities, not on the deal.
+        <p className="mt-3 border-t border-hairline pt-2.5 text-[11.5px] leading-snug text-faint">
+          Each bar swings one priority weight by ±50% while the others re-scale. A wide bar means
+          the verdict depends on your priorities, not on the deal.
         </p>
-      </div>
+      </Block>
     </div>
   );
 }

@@ -85,7 +85,7 @@ e2e: seed-demo ## Playwright end-to-end tests against the dedicated demo databas
 	@# suite against it and writing fixture trades into it, while every test passed.
 	@# Its own error for a busy port suggests setting `reuseExistingServer: true`, which
 	@# is the defect. Say so before it gets the chance.
-	@if lsof -ti:8000 >/dev/null 2>&1 || lsof -ti:3000 >/dev/null 2>&1; then 		echo ""; 		echo "  Port 8000 or 3000 is in use — probably \`make dev\`."; 		echo ""; 		echo "  This suite writes fixture trades into whatever backend it reaches, so it"; 		echo "  starts its own against \$$E2E_DB rather than reusing yours. Stop the dev"; 		echo "  servers and re-run."; 		echo ""; 		echo "  Do NOT set reuseExistingServer — attaching to a dev server is how the suite"; 		echo "  came to be testing the wrong database. If you really do have a demo-seeded"; 		echo "  backend up, use E2E_NO_SERVER=1."; 		echo ""; 		exit 1; 	fi
+	@if lsof -ti:8000 -sTCP:LISTEN >/dev/null 2>&1 || lsof -ti:3000 -sTCP:LISTEN >/dev/null 2>&1; then 		echo ""; 		echo "  Port 8000 or 3000 is in use — probably \`make dev\`."; 		echo ""; 		echo "  This suite writes fixture trades into whatever backend it reaches, so it"; 		echo "  starts its own against \$$E2E_DB rather than reusing yours. Stop the dev"; 		echo "  servers and re-run."; 		echo ""; 		echo "  Do NOT set reuseExistingServer — attaching to a dev server is how the suite"; 		echo "  came to be testing the wrong database. If you really do have a demo-seeded"; 		echo "  backend up, use E2E_NO_SERVER=1."; 		echo ""; 		exit 1; 	fi
 	cd $(FRONTEND) && DATABASE_URL="sqlite:///$(E2E_DB)" npx playwright test
 
 visual-qa: ## Screenshot every route at every supported viewport; fails on problems

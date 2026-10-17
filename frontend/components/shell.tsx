@@ -1,80 +1,128 @@
 "use client";
 
 /**
- * Application shell.
+ * Application shell: a persistent left sidebar on desktop, a top bar and drawer on phones.
  *
- * The desktop header holds four primary destinations plus a "More" menu so it
- * stays on one line down to 1024px — module names are set in the condensed
- * display face, which is what buys the horizontal room. Below that the header
- * is replaced by a purpose-built drawer rather than a wrapped desktop bar.
+ * The sidebar reads in the order a front office works — the workspace (home, scouting,
+ * teams), then the decisions (trade, strategy, cap), then the reference pages where the
+ * product explains itself. It collapses to an icon rail, and remembers that choice.
  *
- * **Navigation follows the decision workflow, not the module inventory.** Pivot's
- * order is observe -> diagnose -> test -> decide, so the primary bar reads
- * Players, Teams, GM Lab, Research. The previous bar led with the Trade Evaluator,
- * which put the last step first and made the product read as a calculator
- * collection rather than as one decision system.
- *
- * **Route paths are deliberately unchanged.** Only the grouping and the labels
- * move. Renaming paths would break the ten legacy redirects in next.config.ts,
- * the fourteen-route visual-QA manifest, the e2e specs and every shared
- * Trade Evaluator link — for no gain a reader would notice, since the labels are
- * what a user actually reads.
+ * **Route paths are deliberately unchanged.** Renaming paths would break the legacy
+ * redirects in next.config.ts, the visual-QA manifest, the e2e specs and every shared
+ * Trade Evaluator link — for no gain a reader would notice. `/command-center` still
+ * serves the home dashboard.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
 import { dataHealthSchema } from "@/lib/schemas";
 import type { DataHealth, Team } from "@/lib/types";
-import { BrandMark, BrandWordmark, PRODUCT_TAGLINE } from "@/components/brand";
+import { BrandMark, BrandWordmark } from "@/components/brand";
+import {
+  IconCap,
+  IconClose,
+  IconCollapse,
+  IconHealth,
+  IconHome,
+  IconInfo,
+  IconMenu,
+  IconMethod,
+  IconScouting,
+  IconSearch,
+  IconStrategy,
+  IconTeams,
+  IconTrade,
+} from "@/components/icons";
 import { TeamLogo } from "@/components/media";
 
 interface NavLink {
   href: string;
   label: string;
   hint?: string;
+  /** Match the href exactly (home), rather than as a path prefix. */
   exact?: boolean;
+  /** Other path prefixes that belong to this destination (a player page is Scouting). */
+  also?: string[];
+  icon: (p: { size?: number; className?: string }) => React.ReactNode;
 }
 
-/** Single destinations, in workflow order: observe, then diagnose. */
+/** The workspace: where a front office looks before it acts. */
 const PRIMARY: NavLink[] = [
-  { href: "/command-center", label: "Command Center" },
-  { href: "/player-explorer", label: "Players" },
-  { href: "/team-outlook", label: "Teams" },
+  { href: "/", label: "Home", exact: true, also: ["/command-center"], icon: IconHome },
+  { href: "/player-explorer", label: "Scouting", also: ["/players"], icon: IconScouting },
+  { href: "/team-outlook", label: "Teams", icon: IconTeams },
 ];
 
-/**
- * GM Lab is a real grouping, not a page.
- *
- * The brief's information architecture puts Trade, Contracts, Targets, Fit and Scenario
- * under one heading. Three of those exist today and two do not, so this is a menu over
- * the three rather than an index page with placeholder tiles — an empty page that
- * promises a module Pivot has not built would be the presentation-layer version of a
- * fabricated number.
- */
+/** The decisions. Three of the modules the brief names exist today — no placeholder tiles. */
 const GM_LAB: NavLink[] = [
-  { href: "/trade-evaluator", label: "Trade Evaluator", hint: "Build a deal and test it" },
-  { href: "/strategy-lab", label: "Decision Board", hint: "Compare saved deals side by side" },
-  { href: "/salary-cap-center", label: "Contracts & Cap", hint: "Payroll and commitments" },
+  { href: "/trade-evaluator", label: "Trade Evaluator", hint: "Build a deal and test it", also: ["/trades"], icon: IconTrade },
+  { href: "/strategy-lab", label: "Strategy Lab", hint: "Compare saved deals side by side", icon: IconStrategy },
+  { href: "/salary-cap-center", label: "Cap Center", hint: "Payroll and commitments", icon: IconCap },
 ];
 
 /** How the product explains itself. */
 const SECONDARY: NavLink[] = [
-  { href: "/methodology", label: "Methodology", hint: "How every number is produced" },
-  { href: "/data-health", label: "Data Health", hint: "Sources, freshness and gaps" },
-  { href: "/about", label: "About Pivot", hint: "What Pivot is, and what it will not ship" },
+  { href: "/methodology", label: "Methodology", hint: "How every number is produced", icon: IconMethod },
+  { href: "/data-health", label: "Data Health", hint: "Sources, freshness and gaps", icon: IconHealth },
+  { href: "/about", label: "About Pivot", hint: "What Pivot is, and what it will not ship", icon: IconInfo },
 ];
 
-/** Every destination the header can reach, for the mobile drawer. */
+const GROUPS = [
+  { label: "Workspace", items: PRIMARY },
+  { label: "Decisions", items: GM_LAB },
+  { label: "Reference", items: SECONDARY },
+];
+
+/** Every destination, for the mobile drawer. */
 export const ALL_DESTINATIONS: NavLink[] = [...PRIMARY, ...GM_LAB, ...SECONDARY];
 
-function isActive(pathname: string, href: string, exact?: boolean) {
-  return exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+function isActive(pathname: string, link: NavLink) {
+  const own = link.exact
+    ? pathname === link.href
+    : pathname === link.href || pathname.startsWith(`${link.href}/`);
+  return own || (link.also ?? []).some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-/* ------------------------------------------------------------ status chips */
+/* -------------------------------------------------------- collapsed state */
+
+/**
+ * The sidebar's collapsed state lives in localStorage. Read through an external store so
+ * the server render and the hydration render agree (expanded), and the stored choice is
+ * applied straight after — no setState inside an effect, no hydration mismatch.
+ */
+const SIDEBAR_KEY = "pivot.sidebar";
+const sidebarListeners = new Set<() => void>();
+function readCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) === "collapsed";
+  } catch {
+    return false;
+  }
+}
+function writeCollapsed(collapsed: boolean) {
+  try {
+    window.localStorage.setItem(SIDEBAR_KEY, collapsed ? "collapsed" : "expanded");
+  } catch {
+    /* private mode: the choice simply does not persist */
+  }
+  sidebarListeners.forEach((l) => l());
+}
+function useCollapsed(): [boolean, (v: boolean) => void] {
+  const collapsed = useSyncExternalStore(
+    (listener) => {
+      sidebarListeners.add(listener);
+      return () => sidebarListeners.delete(listener);
+    },
+    readCollapsed,
+    () => false,
+  );
+  return [collapsed, writeCollapsed];
+}
+
+/* ------------------------------------------------------------ data status */
 
 function useHealth() {
   return useQuery({
@@ -84,41 +132,50 @@ function useHealth() {
   });
 }
 
-function StatusChips({ compact = false }: { compact?: boolean }) {
+function DataStatus({ collapsed = false }: { collapsed?: boolean }) {
   const { data } = useHealth();
   const [now] = useState(() => Date.now());
   if (!data) return null;
 
-  // The backend decides freshness; the header only renders the verdict. Recomputing it
-  // here against a second threshold (48 h, against the backend's configurable
-  // NBA_API_STALE_AFTER_SECONDS) let the chip and the Data Health page disagree about
-  // the same database.
+  // The backend decides freshness; the shell only renders the verdict.
   const card = data.source_cards?.find((c) => c.key === "current_nba_data");
   const state = card?.status === "fresh" ? "live" : card?.status === "stale" ? "stale" : "none";
   const dot =
     state === "live" ? "bg-legal" : state === "stale" ? "bg-conditional" : "bg-unavail";
   const label = state === "live" ? "Live data" : state === "stale" ? "Data aging" : "No data";
   const synced = data.last_successful_sync;
-  const ageHours = synced ? (now - new Date(synced).getTime()) / 3_600_000 : Infinity;
+  const ageDays = synced
+    ? Math.floor((now - new Date(synced).getTime()) / 86_400_000)
+    : null;
   const detail =
-    state === "stale" && Number.isFinite(ageHours)
-      ? `${label} — NBA.com data is ${Math.floor(ageHours / 24)} day(s) old`
+    state === "stale" && ageDays !== null
+      ? `${label} — NBA.com data is ${ageDays} day(s) old`
       : label;
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="eyebrow hidden whitespace-nowrap rounded-full border border-line px-2.5 py-1 text-[0.625rem] text-muted 2xl:inline-block">
-        {data.current_season} season
-      </span>
-      <Link
-        href="/data-health"
-        title={`Open Data Health — ${detail}`}
-        className="flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11px] text-muted transition-colors hover:border-signal/50 hover:text-foreground"
-      >
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot} ${state === "live" ? "pulse-live" : ""}`} aria-hidden />
-        <span className={compact ? "sr-only" : "hidden whitespace-nowrap xl:inline"}>{label}</span>
-      </Link>
-    </div>
+    <Link
+      href="/data-health"
+      title={`Open Data Health — ${detail}`}
+      className={`flex items-center gap-2.5 rounded-md border border-hairline px-2.5 py-2 text-[12px] text-muted transition-colors hover:border-line hover:text-foreground ${
+        collapsed ? "justify-center" : ""
+      }`}
+    >
+      <span
+        className={`h-2 w-2 shrink-0 rounded-full ${dot} ${state === "live" ? "pulse-live" : ""}`}
+        aria-hidden
+      />
+      {collapsed ? (
+        <span className="sr-only">{detail}</span>
+      ) : (
+        <span className="min-w-0 leading-tight">
+          <span className="block truncate font-medium text-foreground">{label}</span>
+          <span className="block truncate text-[11px] text-faint">
+            {data.current_season} season
+            {ageDays !== null ? ` · ${ageDays}d since sync` : ""}
+          </span>
+        </span>
+      )}
+    </Link>
   );
 }
 
@@ -132,11 +189,25 @@ interface Hit {
   abbreviation?: string;
 }
 
-function GlobalSearch({ onNavigate }: { onNavigate?: () => void }) {
+function GlobalSearch({
+  onNavigate,
+  hotkey = false,
+  listId,
+  inputRef: externalRef,
+}: {
+  onNavigate?: () => void;
+  /** Bind "/" to focus this instance. Only one mounted instance should take it. */
+  hotkey?: boolean;
+  listId: string;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
+  const ownRef = useRef<HTMLInputElement>(null);
+  const inputRef = externalRef ?? ownRef;
 
   const { data: teams } = useQuery({
     queryKey: ["teams"],
@@ -159,6 +230,17 @@ function GlobalSearch({ onNavigate }: { onNavigate?: () => void }) {
     }
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") setOpen(false);
+      if (!hotkey || event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable);
+      if (typing) return;
+      event.preventDefault();
+      inputRef.current?.focus();
     }
     document.addEventListener("mousedown", onPointer);
     document.addEventListener("keydown", onKey);
@@ -166,7 +248,7 @@ function GlobalSearch({ onNavigate }: { onNavigate?: () => void }) {
       document.removeEventListener("mousedown", onPointer);
       document.removeEventListener("keydown", onKey);
     };
-  }, []);
+  }, [hotkey, inputRef]);
 
   const q = query.trim().toLowerCase();
   const hits: Hit[] =
@@ -183,7 +265,7 @@ function GlobalSearch({ onNavigate }: { onNavigate?: () => void }) {
               kind: "team",
               id: t.id,
               label: t.full_name,
-              sub: "Team Outlook",
+              sub: "Team",
               abbreviation: t.abbreviation,
             })),
           ...(playerHits?.players ?? []).map<Hit>((p) => ({
@@ -193,51 +275,88 @@ function GlobalSearch({ onNavigate }: { onNavigate?: () => void }) {
             sub: p.current_team?.abbreviation ?? "Free agent",
           })),
         ];
+  const activeIndex = Math.min(active, Math.max(0, hits.length - 1));
+  const showList = open && hits.length > 0;
 
   function go(hit: Hit) {
     setOpen(false);
     setQuery("");
+    setActive(0);
     onNavigate?.();
     router.push(hit.kind === "team" ? `/team-outlook/${hit.id}` : `/players/${hit.id}`);
   }
 
   return (
-    <div ref={boxRef} className="relative w-full lg:w-auto">
+    <div ref={boxRef} className="relative w-full">
+      <IconSearch
+        size={16}
+        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint"
+      />
       <input
+        ref={inputRef}
         type="search"
         role="combobox"
-        aria-expanded={open && hits.length > 0}
-        aria-controls="global-search-results"
+        aria-expanded={showList}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={showList ? `${listId}-${activeIndex}` : undefined}
         aria-label="Search players and teams"
         placeholder="Search players & teams"
         value={query}
         onChange={(event) => {
           setQuery(event.target.value);
+          setActive(0);
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && hits.length > 0) go(hits[0]);
+          if (event.key === "ArrowDown" && hits.length) {
+            event.preventDefault();
+            setOpen(true);
+            setActive((i) => (Math.min(i, hits.length - 1) + 1) % hits.length);
+          } else if (event.key === "ArrowUp" && hits.length) {
+            event.preventDefault();
+            setActive((i) => (Math.min(i, hits.length - 1) - 1 + hits.length) % hits.length);
+          } else if (event.key === "Enter" && hits.length > 0) {
+            go(hits[activeIndex]);
+          }
         }}
-        className="w-full rounded-md border border-line bg-panel2 px-3 py-1.5 text-sm text-foreground placeholder:text-faint focus:border-signal/60 lg:w-44 xl:w-56"
+        className="peer w-full rounded-md border border-hairline bg-panel2 py-2 pl-8 pr-8 text-[13px] text-foreground placeholder:text-faint focus:border-line"
       />
-      {open && hits.length > 0 && (
-        <ul
-          id="global-search-results"
-          role="listbox"
-          className="absolute right-0 top-11 z-50 w-full min-w-[16rem] overflow-hidden rounded-lg border border-line bg-panel shadow-[var(--shadow-pop)] lg:w-72"
+      {hotkey && (
+        <kbd
+          aria-hidden
+          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line px-1.5 text-[10px] leading-4 text-faint peer-focus:hidden peer-[:not(:placeholder-shown)]:hidden"
         >
-          {hits.map((hit) => (
-            <li key={`${hit.kind}-${hit.id}`} role="option" aria-selected={false}>
+          /
+        </kbd>
+      )}
+      {showList && (
+        <ul
+          id={listId}
+          role="listbox"
+          className="absolute left-0 top-11 z-50 w-full min-w-[18rem] overflow-hidden rounded-lg border border-line bg-panel2 py-1 shadow-[var(--shadow-pop)]"
+        >
+          {hits.map((hit, i) => (
+            <li
+              key={`${hit.kind}-${hit.id}`}
+              id={`${listId}-${i}`}
+              role="option"
+              aria-selected={i === activeIndex}
+            >
               <button
                 type="button"
+                tabIndex={-1}
+                onMouseEnter={() => setActive(i)}
                 onClick={() => go(hit)}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-panel2"
+                className={`flex w-full items-center gap-2.5 px-3 py-2 text-left ${
+                  i === activeIndex ? "bg-panel3" : ""
+                }`}
               >
                 {hit.kind === "team" ? (
                   <TeamLogo abbreviation={hit.abbreviation} name={hit.label} size={22} />
                 ) : (
-                  <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-panel3 text-[10px] text-muted">
+                  <span className="numeral flex h-[22px] w-[22px] items-center justify-center rounded-full bg-panel3 text-[10px] text-muted">
                     {hit.label
                       .split(" ")
                       .map((p) => p[0])
@@ -245,8 +364,8 @@ function GlobalSearch({ onNavigate }: { onNavigate?: () => void }) {
                       .join("")}
                   </span>
                 )}
-                <span className="min-w-0 flex-1 truncate text-sm">{hit.label}</span>
-                <span className="eyebrow shrink-0 text-[0.5625rem]">{hit.sub}</span>
+                <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{hit.label}</span>
+                <span className="shrink-0 text-[11px] text-faint">{hit.sub}</span>
               </button>
             </li>
           ))}
@@ -256,214 +375,227 @@ function GlobalSearch({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-/* --------------------------------------------------------------- nav group */
+/* ------------------------------------------------------------------ nav list */
 
-/** A labelled dropdown over several destinations. Used for GM Lab and for More. */
-function NavGroup({
-  label,
-  items,
+function NavItems({
   pathname,
-  align = "right",
+  collapsed = false,
+  onNavigate,
 }: {
-  label: string;
-  items: NavLink[];
   pathname: string;
-  align?: "left" | "right";
+  collapsed?: boolean;
+  onNavigate?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const anyActive = items.some((item) => isActive(pathname, item.href));
-
-  useEffect(() => {
-    function onPointer(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, []);
-
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-haspopup="menu"
-        onClick={() => setOpen((v) => !v)}
-        className={`display relative whitespace-nowrap rounded-md px-2.5 py-1.5 text-[15px] tracking-wide transition-colors ${
-          anyActive || open
-            ? "bg-panel2 text-foreground"
-            : "text-muted hover:bg-panel2 hover:text-foreground"
-        }`}
-      >
-        {label}
-        <span aria-hidden className="ml-1 text-[10px]">
-          ▾
-        </span>
-        {anyActive && (
-          <span
-            aria-hidden
-            className="absolute inset-x-2.5 -bottom-[7px] h-0.5 rounded-full bg-signal"
-          />
-        )}
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className={`absolute ${align === "right" ? "right-0" : "left-0"} top-11 z-50 w-64 overflow-hidden rounded-lg border border-line bg-panel py-1 shadow-[var(--shadow-pop)]`}
-        >
-          {items.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className={`block px-3 py-2 hover:bg-panel2 ${
-                isActive(pathname, item.href) ? "bg-panel2" : ""
-              }`}
-            >
-              <span className="block text-sm text-foreground">{item.label}</span>
-              {item.hint && <span className="block text-[11px] text-muted">{item.hint}</span>}
-            </Link>
-          ))}
+    <>
+      {GROUPS.map(({ label, items }) => (
+        <div key={label} className="mt-5 first:mt-0">
+          {collapsed ? (
+            <div aria-hidden className="mx-auto mb-2 h-px w-6 bg-hairline" />
+          ) : (
+            <p className="mb-1.5 px-3 text-[10.5px] font-medium uppercase tracking-[0.12em] text-faint">
+              {label}
+            </p>
+          )}
+          <ul className="space-y-0.5">
+            {items.map((item) => {
+              const active = isActive(pathname, item);
+              const Icon = item.icon;
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    title={collapsed ? item.label : undefined}
+                    onClick={onNavigate}
+                    className={`group relative flex items-center gap-3 rounded-md px-3 py-2 text-[13.5px] transition-colors ${
+                      active
+                        ? "bg-panel2 font-medium text-foreground"
+                        : "text-muted hover:bg-panel2/60 hover:text-foreground"
+                    } ${collapsed ? "justify-center px-0" : ""}`}
+                  >
+                    {active && (
+                      <span
+                        aria-hidden
+                        className="absolute inset-y-2 left-0 w-[2px] rounded-full bg-signal"
+                      />
+                    )}
+                    <Icon
+                      size={19}
+                      className={active ? "text-signal" : "text-faint group-hover:text-muted"}
+                    />
+                    <span className={collapsed ? "sr-only" : "truncate"}>{item.label}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         </div>
-      )}
-    </div>
+      ))}
+    </>
   );
 }
 
-/* ------------------------------------------------------------------ shell */
+/* --------------------------------------------------------------------- shell */
 
-export function AppNav() {
-  const pathname = usePathname();
-  const [drawer, setDrawer] = useState(false);
-
-  // Navigating closes the drawer. Adjusting state during render (rather than in
-  // an effect) avoids the cascading re-render an effect would cause here.
-  const [drawerPath, setDrawerPath] = useState(pathname);
-  if (drawerPath !== pathname) {
-    setDrawerPath(pathname);
-    if (drawer) setDrawer(false);
-  }
+function Sidebar({ pathname }: { pathname: string }) {
+  const [collapsed, setCollapsed] = useCollapsed();
+  const searchRef = useRef<HTMLInputElement>(null);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-hairline bg-court/92 backdrop-blur-md">
-      <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-2.5 lg:px-8">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="Pivot — home">
-          <BrandMark size={30} />
-          <BrandWordmark />
+    <aside
+      aria-label="Sidebar"
+      className="fixed inset-y-0 left-0 z-40 hidden w-[var(--sidebar-w)] flex-col border-r border-hairline bg-arena transition-[width] duration-200 lg:flex"
+    >
+      <div className={`flex items-center gap-3 px-4 pb-4 pt-5 ${collapsed ? "justify-center px-0" : ""}`}>
+        <Link href="/" className="flex min-w-0 items-center gap-3" aria-label="Pivot — home">
+          <BrandMark size={34} />
+          {!collapsed && <BrandWordmark />}
         </Link>
-
-        {/* Desktop navigation — one line from 1024px up */}
-        <nav className="ml-auto hidden items-center gap-0.5 lg:flex" aria-label="Primary">
-          {PRIMARY.map((item) => {
-            const active = isActive(pathname, item.href, item.exact);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={`display relative whitespace-nowrap rounded-md px-2.5 py-1.5 text-[15px] tracking-wide transition-colors ${
-                  active
-                    ? "bg-panel2 text-foreground"
-                    : "text-muted hover:bg-panel2 hover:text-foreground"
-                }`}
-              >
-                {item.label}
-                {active && (
-                  <span
-                    aria-hidden
-                    className="absolute inset-x-2.5 -bottom-[7px] h-0.5 rounded-full bg-signal"
-                  />
-                )}
-              </Link>
-            );
-          })}
-          <NavGroup label="GM Lab" items={GM_LAB} pathname={pathname} align="left" />
-          <NavGroup label="More" items={SECONDARY} pathname={pathname} />
-        </nav>
-
-        <div className="ml-auto hidden items-center gap-2 lg:ml-3 lg:flex">
-          <GlobalSearch />
-          <StatusChips />
-        </div>
-
-        {/* Mobile: status + drawer trigger only */}
-        <div className="ml-auto flex items-center gap-2 lg:hidden">
-          <StatusChips compact />
-          <button
-            type="button"
-            aria-expanded={drawer}
-            aria-controls="mobile-nav"
-            aria-label={drawer ? "Close menu" : "Open menu"}
-            onClick={() => setDrawer((v) => !v)}
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-line bg-panel2 text-foreground"
-          >
-            <span aria-hidden className="text-lg leading-none">
-              {drawer ? "✕" : "☰"}
-            </span>
-          </button>
-        </div>
       </div>
 
-      {/* Mobile drawer: full-width destination list built for thumbs */}
-      {drawer && (
-        <div id="mobile-nav" className="border-t border-hairline bg-court lg:hidden">
-          <div className="px-4 py-3">
-            <GlobalSearch onNavigate={() => setDrawer(false)} />
+      <div className={collapsed ? "flex justify-center px-0 pb-3" : "px-3 pb-3"}>
+        {collapsed ? (
+          <button
+            type="button"
+            aria-label="Search players and teams"
+            title="Search players and teams"
+            onClick={() => {
+              setCollapsed(false);
+              requestAnimationFrame(() => searchRef.current?.focus());
+            }}
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-hairline text-muted transition-colors hover:border-line hover:text-foreground"
+          >
+            <IconSearch size={17} />
+          </button>
+        ) : (
+          <GlobalSearch hotkey listId="global-search-results" inputRef={searchRef} />
+        )}
+      </div>
+
+      <nav aria-label="Primary" className="scroll-thin flex-1 overflow-y-auto px-3 py-2">
+        <NavItems pathname={pathname} collapsed={collapsed} />
+      </nav>
+
+      <div className="space-y-2 border-t border-hairline p-3">
+        <DataStatus collapsed={collapsed} />
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12px] text-faint transition-colors hover:text-foreground ${
+            collapsed ? "justify-center" : ""
+          }`}
+        >
+          <IconCollapse size={17} collapsed={collapsed} />
+          {!collapsed && <span>Collapse</span>}
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function MobileBar({ pathname }: { pathname: string }) {
+  const [open, setOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+
+  // Navigating closes the drawer (state adjusted during render, not in an effect).
+  const [openPath, setOpenPath] = useState(pathname);
+  if (openPath !== pathname) {
+    setOpenPath(pathname);
+    if (open) setOpen(false);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      toggleRef.current?.focus();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  return (
+    <>
+      <header className="sticky top-0 z-40 flex h-[var(--nav-h)] items-center gap-3 border-b border-hairline bg-ink/95 px-4 backdrop-blur lg:hidden">
+        <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label="Pivot — home">
+          <BrandMark size={30} />
+          <BrandWordmark compact />
+        </Link>
+        <div className="ml-auto flex items-center gap-2">
+          <DataStatus collapsed />
+          <button
+            ref={toggleRef}
+            type="button"
+            aria-expanded={open}
+            aria-controls="mobile-nav"
+            aria-label={open ? "Close menu" : "Open menu"}
+            onClick={() => setOpen((v) => !v)}
+            className="flex h-10 w-10 items-center justify-center rounded-md border border-hairline text-foreground"
+          >
+            {open ? <IconClose size={19} /> : <IconMenu size={19} />}
+          </button>
+        </div>
+      </header>
+
+      {open && (
+        <div className="fixed inset-0 z-[55] lg:hidden" role="presentation">
+          <button
+            type="button"
+            aria-label="Close menu"
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+            className="absolute inset-0 bg-ink/70 backdrop-blur-sm"
+          />
+          <div
+            id="mobile-nav"
+            className="fade-in scroll-thin absolute inset-y-0 left-0 flex w-[min(86vw,20rem)] flex-col overflow-y-auto border-r border-hairline bg-arena px-3 pb-6 pt-4"
+          >
+            <div className="mb-4 flex items-center justify-between px-1">
+              <Link href="/" onClick={() => setOpen(false)} className="flex items-center gap-2.5">
+                <BrandMark size={30} />
+                <BrandWordmark />
+              </Link>
+              <button
+                type="button"
+                aria-label="Close menu"
+                onClick={() => {
+                  setOpen(false);
+                  toggleRef.current?.focus();
+                }}
+                className="flex h-10 w-10 items-center justify-center rounded-md text-muted hover:text-foreground"
+              >
+                <IconClose size={19} />
+              </button>
+            </div>
+            <div className="mb-4">
+              <GlobalSearch onNavigate={() => setOpen(false)} listId="mobile-search-results" />
+            </div>
+            <nav aria-label="Primary">
+              <NavItems pathname={pathname} onNavigate={() => setOpen(false)} />
+            </nav>
           </div>
-          <nav aria-label="Primary" className="pb-3">
-            {ALL_DESTINATIONS.map((item) => {
-              const active = isActive(pathname, item.href, item.exact);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex items-center justify-between border-l-2 px-4 py-3 ${
-                    active
-                      ? "border-signal bg-panel2 text-foreground"
-                      : "border-transparent text-muted"
-                  }`}
-                >
-                  <span className="display text-[17px] tracking-wide">{item.label}</span>
-                  {item.hint && (
-                    <span className="ml-3 truncate text-[11px] text-faint">{item.hint}</span>
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
         </div>
       )}
-    </header>
+    </>
   );
 }
 
 export function AppFooter() {
   return (
-    <footer className="mt-8 border-t border-hairline">
-      <div className="mx-auto flex max-w-[1600px] flex-col gap-3 px-4 py-5 lg:flex-row lg:items-start lg:justify-between lg:px-8">
-        <div className="flex shrink-0 items-center gap-2.5">
-          <BrandMark size={22} />
-          <span className="display whitespace-nowrap text-base tracking-tight">
-            PIV<span className="text-brand">O</span>T
-          </span>
-          <span className="eyebrow whitespace-nowrap text-[0.5625rem]">
-            {PRODUCT_TAGLINE}
-          </span>
-        </div>
-        <p className="max-w-3xl text-[11px] leading-relaxed text-faint">
+    <footer className="border-t border-hairline">
+      <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-3 px-4 py-6 text-[12px] leading-relaxed text-faint sm:px-6 lg:flex-row lg:items-start lg:justify-between lg:px-10">
+        <p className="shrink-0">
+          <span className="font-serif text-[15px] text-muted">Pivot</span> · Basketball intelligence
+        </p>
+        <p className="max-w-3xl">
           Independent analytical simulator — not affiliated with or endorsed by the NBA, and not an
           official cap-management product. Basketball data comes from NBA.com via{" "}
           <a
-            className="underline hover:text-muted"
+            className="underline decoration-line underline-offset-2 hover:text-muted"
             href="https://github.com/swar/nba_api"
             target="_blank"
             rel="noreferrer"
@@ -471,7 +603,7 @@ export function AppFooter() {
             nba_api
           </a>{" "}
           and user-imported sources, each labeled with provenance in{" "}
-          <Link className="underline hover:text-muted" href="/data-health">
+          <Link className="underline decoration-line underline-offset-2 hover:text-muted" href="/data-health">
             Data Health
           </Link>
           . Team names, logos and player images belong to their owners and are used locally for
@@ -480,4 +612,45 @@ export function AppFooter() {
       </div>
     </footer>
   );
+}
+
+/**
+ * The frame every route renders in. Dashboard routes (home) lay out their own full-width
+ * hero, so they get a bare content column; every other route gets the standard padded,
+ * width-capped one.
+ */
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const [collapsed] = useCollapsed();
+  const fullBleed = pathname === "/" || pathname === "/command-center";
+
+  return (
+    <div
+      className="min-h-dvh lg:pl-[var(--sidebar-w)]"
+      style={{ "--sidebar-w": collapsed ? "76px" : "248px" } as React.CSSProperties}
+    >
+      <Sidebar pathname={pathname} />
+      <MobileBar pathname={pathname} />
+      <div className="flex min-h-[calc(100dvh-var(--nav-h))] flex-col">
+        {fullBleed ? (
+          <main id="main" className="flex-1">
+            {children}
+          </main>
+        ) : (
+          <main
+            id="main"
+            className="mx-auto w-full max-w-[1480px] flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-9"
+          >
+            {children}
+          </main>
+        )}
+        <AppFooter />
+      </div>
+    </div>
+  );
+}
+
+/** Kept for any import of the old header name; the shell now renders it. */
+export function AppNav() {
+  return null;
 }
