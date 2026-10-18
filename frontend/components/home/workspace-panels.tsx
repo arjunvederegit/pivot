@@ -116,6 +116,10 @@ export function AskPivotPanel() {
         </span>
       </header>
       <form
+        // Without JavaScript (or before hydration) the browser submits this as a plain GET to
+        // the assistant, which reads the same `q`.
+        action="/assistant"
+        method="get"
         className="space-y-3 px-5 py-4"
         onSubmit={(event) => {
           event.preventDefault();
@@ -132,6 +136,8 @@ export function AskPivotPanel() {
         <div className="flex gap-2">
           <input
             id="home-ask"
+            name="q"
+            maxLength={2000}
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             placeholder="Ask a basketball question…"

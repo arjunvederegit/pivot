@@ -494,8 +494,13 @@ export function buildInsights(side: SheetSide): string[] {
   const gaps: string[] = [];
   if (ev.excluded_components.length > 0)
     gaps.push(`${ev.excluded_components.map((c) => COMPONENT_LABEL[c] ?? c).join(", ")} could not be scored`);
-  if (ev.has_unmodeled_players)
-    gaps.push(`${(ev.unmodeled_players ?? []).length || "some"} incoming player(s) have no impact estimate`);
+  if (ev.has_unmodeled_players) {
+    const n = (ev.unmodeled_players ?? []).length;
+    const inDeal = [...ev.incoming, ...ev.outgoing].filter((p) => p.tei === null).length;
+    gaps.push(
+      `${n || "some"} ${n === 1 ? "player" : "players"} on the roster ${n === 1 ? "has" : "have"} no impact estimate and ${n === 1 ? "was" : "were"} left out of the projection${inDeal > 0 ? `, ${inDeal === 1 ? "one" : "some"} of them in this deal` : ""}`,
+    );
+  }
   if (ev.confidence === "low") gaps.push("confidence is low");
   if (gaps.length > 0) out.push(`Read with care: ${gaps.join("; ")}.`);
   return out;
