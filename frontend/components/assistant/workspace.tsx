@@ -45,6 +45,7 @@ import {
 } from "@/lib/assistant-session";
 import {
   MAX_CONSTRAINTS,
+  MAX_QUESTION_CHARS,
   PRIORITY_LEVELS,
   teamDefaults,
   type AskRequest,
@@ -156,7 +157,7 @@ interface Pending {
   id: string;
 }
 
-export function AssistantWorkspace() {
+export function AssistantWorkspace({ initialQuestion }: { initialQuestion?: string } = {}) {
   const queryClient = useQueryClient();
   const session = useAssistantSession();
   const persisting = usePersisting();
@@ -178,7 +179,9 @@ export function AssistantWorkspace() {
     staleTime: 5 * 60_000,
   });
 
-  const [draft, setDraft] = useState("");
+  // A question handed over from the Workspace page starts in the composer; it is never sent
+  // on the reader's behalf.
+  const [draft, setDraft] = useState((initialQuestion ?? "").slice(0, MAX_QUESTION_CHARS));
   const [pending, setPending] = useState<Pending | null>(null);
   const [inspected, setInspected] = useState<{ messageId: string | null; chunkId: string | null }>({
     messageId: null,

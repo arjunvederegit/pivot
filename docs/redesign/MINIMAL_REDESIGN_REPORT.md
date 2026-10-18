@@ -16,7 +16,12 @@ no backend, API, model, retrieval or feature-flag changes.
   is stated, never estimated. The detailed before/move/after sheet and full team analysis remain below.
 - **Team selection** (`components/team-card.tsx`): one shared card/grid used by Home, Teams, the trade board and
   picker, and the top-bar team selector.
-- **Pages**: Home header compacted (decorative arena illustration removed); everything else restyled via tokens.
+- **Home is now a Workspace** (`app/page.tsx`, `components/home/workspace-panels.tsx`): plain "Workspace" title, the
+  team context card (record, seed, top-impact players), a Decisions list of implemented workflows (trade, team needs,
+  player comparison, saved-deal comparison, cap), the team's read-out, saved deals/strategies, data-and-model status and
+  the team picker. No slogan, hero, roadmap cards or decorative illustration. With the Ask Pivot flag on, an "Ask Pivot"
+  entry hands a typed question to the assistant's composer (`?q=`, never auto-sent); flag off, nothing renders.
+- **Pages**: everything else restyled via tokens.
 
 ## Team card decision
 Logos are transparent (the backend derives them on index), but most are drawn with black outlines/wordmarks:

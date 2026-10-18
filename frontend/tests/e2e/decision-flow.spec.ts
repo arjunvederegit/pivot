@@ -6,21 +6,16 @@ import { expect, test } from "@playwright/test";
  * `make import-stats-csv` for full coverage). No NBA.com calls happen here.
  */
 
-test("the home dashboard says what Pivot is and opens the core tools", async ({ page }) => {
-  // `/` is the intelligence dashboard: an editorial hero over an illustrated arena, then the
-  // working modules. What is worth pinning is that it names the product's purpose, opens
-  // the core tool, shows the real workflow, and does not claim a capability Pivot lacks.
+test("the home workspace orients the user and opens the core tools", async ({ page }) => {
+  // `/` is the workspace: a plain page title, the user's team context, and the implemented
+  // decision workflows as entry points. No slogan, no promotional hero.
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Pivot — home" })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { level: 1, name: /Sharper decisions\.\s*Better basketball\./ }),
-  ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open the Trade Evaluator" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Start with your roster" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "The decision workflow" })).toBeVisible();
-
-  // Unbuilt modules are named as unbuilt, not implied.
-  await expect(page.getByText("Not built yet")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Workspace" })).toBeVisible();
+  const decisions = page.getByRole("region", { name: "Decisions" });
+  for (const name of ["Evaluate a trade", "Explore team needs", "Compare players", "Compare saved deals", "Review cap position"]) {
+    await expect(decisions.getByRole("link", { name: new RegExp(name) })).toBeVisible();
+  }
 
   // Every core tool is one click away in the sidebar.
   const nav = page.getByRole("navigation", { name: "Primary" });
@@ -34,25 +29,14 @@ test("the home dashboard says what Pivot is and opens the core tools", async ({ 
     await new Promise((r) => setTimeout(r, 250));
     return window.scrollY;
   });
-  expect(moved).toBeGreaterThan(300);
+  expect(moved).toBeGreaterThan(100);
 });
 
-test("overview presents the platform with honest data status", async ({ page }) => {
-  // `/command-center` is the home dashboard's former address and still serves it.
+test("the workspace is also served at its former address", async ({ page }) => {
+  // `/command-center` is the workspace's former address and still serves it.
   await page.goto("/command-center");
-  await expect(page.getByRole("link", { name: "Pivot — home" })).toBeVisible();
-  // The Command Center's old address serves the home dashboard.
-  await expect(
-    page.getByRole("heading", { level: 1, name: /Sharper decisions\.\s*Better basketball\./ }),
-  ).toBeVisible();
-  // primary and secondary calls to action
-  await expect(page.getByRole("link", { name: "Start with your roster" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open the Trade Evaluator" })).toBeVisible();
-  // the launcher reaches every active module in one click
-  await expect(page.getByRole("heading", { name: "The decision workflow" })).toBeVisible();
-  // roadmap items are described, never presented as usable
-  await expect(page.getByText("Not built yet")).toBeVisible();
-  await expect(page.getByText("Scenario Engine")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Workspace" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Decisions" })).toBeVisible();
 });
 
 test("renamed modules keep old links working", async ({ page }) => {

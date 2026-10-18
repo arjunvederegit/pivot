@@ -16,7 +16,8 @@
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { AssistantWorkspace } from "@/components/assistant/workspace";
+import { Suspense } from "react";
+import { AssistantWithHandover } from "@/components/assistant/handover";
 import { ASSISTANT_ENABLED } from "@/lib/features";
 
 /**
@@ -30,5 +31,10 @@ export function generateMetadata(): Metadata {
 
 export default function AssistantPage() {
   if (!ASSISTANT_ENABLED) notFound();
-  return <AssistantWorkspace />;
+  // `useSearchParams` (the `?q=` handed over from the Workspace) needs a Suspense boundary.
+  return (
+    <Suspense>
+      <AssistantWithHandover />
+    </Suspense>
+  );
 }

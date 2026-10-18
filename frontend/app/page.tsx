@@ -1,15 +1,15 @@
 "use client";
 
 /**
- * Home — Pivot's intelligence dashboard.
+ * Workspace — where a front-office user starts.
  *
- * A cinematic hero (an illustrated arena, an editorial headline, one statement of purpose
- * and the way into the core tool), then the working dashboard underneath: the user's
- * team read through every model Pivot has, the decision workspace, their saved scenarios,
- * and the state of the league data and models those numbers come from.
+ * Reads top to bottom as the questions a working day opens with: where am I working (the
+ * team, its record, its roster), what can I decide (the implemented workflows), where was I
+ * (saved deals and strategies), and — where this build has it — Ask Pivot. Underneath, the
+ * state of the data and models the numbers come from, and the team picker.
  *
- * Nothing on the page is a placeholder. Every figure is read from the API through the
- * same hydration gate the rest of the product uses — the shell warms `["teams"]` and
+ * Nothing on the page is a placeholder. Every figure is read from the API through the same
+ * hydration gate the rest of the product uses — the shell warms `["teams"]` and
  * `["data-health"]`, so the first client render must match the server HTML — and every
  * module without data says so rather than inventing it.
  */
@@ -24,42 +24,10 @@ import type { DataHealth, Scenario, Team, TradeSummary } from "@/lib/types";
 import { LeagueState } from "@/components/command/league-state";
 import { YourWork } from "@/components/command/snapshot";
 import { TeamBoard, YourTeamCard } from "@/components/command/team-context";
-import {
-  DecisionWorkflow,
-  NotBuilt,
-  SupportingModules,
-  decideStatus,
-  diagnoseStatus,
-  observeStatus,
-  testStatus,
-} from "@/components/command/workflow";
 import { NeedAnswers, TeamIntelligence } from "@/components/home/team-intelligence";
 import { useToast } from "@/components/toast";
-import { ButtonLink } from "@/components/ui";
-
-function SectionHead({
-  id,
-  eyebrow,
-  title,
-  aside,
-}: {
-  id: string;
-  eyebrow: string;
-  title: string;
-  aside?: React.ReactNode;
-}) {
-  return (
-    <div className="mb-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
-      <div>
-        <div className="eyebrow">{eyebrow}</div>
-        <h2 id={id} className="title-lg mt-2 text-foreground">
-          {title}
-        </h2>
-      </div>
-      {aside && <div className="max-w-sm text-[13px] leading-snug text-muted">{aside}</div>}
-    </div>
-  );
-}
+import { AskPivotPanel, DecisionsPanel } from "@/components/home/workspace-panels";
+import { ASSISTANT_ENABLED } from "@/lib/features";
 
 export default function HomePage() {
   const toast = useToast();
@@ -91,49 +59,32 @@ export default function HomePage() {
   const reference = hydrated ? referenceData : undefined;
   const team = hydrated ? favorite : null;
 
-  const contractsConfigured = health?.providers?.contracts?.configured === true;
-  const cards = health?.source_cards ?? [];
-  const notLive = cards.filter((c) => c.status === "unavailable" || c.status === "failed").length;
+  const contractsConfigured = health ? health.providers?.contracts?.configured === true : undefined;
 
   return (
-    <div>
-      {/* ------------------------------------------------------------------ hero */}
-      <section aria-labelledby="home-title" className="border-b border-hairline">
-        <div className="mx-auto grid w-full max-w-[1560px] items-end gap-8 px-4 pb-8 pt-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8 lg:pb-9 lg:pt-9">
-          <div className="min-w-0 max-w-3xl">
-            <div className="eyebrow text-faint">Pivot{health ? ` · ${health.current_season} season` : ""}</div>
-            <h1
-              id="home-title"
-              className="mt-2.5 font-serif text-[clamp(2.2rem,1.5rem+2.2vw,3.5rem)] font-medium leading-[1.04] tracking-[-0.018em] text-foreground"
-            >
-              Sharper decisions.
-              <br />
-              <span className="italic text-muted">Better basketball.</span>
-            </h1>
-            <p className="mt-3.5 max-w-xl text-[14.5px] leading-relaxed text-muted">
-              Basketball intelligence for the decisions that shape winning — every number traced to
-              the data it came from.
-            </p>
-            <div className="mt-5 flex flex-wrap items-center gap-2.5">
-              <ButtonLink
-                href={team ? `/trade-evaluator?team=${team.id}` : "/trade-evaluator"}
-                variant="primary"
-              >
-                Open the Trade Evaluator
-              </ButtonLink>
-              <ButtonLink href={team ? `/team-outlook/${team.id}` : "/team-outlook"} variant="secondary">
-                Start with your roster
-              </ButtonLink>
-            </div>
-          </div>
-          <div className="min-w-0">
-            <YourTeamCard favorite={team} teams={teams} />
+    <div className="mx-auto w-full max-w-[1560px] px-4 py-6 sm:px-6 lg:px-8 lg:py-7">
+      <header className="mb-6">
+        <div className="eyebrow text-faint">
+          Overview{health ? ` · ${health.current_season} season` : ""}
+        </div>
+        <h1 className="title-xl mt-2.5 text-foreground">Workspace</h1>
+      </header>
+
+      <div className="space-y-4">
+        {/* ------------------------------------------- where am I · what can I decide */}
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
+          <YourTeamCard favorite={team} teams={teams} />
+          <div className="min-w-0 space-y-4">
+            <DecisionsPanel
+              teamId={team?.id ?? null}
+              savedDeals={trades?.length}
+              contractsConfigured={contractsConfigured}
+            />
+            {ASSISTANT_ENABLED && <AskPivotPanel />}
           </div>
         </div>
-      </section>
 
-      <div className="mx-auto w-full max-w-[1560px] space-y-10 px-4 py-8 sm:px-6 lg:px-8">
-        {/* ------------------------------------------------------ team intelligence */}
+        {/* ------------------------------------------------------- the team, read */}
         {team && (
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
             <TeamIntelligence favorite={team} />
@@ -141,74 +92,11 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* ---------------------------------------------------- decision workspace */}
-        <section aria-labelledby="workflow-heading">
-          <SectionHead
-            id="workflow-heading"
-            eyebrow="Decision workspace"
-            title="The decision workflow"
-            aside="Four questions, in the order a front office asks them — each status read from the data that step needs."
-          />
-          <DecisionWorkflow
-            statuses={[
-              observeStatus(health, Boolean(healthError)),
-              diagnoseStatus(reference, referenceFailed),
-              testStatus(health, Boolean(healthError)),
-              decideStatus(trades, Boolean(tradesError)),
-            ]}
-            hrefs={[
-              team ? `/team-outlook/${team.id}` : "/team-outlook",
-              "/player-explorer",
-              team ? `/trade-evaluator?team=${team.id}` : "/trade-evaluator",
-              "/strategy-lab",
-            ]}
-          />
-          <div className="mt-4">
-            <SupportingModules
-              items={[
-                {
-                  title: "Contracts & Cap",
-                  href: "/salary-cap-center",
-                  reading: !health
-                    ? "Payroll by season, expiring money and commitments."
-                    : contractsConfigured
-                      ? typeof health.tables?.contracts?.rows === "number"
-                        ? `Payroll by season and commitments · ${health.tables.contracts.rows} contracts on file.`
-                        : "Payroll by season and commitments."
-                      : "Payroll by season and commitments — unavailable until contracts are imported.",
-                  badge: !health
-                    ? null
-                    : contractsConfigured
-                      ? { status: "pass", word: "imported" }
-                      : { status: "warning", word: "needs import" },
-                },
-                {
-                  title: "Methodology",
-                  href: "/methodology",
-                  reading: "Every number, its definition, its source data and what it cannot support.",
-                },
-                {
-                  title: "Data Health",
-                  href: "/data-health",
-                  reading: health
-                    ? `${cards.length} sources${notLive ? ` · ${notLive} not loaded` : ""}${
-                        typeof health.open_quality_issue_total === "number"
-                          ? ` · ${health.open_quality_issue_total} open issues, each with its next step.`
-                          : "."
-                      }`
-                    : "Every source with its coverage, freshness and next step.",
-                },
-              ]}
-            />
-          </div>
-          <div className="mt-4">
-            <NotBuilt />
-          </div>
-        </section>
-
-        {/* -------------------------------------------------------- recent work */}
+        {/* --------------------------------------------------------- where was I */}
         <section aria-labelledby="work-heading">
-          <SectionHead id="work-heading" eyebrow="Saved in this workspace" title="Recent scenarios" />
+          <h2 id="work-heading" className="sr-only">
+            Saved work
+          </h2>
           <YourWork
             trades={trades}
             tradesError={tradesError}
@@ -217,14 +105,11 @@ export default function HomePage() {
           />
         </section>
 
-        {/* ------------------------------------------------------ league & models */}
+        {/* ------------------------------------------------------ data and models */}
         <section aria-labelledby="league-heading">
-          <SectionHead
-            id="league-heading"
-            eyebrow="Basketball insights"
-            title="The league, as Pivot sees it"
-            aside="What the models were fed and what they scored — read live from Data Health and the impact model."
-          />
+          <h2 id="league-heading" className="sr-only">
+            Data and models
+          </h2>
           <LeagueState
             health={health}
             healthError={healthError}
@@ -235,12 +120,15 @@ export default function HomePage() {
 
         {/* ------------------------------------------------------------ pick team */}
         <section id="pick-your-team" aria-labelledby="pick-heading" className="scroll-mt-24">
-          <SectionHead
-            id="pick-heading"
-            eyebrow="Set your context"
-            title={team ? "Change your team" : "Pick your team"}
-            aside="Team Outlook and the Trade Evaluator open on it, and this dashboard reads its record and roster."
-          />
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+            <h2 id="pick-heading" className="text-[1.05rem] font-semibold text-foreground">
+              {team ? "Change team" : "Select team"}
+            </h2>
+            <p className="text-[12.5px] text-muted">
+              Team Outlook and the Trade Evaluator open on it, and this page reads its record and
+              roster.
+            </p>
+          </div>
           <TeamBoard
             teams={teams}
             error={teamsError}
