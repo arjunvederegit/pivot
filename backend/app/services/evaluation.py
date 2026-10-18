@@ -53,6 +53,7 @@ from app.analytics.uncertainty import (
     rotation_draw_from,
     simulate_delta_wins,
 )
+from app.canonical.rosters import current_roster_clause
 from app.cba import resolver
 from app.cba.builder import build_trade_context, load_cap_params, player_salaries
 from app.cba.engine import TradeLegalityEngine
@@ -254,8 +255,7 @@ class EvaluationService:
             select(RosterEntry)
             .where(
                 RosterEntry.team_id == team_id,
-                RosterEntry.season == self.settings.current_season,
-                RosterEntry.is_current,
+                current_roster_clause(self.settings.current_season),
             )
             # Without an explicit order this returned whatever the database happened to
             # produce, so every `[:12]` downstream was an arbitrary 12 rather than a
@@ -277,10 +277,7 @@ class EvaluationService:
         """
         entries = self.db.scalars(
             select(RosterEntry)
-            .where(
-                RosterEntry.season == self.settings.current_season,
-                RosterEntry.is_current,
-            )
+            .where(current_roster_clause(self.settings.current_season))
             .order_by(RosterEntry.team_id, RosterEntry.player_id)
         ).all()
         grouped: dict[str, list[PlayerCard]] = {}

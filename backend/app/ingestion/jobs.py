@@ -5,6 +5,7 @@ failed endpoint never destroys the last valid snapshot. All NBA.com access goes 
 SwarNBAApiProvider — jobs never import nba_api directly."""
 
 import asyncio
+import math
 from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
@@ -12,6 +13,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.canonical.seasons import SeasonType
 from app.config import get_settings
 from app.core.cache import get_cache
 from app.core.logging import get_logger
@@ -55,6 +57,36 @@ def _apply(entity: Any, values: dict[str, Any]) -> None:
         setattr(entity, key, value)
 
 
+REGULAR = SeasonType.REGULAR.value
+
+#: A roster refresh must cover at least this share of the teams the previous snapshot
+#: covered, and at least this share of its player count, or it is rejected.
+ROSTER_MIN_TEAM_COVERAGE = 0.9
+ROSTER_MIN_PLAYER_RATIO = 0.5
+
+
+class SnapshotRejectedError(RuntimeError):
+    """A provider answered, but not with anything that could replace the stored snapshot.
+
+    Distinct from a provider *failure*: the call succeeded and the payload is implausible
+    (empty, or covering a fraction of the league). The previous snapshot is kept untouched
+    and the run is recorded as failed.
+    """
+
+
+def _require_rows(job: str, season: str, rows: list) -> None:
+    """A season-scoped refresh that returns nothing is a rejected snapshot, not a no-op.
+
+    Writing nothing is safe; *reporting success* while writing nothing hides that the
+    dataset is going stale. nba_api already raises on a zero-row response; this makes the
+    same guarantee hold for any provider.
+    """
+    if not rows:
+        raise SnapshotRejectedError(
+            f"{job}: provider returned no rows for {season}; stored data left unchanged"
+        )
+
+
 def sync_teams(db: Session, provider: SwarNBAApiProvider | None = None) -> int:
     provider = provider or get_provider()
     with sync_run(db, "sync_teams") as run:
@@ -91,9 +123,54 @@ def sync_players(db: Session, provider: SwarNBAApiProvider | None = None) -> int
         return run.rows_written
 
 
+def _check_roster_snapshot_plausible(
+    usable: list[dict[str, Any]],
+    teams: dict[int, Team],
+    current: list[RosterEntry],
+) -> None:
+    """Refuse to replace a roster snapshot with one that cannot be the league.
+
+    The previous version marked every current row superseded *before* looking at what had
+    come back, so a provider that answered with an empty list left the league with no
+    rosters at all. This runs first and touches nothing.
+    """
+    if not usable:
+        raise SnapshotRejectedError(
+            "sync_rosters: provider returned no roster rows for any known team; "
+            "previous snapshot kept"
+        )
+    if not current:
+        return
+    previous_teams = {e.team_id for e in current}
+    new_teams = {teams[r["nba_team_id"]].id for r in usable}
+    needed = math.ceil(round(ROSTER_MIN_TEAM_COVERAGE * len(previous_teams), 9))
+    if len(new_teams & previous_teams) < needed:
+        raise SnapshotRejectedError(
+            f"sync_rosters: snapshot covers {len(new_teams & previous_teams)} of the "
+            f"{len(previous_teams)} teams the previous snapshot did (need {needed}); kept"
+        )
+    if len(usable) < ROSTER_MIN_PLAYER_RATIO * len(current):
+        raise SnapshotRejectedError(
+            f"sync_rosters: snapshot has {len(usable)} players against {len(current)} before; "
+            "kept"
+        )
+
+
 def sync_rosters(db: Session, season: str | None = None, provider=None) -> int:
-    """Fetch all 30 rosters, supersede the previous snapshot, and enrich player bio
-    fields (height/weight/position/experience/birth date) from roster rows."""
+    """Refresh current rosters by *diffing* against the stored snapshot.
+
+    Membership that has not changed is **confirmed** — its ``source_retrieved_at`` moves
+    forward and nothing else does, so ``valid_from`` keeps meaning "first observed on this
+    team". A player seen on a new team gets a new row; a player no longer listed has his row
+    closed (``is_current`` false, ``valid_to`` set). The previous implementation superseded and
+    re-inserted every row on every run: at the worker's six-hour cadence that is ~1.5 million
+    rows a year of identical membership, and ``player_team_history`` grew by one duplicate per
+    player per run.
+
+    Bio fields (height/weight/position/experience/birth date) are enriched from roster rows.
+    A snapshot that cannot be the league is rejected before any row is touched
+    (``SnapshotRejectedError``).
+    """
     settings = get_settings()
     season = season or settings.current_season
     provider = provider or get_provider()
@@ -103,18 +180,26 @@ def sync_rosters(db: Session, season: str | None = None, provider=None) -> int:
         players = _player_map(db)
         now = datetime.now(UTC)
 
-        current = db.scalars(
-            select(RosterEntry).where(RosterEntry.season == season, RosterEntry.is_current)
-        ).all()
-        for entry in current:
-            entry.is_current = False
-            entry.valid_to = now
+        usable = [r for r in rows if teams.get(r["nba_team_id"]) is not None]
+        current = list(
+            db.scalars(
+                select(RosterEntry).where(RosterEntry.season == season, RosterEntry.is_current)
+            ).all()
+        )
+        _check_roster_snapshot_plausible(usable, teams, current)
 
-        for row in rows:
-            team = teams.get(row["nba_team_id"])
+        current_by_key = {(e.team_id, e.player_id): e for e in current}
+        history_by_key = {
+            (h.team_id, h.player_id): h
+            for h in db.scalars(
+                select(PlayerTeamHistory).where(PlayerTeamHistory.season == season)
+            ).all()
+        }
+        seen: set[tuple[str, str]] = set()
+        added = confirmed = 0
+        for row in usable:
+            team = teams[row["nba_team_id"]]
             player = players.get(row["nba_player_id"])
-            if team is None:
-                continue
             if player is None:
                 # Player appears on an NBA.com roster but not in static data (e.g. new
                 # signing): create the identity record from the roster row itself.
@@ -138,33 +223,61 @@ def sync_rosters(db: Session, season: str | None = None, provider=None) -> int:
             ):
                 if row.get(field) is not None:
                     setattr(player, field, row[field])
-            db.add(
-                RosterEntry(
-                    team_id=team.id,
-                    player_id=player.id,
-                    season=season,
-                    jersey_number=row.get("jersey_number"),
-                    position=row.get("position"),
-                    age=row.get("age"),
-                    is_current=True,
-                    source_record_id=row.get("source_record_id"),
-                    source_retrieved_at=row.get("source_retrieved_at") or now,
-                    valid_from=now,
-                    ingestion_run_id=run.id,
+            key = (team.id, player.id)
+            seen.add(key)
+            retrieved = row.get("source_retrieved_at") or now
+            entry = current_by_key.get(key)
+            if entry is not None:
+                entry.jersey_number = row.get("jersey_number")
+                entry.position = row.get("position")
+                entry.age = row.get("age")
+                entry.source_record_id = row.get("source_record_id")
+                entry.source_retrieved_at = retrieved
+                entry.ingestion_run_id = run.id
+                confirmed += 1
+            else:
+                db.add(
+                    RosterEntry(
+                        team_id=team.id,
+                        player_id=player.id,
+                        season=season,
+                        jersey_number=row.get("jersey_number"),
+                        position=row.get("position"),
+                        age=row.get("age"),
+                        is_current=True,
+                        source_record_id=row.get("source_record_id"),
+                        source_retrieved_at=retrieved,
+                        valid_from=now,
+                        ingestion_run_id=run.id,
+                    )
                 )
-            )
-            db.add(
-                PlayerTeamHistory(
+                added += 1
+            history = history_by_key.get(key)
+            if history is not None:
+                # Already observed on this team this season: confirm, keep `observed_at`
+                # as the first sighting.
+                history.source_retrieved_at = retrieved
+                history.ingestion_run_id = run.id
+            else:
+                history_by_key[key] = PlayerTeamHistory(
                     player_id=player.id,
                     team_id=team.id,
                     season=season,
                     observed_at=now,
                     source_record_id=row.get("source_record_id"),
-                    source_retrieved_at=row.get("source_retrieved_at") or now,
+                    source_retrieved_at=retrieved,
                     ingestion_run_id=run.id,
                 )
-            )
+                db.add(history_by_key[key])
             run.rows_written += 1
+
+        closed = 0
+        for key, entry in current_by_key.items():
+            if key not in seen:
+                entry.is_current = False
+                entry.valid_to = now
+                closed += 1
+        run.detail = {"added": added, "confirmed": confirmed, "closed": closed}
         db.commit()
         return run.rows_written
 
@@ -175,6 +288,7 @@ def sync_standings(db: Session, season: str | None = None, provider=None) -> int
     provider = provider or get_provider()
     with sync_run(db, "sync_standings") as run:
         rows = asyncio.run(provider.fetch_standings(season))
+        _require_rows("sync_standings", season, rows)
         teams = _team_map(db)
         for row in rows:
             team = teams.get(row["nba_team_id"])
@@ -217,6 +331,7 @@ def sync_player_stats(db: Session, seasons: list[str] | None = None, provider=No
         teams = _team_map(db)
         for season in seasons:
             rows = asyncio.run(provider.fetch_player_stats(season))
+            _require_rows("sync_player_stats", season, rows)
             try:
                 rows += asyncio.run(provider.fetch_player_estimated_metrics(season))
             except Exception as exc:
@@ -232,6 +347,7 @@ def sync_player_stats(db: Session, seasons: list[str] | None = None, provider=No
                     "player_id": player.id,
                     "team_id": team.id if team else None,
                     "season": season,
+                    "season_type": REGULAR,
                     "stat_type": row["stat_type"],
                     "games_played": row.get("games_played"),
                     "minutes": row.get("minutes"),
@@ -244,6 +360,7 @@ def sync_player_stats(db: Session, seasons: list[str] | None = None, provider=No
                     select(PlayerSeasonStats).where(
                         PlayerSeasonStats.player_id == player.id,
                         PlayerSeasonStats.season == season,
+                        PlayerSeasonStats.season_type == REGULAR,
                         PlayerSeasonStats.stat_type == row["stat_type"],
                     )
                 )
@@ -264,6 +381,7 @@ def sync_team_stats(db: Session, seasons: list[str] | None = None, provider=None
         teams = _team_map(db)
         for season in seasons:
             rows = asyncio.run(provider.fetch_team_stats(season))
+            _require_rows("sync_team_stats", season, rows)
             for row in rows:
                 team = teams.get(row["nba_team_id"])
                 if team is None:
@@ -271,6 +389,7 @@ def sync_team_stats(db: Session, seasons: list[str] | None = None, provider=None
                 values = {
                     "team_id": team.id,
                     "season": season,
+                    "season_type": REGULAR,
                     "stat_type": row["stat_type"],
                     "stats": row.get("stats", {}),
                     "source_record_id": row.get("source_record_id"),
@@ -281,6 +400,7 @@ def sync_team_stats(db: Session, seasons: list[str] | None = None, provider=None
                     select(TeamSeasonStats).where(
                         TeamSeasonStats.team_id == team.id,
                         TeamSeasonStats.season == season,
+                        TeamSeasonStats.season_type == REGULAR,
                         TeamSeasonStats.stat_type == row["stat_type"],
                     )
                 )
@@ -299,6 +419,7 @@ def sync_games(db: Session, season: str | None = None, provider=None) -> int:
     provider = provider or get_provider()
     with sync_run(db, "sync_games") as run:
         rows = asyncio.run(provider.fetch_games(season))
+        _require_rows("sync_games", season, rows)
         teams = _team_map(db)
         for row in rows:
             home = teams.get(row.get("home_nba_team_id") or -1)

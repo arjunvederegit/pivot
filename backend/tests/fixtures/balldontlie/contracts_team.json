@@ -1,0 +1,43 @@
+{
+ "_fixture": "SYNTHETIC FIXTURE. Shaped after the BALLDONTLIE OpenAPI document (retrieved 2026-10-18). Player names and figures are invented. NOT a captured live response and not evidence of live behaviour.",
+ "data": [
+  {
+   "id": 9001,
+   "player_id": 101,
+   "season": 2025,
+   "team_id": 1,
+   "cap_hit": 30000000,
+   "base_salary": 28000000,
+   "total_cash": 29000000,
+   "rank": 3,
+   "team": {
+    "id": 1,
+    "conference": "East",
+    "division": "Southeast",
+    "city": "Atlanta",
+    "name": "Hawks",
+    "full_name": "Atlanta Hawks",
+    "abbreviation": "ATL"
+   }
+  },
+  {
+   "id": 9002,
+   "player_id": 103,
+   "season": 2025,
+   "team_id": 2,
+   "cap_hit": null,
+   "base_salary": null,
+   "total_cash": null,
+   "rank": null,
+   "team": {
+    "id": 2,
+    "conference": "East",
+    "division": "Atlantic",
+    "city": "Boston",
+    "name": "Celtics",
+    "full_name": "Boston Celtics",
+    "abbreviation": "BOS"
+   }
+  }
+ ]
+}

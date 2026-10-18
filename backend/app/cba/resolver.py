@@ -23,6 +23,7 @@ from typing import Any
 from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
+from app.canonical.rosters import current_roster_clause
 from app.db.models import (
     Contract,
     ContractYear,
@@ -152,9 +153,7 @@ def team_roster_ids(db: Session, team_id: str, season: str) -> list[str]:
             entry.player_id
             for entry in db.scalars(
                 select(RosterEntry).where(
-                    RosterEntry.team_id == team_id,
-                    RosterEntry.season == season,
-                    RosterEntry.is_current,
+                    RosterEntry.team_id == team_id, current_roster_clause(season)
                 )
             ).all()
         ]
@@ -218,9 +217,7 @@ def current_roster(db: Session, season: str) -> dict[str, set[str]]:
     if season not in cache:
         membership: dict[str, set[str]] = {}
         for entry in db.scalars(
-            select(RosterEntry).where(
-                RosterEntry.season == season, RosterEntry.is_current
-            )
+            select(RosterEntry).where(current_roster_clause(season))
         ).all():
             membership.setdefault(entry.player_id, set()).add(entry.team_id)
         cache[season] = membership

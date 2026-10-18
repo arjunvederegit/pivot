@@ -1,0 +1,128 @@
+{
+ "_fixture": "SYNTHETIC FIXTURE. Shaped after the BALLDONTLIE OpenAPI document (retrieved 2026-10-18). Player names and figures are invented. NOT a captured live response and not evidence of live behaviour.",
+ "data": [
+  {
+   "id": 5001,
+   "date": "2025-10-21",
+   "season": 2025,
+   "status": "Final",
+   "period": 4,
+   "time": "",
+   "postseason": false,
+   "home_team_score": 110,
+   "visitor_team_score": 108,
+   "home_team": {
+    "id": 1,
+    "conference": "East",
+    "division": "Southeast",
+    "city": "Atlanta",
+    "name": "Hawks",
+    "full_name": "Atlanta Hawks",
+    "abbreviation": "ATL"
+   },
+   "visitor_team": {
+    "id": 2,
+    "conference": "East",
+    "division": "Atlantic",
+    "city": "Boston",
+    "name": "Celtics",
+    "full_name": "Boston Celtics",
+    "abbreviation": "BOS"
+   },
+   "datetime": "2025-10-21T00:30:00.000Z"
+  },
+  {
+   "id": 5002,
+   "date": "2025-10-23",
+   "season": 2025,
+   "status": "Final",
+   "period": 4,
+   "time": "",
+   "postseason": false,
+   "home_team_score": 99,
+   "visitor_team_score": 101,
+   "home_team": {
+    "id": 2,
+    "conference": "East",
+    "division": "Atlantic",
+    "city": "Boston",
+    "name": "Celtics",
+    "full_name": "Boston Celtics",
+    "abbreviation": "BOS"
+   },
+   "visitor_team": {
+    "id": 1,
+    "conference": "East",
+    "division": "Southeast",
+    "city": "Atlanta",
+    "name": "Hawks",
+    "full_name": "Atlanta Hawks",
+    "abbreviation": "ATL"
+   },
+   "datetime": "2025-10-23T00:30:00.000Z"
+  },
+  {
+   "id": 5003,
+   "date": "2026-04-25",
+   "season": 2025,
+   "status": "Final",
+   "period": 4,
+   "time": "",
+   "postseason": true,
+   "home_team_score": 90,
+   "visitor_team_score": 95,
+   "home_team": {
+    "id": 1,
+    "conference": "East",
+    "division": "Southeast",
+    "city": "Atlanta",
+    "name": "Hawks",
+    "full_name": "Atlanta Hawks",
+    "abbreviation": "ATL"
+   },
+   "visitor_team": {
+    "id": 2,
+    "conference": "East",
+    "division": "Atlantic",
+    "city": "Boston",
+    "name": "Celtics",
+    "full_name": "Boston Celtics",
+    "abbreviation": "BOS"
+   },
+   "datetime": "2026-04-25T00:30:00.000Z"
+  },
+  {
+   "id": 5004,
+   "date": "2024-10-22",
+   "season": 2024,
+   "status": "Final",
+   "period": 4,
+   "time": "",
+   "postseason": false,
+   "home_team_score": 100,
+   "visitor_team_score": 98,
+   "home_team": {
+    "id": 1,
+    "conference": "East",
+    "division": "Southeast",
+    "city": "Atlanta",
+    "name": "Hawks",
+    "full_name": "Atlanta Hawks",
+    "abbreviation": "ATL"
+   },
+   "visitor_team": {
+    "id": 2,
+    "conference": "East",
+    "division": "Atlantic",
+    "city": "Boston",
+    "name": "Celtics",
+    "full_name": "Boston Celtics",
+    "abbreviation": "BOS"
+   },
+   "datetime": "2024-10-22T00:30:00.000Z"
+  }
+ ],
+ "meta": {
+  "per_page": 100
+ }
+}

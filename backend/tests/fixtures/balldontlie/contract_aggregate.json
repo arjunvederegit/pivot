@@ -1,0 +1,23 @@
+{
+ "_fixture": "SYNTHETIC FIXTURE. Shaped after the BALLDONTLIE OpenAPI document (retrieved 2026-10-18). Player names and figures are invented. NOT a captured live response and not evidence of live behaviour.",
+ "data": {
+  "id": 77,
+  "player_id": 101,
+  "start_year": 2023,
+  "end_year": 2027,
+  "contract_type": "Veteran",
+  "contract_status": "Active",
+  "contract_years": 5,
+  "total_value": 150000000,
+  "average_salary": 30000000,
+  "guaranteed_at_signing": 150000000,
+  "total_guaranteed": 120000000,
+  "signed_using": "Bird Rights",
+  "free_agent_year": 2027,
+  "free_agent_status": "UFA",
+  "contract_notes": {
+   "note": "fixture"
+  },
+  "team_id": 1
+ }
+}

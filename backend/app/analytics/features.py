@@ -95,7 +95,11 @@ def build_player_season_features(db: Session) -> pd.DataFrame:
             Player.height_inches,
             Player.position,
             Player.is_active,
-        ).join(Player, Player.id == PlayerSeasonStats.player_id)
+        )
+        .join(Player, Player.id == PlayerSeasonStats.player_id)
+        # Explicit, not implied: a playoff row (same player, season and stat_type) would
+        # otherwise be folded into the regular-season feature row by the `by_key` merge below.
+        .where(PlayerSeasonStats.season_type == "regular")
     ).all()
     if not rows:
         return pd.DataFrame()

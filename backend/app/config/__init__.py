@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     nba_api_max_concurrency: int = 2
     nba_api_cache_ttl_seconds: int = 3600
     nba_api_stale_after_seconds: int = 86400
+    #: Per-dataset freshness windows for `app.canonical.provenance`. Rosters and standings
+    #: refresh every 6 h (worker), so they share `nba_api_stale_after_seconds`; player and
+    #: team statistics refresh daily, so "stale" is two missed refreshes, not one late job.
+    #: A contract snapshot is a user-supplied file on its own cadence.
+    stats_stale_after_seconds: int = 172_800
+    contracts_stale_after_seconds: int = 2_592_000
     nba_api_user_agent: str = ""
     nba_api_http_proxy: str = ""
 
@@ -58,6 +64,21 @@ class Settings(BaseSettings):
     # 2026 fall under the 2026-27 cap even though the latest completed stats season
     # is 2025-26).
     cap_league_year: str = "2026-27"
+
+    # --- BALLDONTLIE (optional; server-side only; Pivot runs without it) ---
+    #: Credential for api.balldontlie.io. Read from the environment only, wrapped so it
+    #: never appears in a repr, a log line or an error message.
+    balldontlie_api_key: SecretStr = SecretStr("")
+    #: free | trial | all_star | goat | all_access. Sets the client's request pacing; the
+    #: tier does not unlock anything by itself. Defaults to `trial` (5 requests/minute), the
+    #: most conservative setting, because a wrong guess upward burns a 48-hour trial on 429s.
+    balldontlie_tier: str = "trial"
+    balldontlie_base_url: str = "https://api.balldontlie.io"
+    #: The OpenAPI document serves NBA under `/nba/v1`; the narrative docs show `/v1`. The
+    #: harness probes which one the live API accepts, so this is configuration, not belief.
+    balldontlie_api_prefix: str = "/nba/v1"
+    balldontlie_timeout_seconds: float = 30.0
+    balldontlie_max_retries: int = 3
 
     contract_data_provider: str = ""
     contract_data_api_key: str = ""
@@ -109,6 +130,10 @@ class Settings(BaseSettings):
     langsmith_api_key: str = ""
     langsmith_project: str = Field(default="pivot-intelligence-v2", validation_alias="ASSISTANT_LANGSMITH_PROJECT")
     langsmith_endpoint: str = ""  # default: the SDK's own (api.smith.langchain.com)
+
+    @property
+    def balldontlie_configured(self) -> bool:
+        return bool(self.balldontlie_api_key.get_secret_value().strip())
 
     @property
     def logos_dir(self) -> Path:

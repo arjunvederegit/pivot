@@ -14,6 +14,7 @@ E2E_DB ?= $(CURDIR)/backend/rosterlab-e2e.db
         import-draft-picks pick-ownership fetch-transactions import-transactions \
         transaction-coverage comparable-validation acquisition-validation lineup-availability \
         adversarial-validation \
+        data-status refresh link-balldontlie balldontlie-plan balldontlie-evaluate \
         assistant-setup assistant-models assistant-dev assistant-test assistant-eval \
         assistant-eval-selftest assistant-eval-retrieval assistant-eval-conversations
 
@@ -69,6 +70,22 @@ import-contracts: ## Import contracts from the configured provider and report RO
 
 contract-coverage: ## Report contract coverage without importing anything
 	cd $(BACKEND) && .venv/bin/python -m app.cli contract-coverage
+
+data-status: ## Freshness, completeness and provider of every dataset the tools read (read-only)
+	cd $(BACKEND) && .venv/bin/python -m app.cli data-status
+
+refresh: ## Refresh selected datasets: make refresh DATASETS=rosters,standings,player-stats
+	@test -n "$(DATASETS)" || (echo "usage: make refresh DATASETS=rosters,standings,player-stats,team-stats,games,season-calendar,contracts"; exit 2)
+	cd $(BACKEND) && .venv/bin/python -m app.cli refresh $(DATASETS)
+
+balldontlie-plan: ## Print the GOAT trial evaluation plan and its request cost (no requests)
+	cd $(BACKEND) && .venv/bin/python -m app.cli balldontlie-plan $(TIER)
+
+link-balldontlie: ## Link BALLDONTLIE ids to Pivot players/teams (needs BALLDONTLIE_API_KEY; DRY=1 to preview)
+	cd $(BACKEND) && .venv/bin/python -m app.cli link-balldontlie $(if $(DRY),--dry-run,)
+
+balldontlie-evaluate: ## Run the trial evaluation (needs a key; REPLAY=<dir> re-analyses recorded responses)
+	cd $(BACKEND) && .venv/bin/python -m app.cli balldontlie-evaluate $(if $(REPLAY),--replay $(REPLAY),) $(if $(BUDGET),--budget $(BUDGET),) $(if $(ONLY),--only $(ONLY),)
 
 purge-fixtures: ## List test-run leftovers in the dev DB (add APPLY=1 to delete)
 	cd $(BACKEND) && .venv/bin/python -m app.cli purge-fixtures $(if $(APPLY),--apply,)

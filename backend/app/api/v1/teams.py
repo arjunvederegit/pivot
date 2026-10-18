@@ -3,6 +3,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.schemas import Provenance, RosterPlayerOut, TeamOut, describe_providers
+from app.canonical.provenance import build_source_meta
+from app.canonical.rosters import current_roster, current_roster_clause
+from app.canonical.seasons import SeasonType
+from app.canonical.stat_access import player_stat_rows
 from app.cba import resolver
 from app.config import get_settings
 from app.core.errors import NotFoundError
@@ -12,7 +16,6 @@ from app.db.models import (
     ModelVersion,
     PlayerArchetype,
     PlayerImpactEstimate,
-    PlayerSeasonStats,
     RosterEntry,
     Standing,
     Team,
@@ -62,13 +65,24 @@ def get_team(team_id: str, db: Session = Depends(get_db)) -> dict:
     )
     stats: dict[str, dict] = {}
     stats_retrieved_at = None
-    for row in db.scalars(
+    stat_rows = db.scalars(
         select(TeamSeasonStats).where(
-            TeamSeasonStats.team_id == team.id, TeamSeasonStats.season == season
+            TeamSeasonStats.team_id == team.id,
+            TeamSeasonStats.season == season,
+            # Explicit: a team's playoff line is a different population from its regular season.
+            TeamSeasonStats.season_type == SeasonType.REGULAR.value,
         )
-    ).all():
+    ).all()
+    for row in stat_rows:
         stats[row.stat_type] = row.stats or {}
         stats_retrieved_at = row.source_retrieved_at
+    team_stat_meta = build_source_meta(
+        "team_stats",
+        stat_rows,
+        season=season,
+        season_type=SeasonType.REGULAR.value,
+        notes=["per-game averages over the regular season, as published by NBA.com"],
+    )
     return {
         "team": _team_out(team).model_dump(),
         "season": season,
@@ -87,6 +101,7 @@ def get_team(team_id: str, db: Session = Depends(get_db)) -> dict:
         else None,
         "stats": stats,
         "stats_retrieved_at": stats_retrieved_at.isoformat() if stats_retrieved_at else None,
+        "data_status": {"team_stats": team_stat_meta.model_dump(mode="json")},
     }
 
 
@@ -94,15 +109,8 @@ def get_team(team_id: str, db: Session = Depends(get_db)) -> dict:
 def get_roster(team_id: str, db: Session = Depends(get_db)) -> dict:
     settings = get_settings()
     team = _get_team(db, team_id)
-    entries = db.scalars(
-        select(RosterEntry)
-        .where(
-            RosterEntry.team_id == team.id,
-            RosterEntry.season == settings.current_season,
-            RosterEntry.is_current,
-        )
-        .order_by(RosterEntry.position)
-    ).all()
+    snapshot = current_roster(db, team.id, order_by=RosterEntry.position)
+    entries = snapshot.entries
 
     impact_model = db.scalar(
         select(ModelVersion).where(
@@ -176,6 +184,8 @@ def get_roster(team_id: str, db: Session = Depends(get_db)) -> dict:
         "source": describe_providers(providers),
         "source_providers": sorted(providers),
         "source_retrieved_at": retrieved_at.isoformat() if retrieved_at else None,
+        # R8: freshness, completeness and the meaning of "on this roster", as data.
+        "data_status": {"roster": snapshot.meta.model_dump(mode="json")},
     }
 
 
@@ -273,25 +283,19 @@ def get_payroll(team_id: str, db: Session = Depends(get_db)) -> dict:
 
 @router.get("/{team_id}/season-stats")
 def get_player_season_stats(team_id: str, db: Session = Depends(get_db)) -> dict:
-    """Per-player current-season stats for this team's roster (for the team page)."""
+    """Per-player current-season stats for this team's roster (for the team page).
+
+    The figures are regular-season per-game averages (`stat_definition` says so). Rostered
+    players with no row are listed in `missing_player_ids` — they are absent, not zero.
+    """
     settings = get_settings()
     team = _get_team(db, team_id)
-    entries = db.scalars(
-        select(RosterEntry).where(
-            RosterEntry.team_id == team.id,
-            RosterEntry.season == settings.current_season,
-            RosterEntry.is_current,
-        )
-    ).all()
-    player_ids = [e.player_id for e in entries]
-    rows = db.scalars(
-        select(PlayerSeasonStats).where(
-            PlayerSeasonStats.player_id.in_(player_ids),
-            PlayerSeasonStats.season == settings.current_season,
-            PlayerSeasonStats.stat_type == "base",
-        )
-    ).all()
-    by_player = {r.player_id: r for r in rows}
+    snapshot = current_roster(db, team.id)
+    player_ids = snapshot.player_ids
+    result = player_stat_rows(
+        db, player_ids, season=settings.current_season, stat_type="base"
+    )
+    by_player = result.rows
     return {
         "season": settings.current_season,
         "stats": {
@@ -305,6 +309,18 @@ def get_player_season_stats(team_id: str, db: Session = Depends(get_db)) -> dict
             }
             for pid in player_ids
             if pid in by_player
+        },
+        "missing_player_ids": result.missing_player_ids,
+        "stat_definition": {
+            "stat_type": result.spec.stat_type,
+            "aggregation": result.spec.aggregation.value,
+            "basis": result.spec.basis.value,
+            "season_type": result.scope.season_type.value,
+            "minutes_unit": result.spec.minutes_unit,
+        },
+        "data_status": {
+            "player_stats": result.meta.model_dump(mode="json"),
+            "roster": snapshot.meta.model_dump(mode="json"),
         },
     }
 
@@ -320,9 +336,7 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
     team = _get_team(db, team_id)
     entries = db.scalars(
         select(RosterEntry).where(
-            RosterEntry.team_id == team.id,
-            RosterEntry.season == settings.current_season,
-            RosterEntry.is_current,
+            RosterEntry.team_id == team.id, current_roster_clause(settings.current_season)
         )
     ).all()
     roster_ids = {e.player_id: e.player.full_name for e in entries}

@@ -1,0 +1,36 @@
+{
+ "_fixture": "SYNTHETIC FIXTURE. Shaped after the BALLDONTLIE OpenAPI document (retrieved 2026-10-18). Player names and figures are invented. NOT a captured live response and not evidence of live behaviour.",
+ "data": [
+  {
+   "player": {
+    "id": 101,
+    "first_name": "Alex",
+    "last_name": "Fixture",
+    "position": "G",
+    "height": "6-4",
+    "weight": "195",
+    "jersey_number": "3",
+    "college": "Fixture U",
+    "country": "USA",
+    "draft_year": 2019,
+    "draft_round": 1,
+    "draft_number": 10,
+    "team": {
+     "id": 1,
+     "conference": "East",
+     "division": "Southeast",
+     "city": "Atlanta",
+     "name": "Hawks",
+     "full_name": "Atlanta Hawks",
+     "abbreviation": "ATL"
+    }
+   },
+   "return_date": "Nov 3",
+   "description": "Ankle sprain",
+   "status": "Out"
+  }
+ ],
+ "meta": {
+  "per_page": 25
+ }
+}

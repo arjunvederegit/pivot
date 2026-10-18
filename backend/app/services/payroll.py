@@ -20,6 +20,7 @@ The summary now carries three separate things, and they are never merged:
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.canonical.rosters import current_roster_clause
 from app.cba.builder import load_cap_params
 from app.cba.context import CapParams, PayrollCoverage
 from app.cba.resolver import salaries
@@ -39,9 +40,7 @@ def team_payroll_summary(db: Session, team: Team) -> dict:
         params = None
 
     entries = db.scalars(
-        select(RosterEntry).where(
-            RosterEntry.team_id == team.id, RosterEntry.season == season, RosterEntry.is_current
-        )
+        select(RosterEntry).where(RosterEntry.team_id == team.id, current_roster_clause(season))
     ).all()
 
     resolved = salaries(db, [entry.player_id for entry in entries], league_year)

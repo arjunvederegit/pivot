@@ -68,6 +68,25 @@ Commands
                    Report ROSTER-side contract coverage without importing anything:
                    how many rostered players have a salary for the cap league year,
                    and how many teams therefore have a computable payroll.
+  data-status      Report freshness, completeness and provider of every dataset the
+                   intelligence tools read, plus the provider registry (read-only).
+  refresh <datasets>
+                   Refresh selected datasets (comma-separated: rosters, standings,
+                   player-stats, team-stats, games, season-calendar, contracts) and print
+                   the resulting freshness. A snapshot a provider answers with but that
+                   cannot be the league (empty, a fraction of it) is rejected and the
+                   stored data is left untouched. Network required.
+  link-balldontlie [--dry-run]
+                   Fetch BALLDONTLIE's teams and active players and link their ids to
+                   Pivot's players and teams (provider_entity_ids). Ambiguous or unmatched
+                   players are reported and left unlinked. Needs BALLDONTLIE_API_KEY.
+  balldontlie-plan [tier]
+                   Print the GOAT trial evaluation plan, its request cost and pacing.
+                   Makes no request.
+  balldontlie-evaluate [--budget N] [--only P5,P9] [--replay DIR]
+                   Run the trial evaluation against Pivot's own data and write evidence to
+                   data/imports/balldontlie/ (gitignored). --replay re-analyses recorded
+                   responses with no requests. Needs BALLDONTLIE_API_KEY unless replaying.
   purge-fixtures [--apply]
                    List (or with --apply, delete) scenarios, trade proposals and
                    comparison sets whose names look like automated-test leftovers.
@@ -96,7 +115,15 @@ logger = get_logger(__name__)
 #: request to Basketball-Reference or NBA.com on every `pytest` run — ten pages at a
 #: 3.5-second crawl delay in the first case. A test suite is not a reason to make traffic
 #: on someone else's servers, and a CI runner is not a reason either.
-NETWORK_COMMANDS = frozenset({"fetch-transactions", "lineup-availability"})
+NETWORK_COMMANDS = frozenset(
+    {
+        "fetch-transactions",
+        "lineup-availability",
+        "refresh",
+        "link-balldontlie",
+        "balldontlie-evaluate",
+    }
+)
 
 
 def offline() -> bool:
@@ -138,6 +165,129 @@ def seed_config() -> None:
                     setattr(row, key, value)
             print(f"loaded cap parameters {doc['league_year']} from {path.name}")
         db.commit()
+
+
+REFRESH_DATASETS = {
+    "rosters": "sync-rosters",
+    "standings": "sync-standings",
+    "player-stats": "sync-player-stats",
+    "team-stats": "sync-team-stats",
+    "games": "sync-games",
+    "season-calendar": "sync-season-calendar",
+    "contracts": "sync-contracts",
+}
+
+
+def _refresh(args: list[str], single_jobs: dict[str, Callable[..., int]]) -> int:
+    """Refresh the named datasets in the given order; report each result and the freshness."""
+    names = [n.strip() for a in args if not a.startswith("--") for n in a.split(",") if n.strip()]
+    unknown = [n for n in names if n not in REFRESH_DATASETS]
+    if not names or unknown:
+        print(
+            json.dumps(
+                {
+                    "error": "name at least one dataset" if not names else f"unknown: {unknown}",
+                    "datasets": sorted(REFRESH_DATASETS),
+                },
+                indent=2,
+            )
+        )
+        return 2
+    from app.services.data_provenance import dataset_freshness
+
+    results: dict[str, dict] = {}
+    with SessionLocal() as db:
+        for name in names:
+            job = single_jobs[REFRESH_DATASETS[name]]
+            try:
+                results[name] = {"status": "succeeded", "rows": job(db)}
+            except Exception as exc:  # noqa: BLE001 - reported per dataset, never swallowed
+                results[name] = {"status": "failed", "error": f"{type(exc).__name__}: {exc}"}
+        freshness = {
+            n: m.model_dump(mode="json")
+            for n, m in dataset_freshness(db).items()
+            if n in {d.replace("-", "_") for d in names} | {"player_stats", "team_stats"}
+        }
+    print(json.dumps({"results": results, "freshness": freshness}, indent=2, default=str))
+    return 0 if all(r["status"] == "succeeded" for r in results.values()) else 2
+
+
+def _link_balldontlie(dry_run: bool) -> int:
+    from app.integrations.balldontlie.crosswalk import crosswalk_players, crosswalk_teams
+    from app.integrations.balldontlie.provider import BalldontlieProvider
+
+    provider = BalldontlieProvider.from_settings()
+    if not provider.configured:
+        print(json.dumps({"error": "BALLDONTLIE_API_KEY is not set"}, indent=2))
+        return 2
+    settings = get_settings()
+    out: dict = {"dry_run": dry_run}
+    with SessionLocal() as db:
+        teams = provider.teams()
+        players = provider.active_players()
+        for label, result in (("teams", teams), ("active_players", players)):
+            out[label + "_call"] = {
+                "status": result.status.value,
+                "records": len(result.records),
+                "warnings": list(result.warnings)[:5],
+                "error": result.error,
+            }
+        if not (teams.has_answer and players.has_answer):
+            print(json.dumps(out, indent=2, default=str))
+            return 2
+        out["teams"] = crosswalk_teams(db, list(teams.records)).summary()
+        report = crosswalk_players(db, list(players.records), season=settings.current_season)
+        out["players"] = report.summary() | {
+            "ambiguous_examples": report.ambiguous[:10],
+            "unresolved_examples": report.unresolved[:10],
+        }
+        if dry_run:
+            db.rollback()
+        else:
+            db.commit()
+    print(json.dumps(out, indent=2, default=str))
+    return 0
+
+
+def _balldontlie_evaluate(args: list[str]) -> int:
+    from pathlib import Path
+
+    from app.config import BACKEND_DIR
+    from app.integrations.balldontlie.evaluation import run_plan
+    from app.integrations.balldontlie.provider import BalldontlieProvider
+
+    def option(name: str) -> str | None:
+        return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else None
+
+    replay = option("--replay")
+    provider = BalldontlieProvider.from_settings()
+    if not replay and not provider.configured:
+        print(json.dumps({"error": "BALLDONTLIE_API_KEY is not set; nothing was requested"}, indent=2))
+        return 2
+    only_arg = option("--only")
+    only = set(only_arg.split(",")) if only_arg else None
+    out_dir = (
+        Path(replay)
+        if replay
+        else BACKEND_DIR.parent
+        / "data"
+        / "imports"
+        / "balldontlie"
+        / f"eval-{datetime.now().strftime('%Y%m%d-%H%M')}"
+    )
+    with SessionLocal() as db:
+        result = run_plan(
+            provider,
+            db,
+            out_dir,
+            budget=int(option("--budget") or 200),
+            only=only,
+            replay_only=bool(replay),
+        )
+    print((out_dir / "report.md").read_text())
+    print(f"evidence written to {out_dir}")
+    failed = [f["probe"] for f in result["findings"] if f["status"] in ("fail", "error")]
+    return 2 if failed else 0
 
 
 def main() -> None:
@@ -188,6 +338,33 @@ def main() -> None:
             uncovered = roster_side_unmatched(db, settings.current_season, settings.cap_league_year)
         print(json.dumps({**coverage, "roster_players_without_salary": uncovered}, indent=2, default=str))
         print("\n" + summarize(coverage, uncovered))
+    elif command == "data-status":
+        from app.services.data_provenance import dataset_freshness, provider_registry
+
+        with SessionLocal() as db:
+            datasets = dataset_freshness(db)
+            registry = provider_registry(db)
+        print(
+            json.dumps(
+                {
+                    "datasets": {n: m.model_dump(mode="json") for n, m in datasets.items()},
+                    "providers": registry,
+                },
+                indent=2,
+                default=str,
+            )
+        )
+    elif command == "refresh":
+        sys.exit(_refresh(sys.argv[2:], single_jobs))
+    elif command == "link-balldontlie":
+        sys.exit(_link_balldontlie("--dry-run" in sys.argv[2:]))
+    elif command == "balldontlie-plan":
+        from app.integrations.balldontlie.evaluation import plan_summary
+
+        tier = sys.argv[2] if len(sys.argv) > 2 else get_settings().balldontlie_tier
+        print(json.dumps(plan_summary(tier), indent=2))
+    elif command == "balldontlie-evaluate":
+        sys.exit(_balldontlie_evaluate(sys.argv[2:]))
     elif command == "import-draft-picks":
         from app.ingestion.draft_picks import import_draft_picks
 

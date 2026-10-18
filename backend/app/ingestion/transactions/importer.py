@@ -34,6 +34,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.canonical.identity import TEAM_CODE_ALIASES_BY_SOURCE
 from app.core.logging import get_logger
 from app.db.models import (
     DataQualityIssue,
@@ -58,7 +59,7 @@ logger = get_logger(__name__)
 #: Basketball-Reference's franchise abbreviations that differ from NBA.com's. Explicit,
 #: because these are exactly the three where a prefix or fuzzy match would silently place
 #: a trade on the wrong franchise.
-ABBREVIATION_ALIASES = {"BRK": "BKN", "CHO": "CHA", "PHO": "PHX"}
+ABBREVIATION_ALIASES = TEAM_CODE_ALIASES_BY_SOURCE["bbref"]
 
 UNRESOLVED_PLAYER_CHECK = "historical_trade_unresolved_player"
 UNPARSED_ASSET_CHECK = "historical_trade_unparsed_asset"
