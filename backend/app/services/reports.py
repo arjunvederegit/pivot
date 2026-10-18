@@ -209,7 +209,8 @@ def build_report_markdown(
     freshness = data_freshness or {}
     lines.append(
         f"- Source: {freshness.get('source', 'unknown')} · rosters/stats last synced: "
-        f"{freshness.get('last_sync', 'unknown')} · season {settings.current_season}."
+        f"{freshness.get('last_sync', 'unknown')} · rosters {settings.roster_season_preferred} · "
+        f"statistics {settings.current_season}."
     )
     lines.append(
         f"- Cap parameters: {legality.get('cap_parameters_source', 'unknown')} "

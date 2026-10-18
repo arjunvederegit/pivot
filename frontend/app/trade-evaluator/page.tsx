@@ -54,6 +54,7 @@ import { DealLedger, RulesCheck, RunIt } from "@/components/trade/desk";
 import { PlayerDrawer } from "@/components/trade/drawer";
 import { Insights, PlayerComparison, ProjectedImpact, TeamComparison } from "@/components/trade/overview";
 import { TeamPerspective } from "@/components/trade/perspective";
+import { SeasonBasisNotice } from "@/components/season-context";
 import { SectionHead } from "@/components/trade/section-head";
 import { ConsequenceSheet, type SheetAsset, type SheetSide } from "@/components/trade/sheet";
 import { LEGALITY_VISUAL } from "@/components/trade/verdict";
@@ -561,6 +562,7 @@ function TradeEvaluator() {
             originOf={originOf}
             inputs={{
               season: Object.values(rosters.data ?? {})[0]?.season,
+              rosterSeason: Object.values(rosters.data ?? {})[0]?.roster_season,
               rosterAsOf: Object.values(rosters.data ?? {})
                 .map((r) => r.source_retrieved_at)
                 .filter((d): d is string => Boolean(d))
@@ -855,7 +857,7 @@ function EvaluationSection({
   playerIndex: Record<string, RosterPlayer>;
   originOf: Record<string, string>;
   /** Where the evaluation's INPUT data came from — distinct from when the evaluation ran. */
-  inputs: { season?: string; rosterAsOf?: string };
+  inputs: { season?: string; rosterSeason?: string; rosterAsOf?: string };
 }) {
   const [activeTeam, setActiveTeam] = useState(teamIds[0]);
   const resolvedTeam = evaluation.evaluations[activeTeam] ? activeTeam : teamIds[0];
@@ -934,7 +936,18 @@ function EvaluationSection({
         aside="Where each team stands before the deal, what it gives and gets, and where the model projects it after — every side on the same wins scale."
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      <SeasonBasisNotice
+        basis={teamEval.season_basis}
+        warnings={[
+          ...new Map(
+            Object.values(evaluation.evaluations)
+              .flatMap((e) => e.membership_warnings ?? [])
+              .map((w) => [w.player_id, w]),
+          ).values(),
+        ]}
+      />
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         <ProjectedImpact sides={sides} isRefused={isRefused} />
         <TeamComparison key={`tc-${resolvedTeam}`} sides={sides} activeId={resolvedTeam} />
         <PlayerComparison
@@ -1006,8 +1019,9 @@ function EvaluationSection({
                   <span>Evaluated {formatDate(teamEval.evaluated_at)}</span>
                   <span aria-hidden>·</span>
                   <span>
-                    Input data: {inputs.season ? `${inputs.season} season stats` : "season stats"}, roster
-                    snapshot {inputs.rosterAsOf ? formatDate(inputs.rosterAsOf) : "date unavailable"}, cap year{" "}
+                    Input data: {inputs.season ? `${inputs.season} season stats` : "season stats"},{" "}
+                    {inputs.rosterSeason ? `${inputs.rosterSeason} ` : ""}roster snapshot{" "}
+                    {inputs.rosterAsOf ? formatDate(inputs.rosterAsOf) : "date unavailable"}, cap year{" "}
                     {evaluation.legality.league_year}
                   </span>
                 </>

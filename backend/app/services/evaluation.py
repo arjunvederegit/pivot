@@ -53,7 +53,7 @@ from app.analytics.uncertainty import (
     rotation_draw_from,
     simulate_delta_wins,
 )
-from app.canonical.rosters import current_roster_clause
+from app.canonical.rosters import current_roster_clause, resolve_roster_season
 from app.cba import resolver
 from app.cba.builder import build_trade_context, load_cap_params, player_salaries
 from app.cba.engine import TradeLegalityEngine
@@ -151,6 +151,9 @@ class EvaluationService:
     def __init__(self, db: Session):
         self.db = db
         self.settings = get_settings()
+        #: R8.2. Membership is read from the roster season; statistics, archetypes and team needs
+        #: stay on the performance season (`settings.current_season`). One query, once per service.
+        self.roster_season = resolve_roster_season(db)
         self._impact_cache: dict[str, PlayerImpactEstimate] | None = None
         self._skills_cache: dict[str, dict[str, float]] | None = None
         self._wins_mapping: dict | None = None
@@ -162,6 +165,7 @@ class EvaluationService:
         self._win_pct_cache: dict[str, float] | None = None
         self._pick_curve_cache: dict[str, float] | None = None
         self._roles_cache: dict[str, str] | None = None
+        self._season_basis_cache: dict | None = None
 
     # ------------------------------------------------------------- data loading
 
@@ -255,7 +259,7 @@ class EvaluationService:
             select(RosterEntry)
             .where(
                 RosterEntry.team_id == team_id,
-                current_roster_clause(self.settings.current_season),
+                current_roster_clause(self.roster_season),
             )
             # Without an explicit order this returned whatever the database happened to
             # produce, so every `[:12]` downstream was an arbitrary 12 rather than a
@@ -277,7 +281,7 @@ class EvaluationService:
         """
         entries = self.db.scalars(
             select(RosterEntry)
-            .where(current_roster_clause(self.settings.current_season))
+            .where(current_roster_clause(self.roster_season))
             .order_by(RosterEntry.team_id, RosterEntry.player_id)
         ).all()
         grouped: dict[str, list[PlayerCard]] = {}
@@ -296,6 +300,58 @@ class EvaluationService:
             ).all()
             self._needs_cache[team_id] = {r.need_key: r.severity for r in rows}
         return self._needs_cache[team_id]
+
+    def season_basis(self) -> dict:
+        """R8.2. Which season each input of an evaluation comes from, and what that limits.
+
+        The roster is read from the roster season; player impact, skills and roles come from the
+        performance season's statistics; team needs were measured on the performance-season *team*.
+        When the roster has turned over since, the first three still describe players correctly
+        (they are properties of the player), but needs do not describe the new roster. Said here
+        rather than silently scored.
+        """
+        if self._season_basis_cache is None:
+            performance = self.settings.current_season
+            estimate_seasons = sorted({r.season for r in self._impacts().values()})
+            differs = self.roster_season != performance
+            limitations: list[dict] = []
+            if differs:
+                limitations.append(
+                    {
+                        "component": "fit",
+                        "reason": "team_needs_describe_previous_team",
+                        "message": (
+                            f"Team needs were measured on the {performance} team (its statistics "
+                            f"and roster); the roster is {self.roster_season}. Anything scored from "
+                            "those needs (roster fit) uses them unchanged and may not describe "
+                            "this roster."
+                        ),
+                    }
+                )
+            if estimate_seasons and performance not in estimate_seasons:
+                # The statistics season has moved on (the rollover) but `make train && make score`
+                # has not been run for it: the active model's estimates are an earlier season's.
+                limitations.append(
+                    {
+                        "component": "performance",
+                        "reason": "impact_estimates_from_earlier_season",
+                        "message": (
+                            f"The active impact model has no estimates for {performance}; player "
+                            f"impact is read from its {', '.join(estimate_seasons)} estimates. Run "
+                            "`make train && make score` to produce them."
+                        ),
+                    }
+                )
+            self._season_basis_cache = {
+                "roster_season": self.roster_season,
+                "performance_season": performance,
+                "impact_estimate_seasons": estimate_seasons,
+                "team_needs_season": performance,
+                "contract_season": self.settings.cap_league_year,
+                "roster_differs_from_performance": differs,
+                "limitations": limitations,
+            }
+        return self._season_basis_cache
 
     # ------------------------------------------------------------- components
 
@@ -494,6 +550,8 @@ class EvaluationService:
             "raw_fit": round(score, 4),
             "needs_not_addressable": withheld,
             "needs": needs,
+            "needs_season": self.settings.current_season,
+            "needs_match_roster": self.roster_season == self.settings.current_season,
             # `None` on an ordinary two-sided deal. Named rather than inferred, so a
             # one-way score can never be read as if both packages were measured.
             "baseline_used": baseline_used,
@@ -523,7 +581,11 @@ class EvaluationService:
         to redo the whole league every time.
         """
         cache = get_cache()
-        key = cache.versioned_key("role_minutes", self.settings.current_season)
+        # Keyed by BOTH seasons: the reference is built from rosters (roster season) and role
+        # labels (performance season), and either can turn over without the other.
+        key = cache.versioned_key(
+            "role_minutes", self.settings.current_season, self.roster_season
+        )
         cached = cache.get_json(key)
         if cached:
             return cached
@@ -1063,8 +1125,33 @@ class EvaluationService:
             "sensitivity_tornado": [],
             "incoming": [self._player_summary(c) for c in incoming],
             "outgoing": [self._player_summary(c) for c in outgoing],
+            "season_basis": self.season_basis(),
+            "membership_warnings": [],
             "evaluated_at": datetime.now(UTC).isoformat(),
         }
+
+    def _membership_warnings(self, incoming: list[PlayerCard]) -> list[dict]:
+        """Players arriving in the deal who are on no current roster in Pivot's snapshot.
+
+        The trade builder deliberately lets such a player through — refusing him would block every
+        offseason free agent — so without a label he is scored as if he were available to acquire.
+        That is more common once the roster season moves on (87 players of the 2025-26 rosters are on
+        none of the 2026-27 ones). Uncertain membership is named, never settled in either direction.
+        """
+        membership = resolver.current_roster(self.db, self.roster_season)
+        return [
+            {
+                "player_id": card.player_id,
+                "name": card.name,
+                "message": (
+                    f"{card.name} is on no {self.roster_season} roster in Pivot's snapshot (free agent, "
+                    "waived, retired, or not yet listed). He is scored as available to acquire; "
+                    "that is not confirmed."
+                ),
+            }
+            for card in incoming
+            if card.player_id not in membership
+        ]
 
     @staticmethod
     def _player_summary(card: PlayerCard) -> dict:
@@ -1227,6 +1314,17 @@ class EvaluationService:
         confidence = "high"
         if excluded:
             confidence = "medium" if len(excluded) <= 2 else "low"
+        membership_warnings = self._membership_warnings(incoming)
+        if membership_warnings and confidence == "high":
+            confidence = "medium"
+        season_basis = self.season_basis()
+        if (
+            confidence == "high"
+            and fit_value is not None
+            and season_basis["roster_differs_from_performance"]
+        ):
+            # The fit score read needs measured on last season's team. Not "high".
+            confidence = "medium"
         if unmodeled_in_deal:
             # A player in the deal itself with no impact estimate is a bigger hole than
             # one sitting at the end of the bench.
@@ -1268,5 +1366,7 @@ class EvaluationService:
             "sensitivity_tornado": tornado(components, weights),
             "incoming": [self._player_summary(c) for c in incoming],
             "outgoing": [self._player_summary(c) for c in outgoing],
+            "season_basis": season_basis,
+            "membership_warnings": membership_warnings,
             "evaluated_at": datetime.now(UTC).isoformat(),
         }

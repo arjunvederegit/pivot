@@ -34,6 +34,7 @@ import { useToast } from "@/components/toast";
 import { Composition } from "@/components/teams/composition";
 import { RosterDepth } from "@/components/teams/roster-depth";
 import { RosterOnLeague } from "@/components/teams/roster-league";
+import { SeasonContextLine, SeasonBasisNotice } from "@/components/season-context";
 import { SeasonLine, type TeamDetail } from "@/components/teams/season-line";
 import { SectionHead } from "@/components/teams/section-head";
 import { SkillCoveragePanel } from "@/components/teams/skill-coverage";
@@ -187,7 +188,11 @@ export default function TeamOutlookPage({ params }: { params: Promise<{ teamId: 
                   <span aria-hidden className="text-faint">
                     ·
                   </span>
-                  <span>{detail.season}</span>
+                  <span>
+                    {detail.season_context
+                      ? `${detail.season_context.roster.season} roster · ${detail.season} statistics`
+                      : detail.season}
+                  </span>
                 </div>
                 <h1 className="title-xl mt-2 text-balance text-foreground">{team.full_name}</h1>
               </div>
@@ -204,7 +209,12 @@ export default function TeamOutlookPage({ params }: { params: Promise<{ teamId: 
               </div>
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <SeasonContextLine
+            context={detail.season_context}
+            statisticsSeason={detail.season}
+            className="mt-4"
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <Badge status={competitiveWindow.status}>window: {competitiveWindow.label}</Badge>
             <span className="text-[14px] text-muted">{competitiveWindow.hint}</span>
           </div>
@@ -254,7 +264,10 @@ export default function TeamOutlookPage({ params }: { params: Promise<{ teamId: 
             ) : !profile.needs_available ? (
               <UnavailableNotice reason={<ServedSentence text={profile.needs_unavailable_reason} />} />
             ) : (
-              <StrengthsNeeds profile={profile} vocabulary={vocabulary} />
+              <>
+                <SeasonBasisNotice basis={profile.season_basis} />
+                <StrengthsNeeds profile={profile} vocabulary={vocabulary} />
+              </>
             )}
           </TeamPanel>
 

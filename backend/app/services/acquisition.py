@@ -78,6 +78,7 @@ from sqlalchemy.orm import Session
 from app.analytics.archetypes import SKILL_KEYS, UNADDRESSABLE_NEEDS
 from app.analytics.needs import NEED_TO_SKILL
 from app.analytics.projection import REPLACEMENT_TEI, TEAM_MINUTES, TEI_TO_NET_RATING
+from app.canonical.rosters import resolve_roster_season
 from app.cba.builder import build_trade_context, load_cap_params, player_salaries
 from app.cba.engine import TradeLegalityEngine
 from app.cba.rules.roster import MAX_WITH_TWO_WAYS
@@ -215,6 +216,7 @@ def acquisition_targets(
             raise NotFoundError(f"scenario {scenario_id} not found")
         untouchables = set(scenario.untouchable_player_ids or [])
 
+    roster_season = resolve_roster_season(db)
     needs = _team_needs(db, team_id, settings.current_season)
     diagnosis = _diagnosis(needs)
     if not needs:
@@ -439,6 +441,10 @@ def acquisition_targets(
         "team": {"id": team.id, "abbreviation": team.abbreviation, "name": team.full_name},
         "available": True,
         "season": settings.current_season,
+        # R8.2: the diagnosis below was measured on the `season` team; the targets are scored
+        # against the roster of `roster_season`. When they differ the need may not describe it.
+        "roster_season": roster_season,
+        "needs_match_roster": roster_season == settings.current_season,
         "diagnosis": diagnosis,
         "target_need": {**chosen, "roster_strength_percentile": round(strength, 4)},
         "sort": sort,

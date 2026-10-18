@@ -269,7 +269,7 @@ function PlayerExplorer() {
 
   return (
     <div className="space-y-8 pb-24">
-      <ExplorerHeader count={data.count} season={data.season} />
+      <ExplorerHeader count={data.count} season={data.season} rosterSeason={data.roster_season} />
 
       {/* ------------------------------------------------- comparison bench */}
       <ComparisonBench
@@ -616,7 +616,15 @@ function PlayerExplorer() {
 
 /* ------------------------------------------------------------------ header */
 
-function ExplorerHeader({ count, season }: { count: number | null; season: string }) {
+function ExplorerHeader({
+  count,
+  season,
+  rosterSeason,
+}: {
+  count: number | null;
+  season: string;
+  rosterSeason?: string;
+}) {
   return (
     <PageHeader
       eyebrow="Scouting"
@@ -624,7 +632,10 @@ function ExplorerHeader({ count, season }: { count: number | null; season: strin
       lede="Every player's imported season totals, searchable and sortable, with each stat set against the qualified league. Pick two to four names to put their seasons on the same percentile axes."
       meta={
         <>
-          <Badge status="info">{season}</Badge>
+          <Badge status="info">{season} totals</Badge>
+          {rosterSeason && rosterSeason !== season && (
+            <Badge status="info">{rosterSeason} rosters</Badge>
+          )}
           {count !== null && (
             <span className="text-[12px] text-muted">
               <span className="numeral text-foreground">{count.toLocaleString()}</span> players

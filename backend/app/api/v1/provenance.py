@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.canonical.calendar import season_context, today_in_league
+from app.canonical.tool_seasons import roster_verification, tool_seasons
 from app.config import get_settings
 from app.db.base import get_db
 from app.services.data_provenance import dataset_freshness, provider_registry, rollover_readiness
@@ -37,6 +38,16 @@ def get_freshness(db: Session = Depends(get_db)) -> dict:
             if name in ("rosters", "standings", "player_stats", "team_stats", "games")
         }
     return body
+
+
+@router.get("/season-context")
+def get_season_context(db: Session = Depends(get_db)) -> dict:
+    """R8.2. Which season each kind of information is read from, and whether the roster is whole.
+
+    Rosters follow the league year, statistics follow the rollover, contracts follow the cap year.
+    Read-only; the same block rides on every tool's payload as ``season_context``.
+    """
+    return {**tool_seasons(db), "roster_verification": roster_verification(db)}
 
 
 @router.get("/rollover")

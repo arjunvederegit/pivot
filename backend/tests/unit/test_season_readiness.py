@@ -31,7 +31,7 @@ from app.canonical.provenance import Freshness, source_meta_from_aggregate
 from app.canonical.rosters import roster_as_of
 from app.canonical.seasons import Season, SeasonType, StatScope
 from app.canonical.stat_access import player_stat_rows
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.db.models import (
     DataSyncRun,
     Player,
@@ -710,19 +710,39 @@ class TestRosterRollover:
         assert db.query(RosterEntry).count() == 0
 
     def test_a_failed_league_season_roster_does_not_mark_the_roster_being_read_as_failing(
-        self, db: Session, synced, monkeypatch
+        self, db: Session, synced, monkeypatch, request
     ):
+        request.addfinalizer(get_settings.cache_clear)
+        # R8.2: in the standard configuration the league's roster IS the roster being read, so its
+        # failure correctly marks that dataset (see the next test). The staging job survives for a
+        # pinned historical session, where the incoming roster is NOT the one being read.
+        monkeypatch.setenv("CURRENT_SEASON", "2024-25")
+        monkeypatch.setenv("ROSTER_SEASON", "2024-25")
+        get_settings.cache_clear()
         monkeypatch.setattr("app.config.Settings.season_context",
                             property(lambda self: season_context(date(2026, 10, 18))))
-        jobs.sync_rosters(db, "2025-26", FakeProvider(rosters=_roster(("1610612737", 201939), ("1610612738", 999999))))
+        jobs.sync_rosters(db, "2024-25", FakeProvider(rosters=_roster(("1610612737", 201939), ("1610612738", 999999))))
         with pytest.raises(jobs.SnapshotRejectedError):
             jobs.prepare_league_season(db, FakeProvider(rosters=[]))
         jobs_failed = {r.job_name for r in db.scalars(select(DataSyncRun)).all() if r.status == "failed"}
         assert jobs_failed == {"prepare_league_rosters"}
-        reading = dataset_freshness(db, "2025-26", now=at(2026, 10, 18))["rosters"]
+        reading = dataset_freshness(db, "2024-25", now=at(2026, 10, 18))["rosters"]
         assert reading.refresh_failing is False
         staged = dataset_freshness(db, "2026-27", now=at(2026, 10, 18))["rosters"]
         assert staged.refresh_failing is True
+
+    def test_a_failed_refresh_of_the_roster_season_marks_the_roster_the_tools_read(
+        self, db: Session, synced, monkeypatch
+    ):
+        """R8.2: the roster the tools read IS the league year's, so its failed refresh is visible."""
+        monkeypatch.setattr("app.config.Settings.season_context",
+                            property(lambda self: season_context(date(2026, 10, 18))))
+        jobs.sync_rosters(db, "2026-27", FakeProvider(rosters=_roster(("1610612737", 201939), ("1610612738", 999999))))
+        with pytest.raises(jobs.SnapshotRejectedError):
+            jobs.sync_rosters(db, "2026-27", FakeProvider(rosters=[]))
+        reading = dataset_freshness(db, now=at(2026, 10, 18))["rosters"]
+        assert reading.season == "2026-27"
+        assert reading.refresh_failing is True
 
 
 class TestPartialRefreshesAreNamed:

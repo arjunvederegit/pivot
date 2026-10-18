@@ -207,6 +207,39 @@ class SeasonContext:
     grace_days: int
 
     @property
+    def roster_season(self) -> Season:
+        """R8.2. The season a roster belongs to: the league year, from 1 July.
+
+        Membership is *now*, so it does not wait for the season's statistics (or the analysis
+        rollover) to exist. ``analysis_season`` — where the statistics come from — is a separate
+        question with its own clock.
+        """
+        return self.league_season
+
+    @property
+    def performance_season(self) -> Season:
+        """R8.2. The season performance evidence is read from (an alias of ``analysis_season``)."""
+        return self.analysis_season
+
+    @property
+    def projection_target_season(self) -> Season:
+        """R8.2. The season a projection is *about*. Its inputs come from ``performance_season``."""
+        return self.league_season
+
+    @property
+    def roster_basis(self) -> str:
+        """What a roster snapshot taken on ``as_of`` can honestly be called.
+
+        NBA.com's roster endpoint does not say which list it is (camp, two-way, Exhibit 10, the
+        15-man cut-down), so the label comes from the calendar and is deliberately modest.
+        """
+        if self.phase is SeasonPhase.OFFSEASON:
+            return "offseason_snapshot"
+        if self.phase is SeasonPhase.PRESEASON:
+            return "provisional_preseason"
+        return "regular_season_snapshot"
+
+    @property
     def regular_season_stats_expected(self) -> bool:
         """Whether 2026-27-style regular-season rows *should* exist for the league season."""
         return self.regular_stats_state in (ScopeState.IN_PROGRESS, ScopeState.COMPLETED)
@@ -223,6 +256,10 @@ class SeasonContext:
             "phase": self.phase.value,
             "analysis_season": self.analysis_season.label,
             "analysis_is_baseline": self.analysis_is_baseline,
+            "roster_season": self.roster_season.label,
+            "performance_season": self.performance_season.label,
+            "projection_target_season": self.projection_target_season.label,
+            "roster_basis": self.roster_basis,
             "last_completed_season": self.last_completed_season.label,
             "regular_season_stats": self.regular_stats_state.value,
             "preseason_stats": self.preseason_stats_state.value,

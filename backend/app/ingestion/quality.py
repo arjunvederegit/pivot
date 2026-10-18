@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.canonical.rosters import current_roster_clause
+from app.canonical.rosters import current_roster_clause, resolve_roster_season
 from app.config import get_settings
 from app.db.models import (
     ContractYear,
@@ -191,7 +191,9 @@ def _r8_checks(db: Session) -> list[dict]:
 
 def validate_data(db: Session) -> list[dict]:
     settings = get_settings()
-    season = settings.current_season
+    # R8.2: roster checks run on the roster season; the statistics checks below keep `settings.current_season`.
+    season = resolve_roster_season(db)
+    stats_season = settings.current_season
     issues: list[dict] = []
 
     # Resolve previously recorded open issues; current state is re-derived each run.
@@ -307,13 +309,13 @@ def validate_data(db: Session) -> list[dict]:
             )
         )
 
-    cap = db.scalar(select(LeagueCapParameters).where(LeagueCapParameters.league_year == season))
+    cap = db.scalar(select(LeagueCapParameters).where(LeagueCapParameters.league_year == stats_season))
     if cap is None:
         issues.append(
             _record(
                 db,
                 "cap_parameters_missing",
-                f"no cap parameters loaded for league year {season}; run `make seed-config`",
+                f"no cap parameters loaded for league year {stats_season}; run `make seed-config`",
                 "error",
             )
         )
@@ -322,7 +324,7 @@ def validate_data(db: Session) -> list[dict]:
     stale_standings = (
         db.scalar(
             select(func.count(Standing.id)).where(
-                Standing.season == season, Standing.source_retrieved_at < stale_cutoff
+                Standing.season == stats_season, Standing.source_retrieved_at < stale_cutoff
             )
         )
         or 0

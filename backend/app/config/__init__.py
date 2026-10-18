@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     #: behind the calendar; leaving it blank is what stops the season needing a hand edit each October.
     pinned_season: str = Field(default="", validation_alias="CURRENT_SEASON")
     season_rollover_grace_days: int = 14
+    #: R8.2. An explicit override of the ROSTER season (`ROSTER_SEASON=2026-27`). Blank — the
+    #: default — follows the league year (`SeasonContext.roster_season`), independently of
+    #: `CURRENT_SEASON`: a roster does not wait for statistics. See `roster_season_preferred`.
+    pinned_roster_season: str = Field(default="", validation_alias="ROSTER_SEASON")
     #: The MODELLING window. Every served estimate — player impact, skills, the rotation
     #: allocation, the R3 conversion coefficient — is fitted and served on exactly these
     #: seasons, and R7 did not widen it. Blank (the default) = the three seasons ending at the
@@ -200,6 +204,24 @@ class Settings(BaseSettings):
         if self.pinned_season.strip():
             return Season.parse(self.pinned_season.strip()).label
         return self.season_context.analysis_season.label
+
+    @property
+    def roster_season_preferred(self) -> str:
+        """R8.2. The season rosters *should* be read from, before looking at what is stored.
+
+        ``ROSTER_SEASON`` if set, otherwise the league year (2026-27 from 1 July 2026). It does
+        **not** depend on ``CURRENT_SEASON``: a pin on the statistics season (the old default was
+        ``CURRENT_SEASON=2025-26``) must not drag rosters back to last season — that coupling is
+        exactly what R8.2 removes. A deliberately historical session sets both variables.
+
+        Use ``app.canonical.rosters.resolve_roster_season(db)`` to also account for a roster
+        snapshot that has not been ingested yet.
+        """
+        from app.canonical.seasons import Season
+
+        if self.pinned_roster_season.strip():
+            return Season.parse(self.pinned_roster_season.strip()).label
+        return self.season_context.roster_season.label
 
     @property
     def history_season_list(self) -> list[str]:

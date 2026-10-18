@@ -74,11 +74,11 @@ contract-coverage: ## Report contract coverage without importing anything
 data-status: ## Freshness, completeness and provider of every dataset the tools read (read-only)
 	cd $(BACKEND) && .venv/bin/python -m app.cli data-status
 
-refresh: ## Refresh selected datasets: make refresh DATASETS=rosters,standings,player-stats [ARGS='--season 2026-27 --season-type preseason']
+refresh: ## Refresh selected datasets: make refresh DATASETS=rosters,standings,player-stats [ARGS='--season 2026-27 --season-type preseason'] (rosters default to the league year; add a roster_verification report)
 	@test -n "$(DATASETS)" || (echo "usage: make refresh DATASETS=rosters,standings,player-stats,team-stats,games,season-calendar,contracts [ARGS='--season 2026-27']"; exit 2)
 	cd $(BACKEND) && .venv/bin/python -m app.cli refresh $(DATASETS) $(ARGS)
 
-season-status: ## Where the NBA calendar is, what exists for the league's season, and whether the tools can roll over (read-only)
+season-status: ## Which season each kind of data is read from (rosters / statistics / contracts), roster completeness, and rollover readiness (read-only)
 	cd $(BACKEND) && .venv/bin/python -m app.cli season-status
 
 balldontlie-preflight: ## Is Pivot ready for the 48-hour trial clock? (no request, no key needed)

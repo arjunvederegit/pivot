@@ -110,6 +110,7 @@ from datetime import date, datetime
 
 import yaml
 
+from app.canonical.rosters import resolve_roster_season
 from app.config import CAP_RULES_DIR, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.db.base import SessionLocal
@@ -250,7 +251,15 @@ def _refresh(args: list[str], single_jobs: dict[str, Callable[..., int]]) -> int
             for n, m in dataset_freshness(db, season).items()
             if n in {d.replace("-", "_") for d in names} | {"player_stats", "team_stats"}
         }
-    print(json.dumps({"results": results, "freshness": freshness}, indent=2, default=str))
+        report: dict = {"results": results, "freshness": freshness}
+        if "rosters" in names:
+            from app.canonical.tool_seasons import roster_verification
+
+            # R8.2: after a roster refresh, say whether the snapshot is whole.
+            report["roster_verification"] = roster_verification(
+                db, season or get_settings().roster_season_preferred
+            )
+    print(json.dumps(report, indent=2, default=str))
     return 0 if all(r["status"] == "succeeded" for r in results.values()) else 2
 
 
@@ -262,7 +271,6 @@ def _link_balldontlie(dry_run: bool, active_only: bool = False) -> int:
     if not provider.configured:
         print(json.dumps({"error": "BALLDONTLIE_API_KEY is not set"}, indent=2))
         return 2
-    settings = get_settings()
     out: dict = {"dry_run": dry_run}
     with SessionLocal() as db:
         teams = provider.teams()
@@ -278,7 +286,9 @@ def _link_balldontlie(dry_run: bool, active_only: bool = False) -> int:
             print(json.dumps(out, indent=2, default=str))
             return 2
         out["teams"] = crosswalk_teams(db, list(teams.records)).summary()
-        report = crosswalk_players(db, list(players.records), season=settings.current_season)
+        report = crosswalk_players(
+            db, list(players.records), season=resolve_roster_season(db)
+        )
         out["players"] = report.summary() | {
             "ambiguous_examples": report.ambiguous[:10],
             "unresolved_examples": report.unresolved[:10],
@@ -388,8 +398,9 @@ def main() -> None:
 
         settings = get_settings()
         with SessionLocal() as db:
-            coverage = contract_coverage(db, settings.current_season, settings.cap_league_year)
-            uncovered = roster_side_unmatched(db, settings.current_season, settings.cap_league_year)
+            roster_season = resolve_roster_season(db)
+            coverage = contract_coverage(db, roster_season, settings.cap_league_year)
+            uncovered = roster_side_unmatched(db, roster_season, settings.cap_league_year)
         print(json.dumps({**coverage, "roster_players_without_salary": uncovered}, indent=2, default=str))
         print("\n" + summarize(coverage, uncovered))
     elif command == "data-status":
@@ -409,6 +420,7 @@ def main() -> None:
             )
         )
     elif command == "season-status":
+        from app.canonical.tool_seasons import roster_verification, tool_seasons
         from app.services.data_provenance import dataset_freshness, rollover_readiness
 
         with SessionLocal() as db:
@@ -417,10 +429,15 @@ def main() -> None:
             league_label = get_settings().season_context.league_season.label
             league = (
                 dataset_freshness(db, league_label)
-                if league_label != get_settings().current_season
+                if league_label not in (get_settings().current_season, readiness["tools_read_roster_season"])
                 else {}
             )
+            # R8.2: which season each kind of information is read from, and is the roster whole?
+            season_blocks = tool_seasons(db)
+            rosters = roster_verification(db)
         summary = {
+            "seasons": season_blocks,
+            "roster_verification": rosters,
             "readiness": readiness,
             "tools_read": {n: m.freshness.value for n, m in current.items()},
             "league_season": {n: m.freshness.value for n, m in league.items()},

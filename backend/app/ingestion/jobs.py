@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.canonical.calendar import ScopeState, state_of_scope, today_in_league
+from app.canonical.rosters import resolve_roster_season
 from app.canonical.seasons import Season, SeasonType, StatScope
 from app.config import get_settings
 from app.core.cache import get_cache
@@ -258,9 +259,16 @@ def sync_rosters(
     (``SnapshotRejectedError``).
     """
     settings = get_settings()
-    season = season or settings.current_season
+    # R8.2: rosters follow the league year, not the statistics season. This is the *preferred*
+    # roster season on purpose, not `resolve_roster_season(db)`: ingestion is what creates the
+    # snapshot, so it must not fall back to an older one.
+    season = season or settings.roster_season_preferred
     provider = provider or get_provider()
     with sync_run(db, job_name) as run:
+        # Committed before anything can fail, so a rejected or failed run still says which
+        # season's roster it was refreshing (the freshness report attributes runs by this).
+        run.detail = {"season": season}
+        db.commit()
         rows = _fetch_rows("rosters", lambda: provider.fetch_rosters(season), season=season)
         teams = _team_map(db)
         players = _player_map(db)
@@ -734,7 +742,7 @@ def sync_contracts(db: Session) -> int:
             # Report coverage even with no provider: the gap is the point, and an
             # operator should be able to see it before deciding to import anything.
             coverage = contract_coverage(
-                db, settings.current_season, settings.cap_league_year
+                db, resolve_roster_season(db), settings.cap_league_year
             )
             run.detail = {
                 "provider": None,
@@ -749,7 +757,7 @@ def sync_contracts(db: Session) -> int:
         # Tiered identity resolution; see app/ingestion/identity.py. The old join was
         # `{full_name.lower(): p}` over 5,121 players with no disambiguation, so for the
         # 38 duplicated names a coin flip decided which player got the contract.
-        index = PlayerIdentityIndex(db, settings.current_season)
+        index = PlayerIdentityIndex(db, resolve_roster_season(db))
         now = datetime.now(UTC)
         matched = 0
         unmatched: list[str] = []
@@ -839,8 +847,9 @@ def sync_contracts(db: Session) -> int:
         # Coverage is measured from the ROSTER side, after the write. A provider-side
         # match rate can read 98 % while the question the product needs answered — can
         # we compute this team's payroll — is 60 %.
-        coverage = contract_coverage(db, settings.current_season, settings.cap_league_year)
-        uncovered = roster_side_unmatched(db, settings.current_season, settings.cap_league_year)
+        roster_season = resolve_roster_season(db)
+        coverage = contract_coverage(db, roster_season, settings.cap_league_year)
+        uncovered = roster_side_unmatched(db, roster_season, settings.cap_league_year)
         run.rows_written = matched
         run.detail = {
             "provider": contract_provider.name,
@@ -869,8 +878,12 @@ def prepare_league_season(db: Session, provider=None) -> int:
     It runs under its own job name (``prepare_league_rosters``): a roster that NBA.com has not
     published yet must not mark the dataset the tools are *reading* as failing.
     """
-    context = get_settings().season_context
-    if not context.analysis_is_baseline:
+    settings = get_settings()
+    context = settings.season_context
+    # R8.2: the tools' own roster season is refreshed by `sync_rosters`. This only has work left
+    # when the league's season is *not* the one the tools read rosters from (a pinned historical
+    # session) — the incoming roster is then staged under its own job name.
+    if not context.analysis_is_baseline or context.league_season.label == settings.roster_season_preferred:
         return 0
     return sync_rosters(
         db, context.league_season.label, provider, job_name="prepare_league_rosters"

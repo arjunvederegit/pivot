@@ -1129,8 +1129,13 @@ def preflight(
             "live. Before the trial, run `make link-balldontlie DRY=1` with a FREE key: it "
             "verifies the key, the API path prefix (/nba/v1 vs /v1) and pagination at no cost"
         )
-    if datasets["rosters"].needs_attention:
-        warnings.append(f"rosters for {comparison} are {datasets['rosters'].freshness.value}")
+    # R8.2: judge the roster the harness will actually compare against (the staged league-season
+    # one in the summer), not the comparison season's history.
+    roster_meta = (
+        datasets["rosters"] if roster_season == comparison else dataset_freshness(db, roster_season)["rosters"]
+    )
+    if roster_meta.needs_attention:
+        warnings.append(f"rosters for {roster_season} are {roster_meta.freshness.value}")
     if datasets["contracts"].freshness.value == "missing":
         warnings.append(
             "no contract snapshot is loaded: P9 (coverage) will run, P9b (agreement) will be "

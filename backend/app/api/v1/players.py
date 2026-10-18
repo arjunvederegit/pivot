@@ -4,9 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas import PlayerOut, Provenance, describe_providers
 from app.canonical.provenance import build_source_meta
-from app.canonical.rosters import current_roster_clause, current_team_of
+from app.canonical.rosters import current_roster_clause, current_team_of, resolve_roster_season
 from app.canonical.seasons import SeasonType
 from app.canonical.stats import UnknownStatTypeError, spec_for
+from app.canonical.tool_seasons import tool_seasons
 from app.config import get_settings
 from app.core.errors import NotFoundError
 from app.db.base import get_db
@@ -27,17 +28,18 @@ from app.services.impact_reference import impact_reference
 router = APIRouter(prefix="/players", tags=["players"])
 
 
-def _current_team(db: Session, player_id: str) -> Team | None:
-    """The player's current-season team, through the shared roster definition.
+def _current_team(db: Session, player_id: str, roster_season: str | None = None) -> Team | None:
+    """The player's current team (R8.2: on the *roster* season), through the shared roster definition.
 
     A player who appears on two current rosters is a contradiction, not a coin flip: this
     returns ``None`` for him (the detail endpoint reports ``membership_status: conflict``).
+    Pass ``roster_season`` when looping, so the season is resolved once rather than per row.
     """
-    return current_team_of(db, player_id, explain_absence=False).team
+    return current_team_of(db, player_id, roster_season, explain_absence=False).team
 
 
-def _player_out(db: Session, player: Player) -> PlayerOut:
-    team = _current_team(db, player.id)
+def _player_out(db: Session, player: Player, roster_season: str | None = None) -> PlayerOut:
+    team = _current_team(db, player.id, roster_season)
     from app.api.v1.teams import _team_out
 
     return PlayerOut(
@@ -65,7 +67,7 @@ def list_players(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> dict:
-    settings = get_settings()
+    roster_season = resolve_roster_season(db)
     stmt = select(Player)
     if active_only:
         stmt = stmt.where(Player.is_active)
@@ -73,7 +75,7 @@ def list_players(
         stmt = stmt.where(func.lower(Player.full_name).contains(q.lower()))
     if team_id or rostered_only:
         roster_stmt = select(RosterEntry.player_id).where(
-            current_roster_clause(settings.current_season)
+            current_roster_clause(roster_season)
         )
         if team_id:
             roster_stmt = roster_stmt.where(RosterEntry.team_id == team_id)
@@ -84,7 +86,9 @@ def list_players(
         "total": total,
         "limit": limit,
         "offset": offset,
-        "players": [_player_out(db, p).model_dump() for p in players],
+        # R8.2: `current_team` on every player is his team in this roster season.
+        "roster_season": roster_season,
+        "players": [_player_out(db, p, roster_season).model_dump() for p in players],
     }
 
 
@@ -158,10 +162,13 @@ def get_player(player_id: str, db: Session = Depends(get_db)) -> dict:
                 }
             )
 
-    membership = current_team_of(db, player.id, settings.current_season)
+    membership = current_team_of(db, player.id)
+    seasons = tool_seasons(db, roster_season=membership.season)
     return {
-        "player": _player_out(db, player).model_dump(),
+        "player": _player_out(db, player, membership.season).model_dump(),
         "membership_status": membership.status,
+        "roster_season": membership.season,
+        "season_context": seasons,
         "data_status": {"roster": membership.meta.model_dump(mode="json")},
         "impact": {
             "tei": round(impact.tei, 2),
@@ -175,6 +182,9 @@ def get_player(player_id: str, db: Session = Depends(get_db)) -> dict:
             else None,
             "minutes_estimate": impact.minutes_estimate,
             "model": f"{impact_model.algorithm} ({impact_model.version})" if impact_model else None,
+            # R8.2: the season whose statistics this estimate was built from — not the roster
+            # season, and not the team he plays for now.
+            "estimate_season": impact.season,
             "note": "Pivot Estimated Impact — a portfolio-model estimate, not a "
             "proprietary metric. See /methodology.",
         }
@@ -308,10 +318,10 @@ def list_season_totals(season: str, db: Session = Depends(get_db)) -> dict:
             PlayerSeasonStats.stat_type == "totals",
         )
     ).all()
-    settings = get_settings()
+    roster_season = resolve_roster_season(db)
     roster_team: dict[str, str] = {}
     for entry in db.scalars(
-        select(RosterEntry).where(current_roster_clause(settings.current_season))
+        select(RosterEntry).where(current_roster_clause(roster_season))
     ).all():
         roster_team[entry.player_id] = entry.team.abbreviation
     # The team each total was actually accumulated with. `team_abbr` below is the player's
@@ -356,6 +366,9 @@ def list_season_totals(season: str, db: Session = Depends(get_db)) -> dict:
         )
     return {
         "season": season,
+        # R8.2: `team_abbr` is the player's team in this roster season; `season_team_abbr` is the
+        # team he accumulated `season`'s totals with. They differ for anyone who moved.
+        "roster_season": roster_season,
         "count": len(players),
         "players": players,
         "available": len(players) > 0,

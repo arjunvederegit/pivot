@@ -48,9 +48,67 @@ def resolve_season(season: str | Season | None = None) -> str:
     return Season.coerce(season if season is not None else get_settings().current_season).label
 
 
+@dataclass(frozen=True)
+class RosterSeasonChoice:
+    """Which season's roster the tools read, and whether that is the one they wanted."""
+
+    season: str
+    #: The season rosters *should* come from (``Settings.roster_season_preferred``).
+    preferred: str
+    #: True when no current snapshot exists for ``preferred`` yet and an earlier one is served
+    #: instead. The caller must say so: it is last season's roster, not this one's.
+    fell_back: bool
+    reason: str | None = None
+
+
+def choose_roster_season(db: Session, season: str | Season | None = None) -> RosterSeasonChoice:
+    """R8.2. The roster season to read: independent of the statistics season.
+
+    An explicit ``season`` is honoured as given (a historical session asks for what it asks for).
+    Otherwise the preferred roster season is used — the league year, not the analysis season — so a
+    roster is **not** held back to last season's because this season's statistics do not exist.
+    The one thing that can hold it back is the roster itself: when no current snapshot has been
+    ingested for the preferred season, the most recent earlier snapshot is served and the choice
+    says so (``fell_back``) rather than presenting an empty roster or a stale one unlabelled.
+    """
+    if season is not None:
+        label = Season.coerce(season).label
+        return RosterSeasonChoice(label, label, False)
+    preferred = Season.coerce(get_settings().roster_season_preferred).label
+    best = db.scalar(
+        select(RosterEntry.season)
+        .where(RosterEntry.is_current, RosterEntry.season <= preferred)
+        .order_by(RosterEntry.season.desc())
+        .limit(1)
+    )
+    if best is None or best == preferred:
+        return RosterSeasonChoice(preferred, preferred, False)
+    return RosterSeasonChoice(
+        best,
+        preferred,
+        True,
+        f"no current {preferred} roster snapshot has been ingested; showing the {best} snapshot",
+    )
+
+
+def resolve_roster_season(db: Session, season: str | Season | None = None) -> str:
+    """The roster season label (see ``choose_roster_season``)."""
+    return choose_roster_season(db, season).season
+
+
 def current_roster_clause(season: str | Season | None = None) -> ColumnElement[bool]:
-    """``RosterEntry`` rows that are the latest snapshot for ``season``."""
-    return and_(RosterEntry.season == resolve_season(season), RosterEntry.is_current)
+    """``RosterEntry`` rows that are the latest snapshot for ``season``.
+
+    R8.2: with no ``season`` this is the *preferred roster season*, not the statistics season.
+    Callers with a session should pass ``resolve_roster_season(db)`` so a missing snapshot falls
+    back visibly rather than matching no rows.
+    """
+    label = (
+        Season.coerce(season).label
+        if season is not None
+        else Season.coerce(get_settings().roster_season_preferred).label
+    )
+    return and_(RosterEntry.season == label, RosterEntry.is_current)
 
 
 @dataclass
@@ -76,8 +134,13 @@ def current_roster(
     order_by: Any = None,
     now: datetime | None = None,
 ) -> RosterSnapshot:
-    """The current-season roster for one team (or the whole league), with its provenance."""
-    label = resolve_season(season)
+    """The current roster for one team (or the whole league), with its provenance.
+
+    R8.2: ``season`` defaults to the *roster* season (``resolve_roster_season``), not the
+    statistics season.
+    """
+    choice = choose_roster_season(db, season)
+    label = choice.season
     stmt = (
         select(RosterEntry)
         .options(joinedload(RosterEntry.player))
@@ -106,6 +169,8 @@ def current_roster(
         notes=notes,
         now=now,
     )
+    if choice.reason:
+        meta.notes.append(choice.reason)
     if team_id is None and expected:
         meta.expected_count = expected
         meta.completeness = round(min(len({e.team_id for e in entries}) / expected, 1.0), 4)
@@ -149,7 +214,7 @@ def current_team_of(
     that the player is a free agent or retired — the snapshot may be stale or incomplete,
     and the attached ``meta`` says how stale.
     """
-    label = resolve_season(season)
+    label = resolve_roster_season(db, season)
     entries = list(
         db.scalars(
             select(RosterEntry)
@@ -208,7 +273,7 @@ def roster_as_of(
     there?" only from Pivot's first snapshot onward. Before that the honest answer is *unknown*,
     not *empty*, and the returned ``meta`` says so rather than presenting zero players as a roster.
     """
-    label = resolve_season(season)
+    label = resolve_roster_season(db, season)
     moment = as_of if as_of.tzinfo else as_of.replace(tzinfo=UTC)
     stmt = (
         select(RosterEntry)

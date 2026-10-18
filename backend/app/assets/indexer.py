@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.assets.normalize import DERIVED_DIRNAME, normalize_logo
 from app.canonical.identity import TEAM_CODE_ALIASES_BY_SOURCE
-from app.canonical.rosters import current_roster_clause
+from app.canonical.rosters import current_roster_clause, resolve_roster_season
 from app.config import get_settings
 from app.core.logging import get_logger
 from app.db.models import DataQualityIssue, MediaAsset, Player, RosterEntry, Team
@@ -283,6 +283,7 @@ def index_assets(db: Session) -> dict:
 def coverage(db: Session) -> dict:
     """Coverage of matched assets: logos over all teams (30 in production), photos
     over currently rostered players (RosterEntry.is_current)."""
+    roster_season = resolve_roster_season(db)
     teams_total = db.scalar(select(func.count(Team.id))) or 0
     teams_with_logo = (
         db.scalar(
@@ -303,7 +304,7 @@ def coverage(db: Session) -> dict:
     rostered_players = (
         db.scalar(
             select(func.count(func.distinct(RosterEntry.player_id))).where(
-                current_roster_clause()
+                current_roster_clause(roster_season)
             )
         )
         or 0
@@ -314,7 +315,7 @@ def coverage(db: Session) -> dict:
             .select_from(RosterEntry)
             .join(MediaAsset, MediaAsset.player_id == RosterEntry.player_id)
             .where(
-                current_roster_clause(),
+                current_roster_clause(roster_season),
                 MediaAsset.entity_type == "player",
                 MediaAsset.is_primary,
             )

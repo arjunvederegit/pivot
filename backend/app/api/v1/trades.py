@@ -86,7 +86,12 @@ def evaluate_trade(payload: EvaluateRequest, db: Session = Depends(get_db)) -> d
         )
         for team_id in payload.team_ids
     }
-    return {"legality": legality, "evaluations": evaluations}
+    return {
+        "legality": legality,
+        "evaluations": evaluations,
+        # R8.2: which season each input came from (roster / statistics / needs / contracts).
+        "season_basis": service.season_basis(),
+    }
 
 
 @router.post(

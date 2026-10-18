@@ -16,7 +16,8 @@ import Link from "next/link";
 import { height } from "@/lib/format";
 import { QUALIFY_MIN } from "@/lib/playerStats";
 import { teamIdentity } from "@/lib/teamIdentity";
-import type { ArchetypeAssignment, Provenance, Team } from "@/lib/types";
+import type { ArchetypeAssignment, Provenance, SeasonContext, Team } from "@/lib/types";
+import { SeasonContextLine } from "@/components/season-context";
 import { PercentileFigure, useImpactPlacement } from "@/components/impact";
 import { PlayerPhoto, TeamLogo } from "@/components/media";
 import { Badge, ButtonLink, Skeleton, SourceRail } from "@/components/ui";
@@ -54,6 +55,7 @@ export function PlayerFileHeader({
   impact,
   archetype,
   age,
+  seasonContext,
   seasons,
   seasonsSource,
   seasonsError,
@@ -62,6 +64,8 @@ export function PlayerFileHeader({
   impact: PlayerImpact;
   archetype: ArchetypeAssignment | null;
   age: number | null;
+  /** R8.2: the roster / statistics seasons, so a new team never reads as having earned an old line. */
+  seasonContext?: SeasonContext;
   /** The player's season rows, oldest first; undefined while loading. */
   seasons: SeasonLine[] | undefined;
   /** Where the season rows came from — the rail names it beside the bio's source. */
@@ -126,6 +130,7 @@ export function PlayerFileHeader({
             <p className="mt-1.5 text-[12.5px] text-muted">
               {position ?? "Position not on file"}
             </p>
+            <SeasonContextLine context={seasonContext} className="mt-1" />
           </div>
 
           {/* name, role and status */}

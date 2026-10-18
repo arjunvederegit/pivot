@@ -65,9 +65,43 @@ export interface RosterPlayer {
   contract_type: string | null;
 }
 
+/**
+ * R8.2. Which season each kind of information is read from. `season` on a payload still names the
+ * statistics season; this block adds the roster season beside it. Optional everywhere: servers
+ * older than R8.2 do not send it, and the UI then says nothing rather than guessing.
+ */
+export interface SeasonContext {
+  roster: {
+    season: string;
+    status: string;
+    provisional: boolean;
+    fell_back: boolean;
+    snapshot_retrieved_at: string | null;
+  };
+  performance: {
+    season: string;
+    label: string;
+    is_baseline: boolean;
+    behind_roster_season: boolean;
+  };
+  contract: { season: string; state: "available" | "missing" };
+  notes: string[];
+}
+
+export interface SeasonBasis {
+  roster_season: string;
+  performance_season: string;
+  team_needs_season: string;
+  contract_season: string;
+  roster_differs_from_performance: boolean;
+  limitations: { component: string; reason: string; message: string }[];
+}
+
 export interface RosterResponse {
   team: Team;
   season: string;
+  roster_season?: string;
+  season_context?: SeasonContext;
   roster: RosterPlayer[];
   /** Human-readable upstream(s), derived from the rows — never assumed. */
   source: string;
@@ -268,6 +302,9 @@ export interface TeamEvaluation {
   outgoing: EvaluatedPlayer[];
   has_unmodeled_players?: boolean;
   unmodeled_players?: string[];
+  season_basis?: SeasonBasis;
+  /** Players arriving who are on no current roster in Pivot's snapshot — scored as available, unconfirmed. */
+  membership_warnings?: { player_id: string; name: string; message: string }[];
   evaluated_at: string;
 }
 
@@ -370,6 +407,8 @@ export interface ComparisonResponse {
 export interface DataHealth {
   generated_at: string;
   current_season: string;
+  /** R8.2: the season rosters are read from; `current_season` is the statistics season. */
+  roster_season?: string;
   cap_league_year: string;
   providers: Record<
     string,
@@ -448,7 +487,10 @@ export interface SeasonTotalsPlayer {
   nba_player_id: number;
   name: string;
   position: string | null;
+  /** The player's team in the ROSTER season (his current team). */
   team_abbr: string | null;
+  /** The team he accumulated this season's totals with; differs from `team_abbr` for anyone who moved. */
+  season_team_abbr?: string | null;
   gp: number;
   totals: Record<string, number | null>;
   per_game: Record<string, number | null>;
@@ -457,6 +499,7 @@ export interface SeasonTotalsPlayer {
 
 export interface SeasonTotalsResponse {
   season: string;
+  roster_season?: string;
   count: number;
   available: boolean;
   note: string | null;
@@ -875,6 +918,8 @@ export interface SkillCoverageEntry extends Measurement {
 export interface TeamProfile {
   team: { id: string; abbreviation: string; full_name: string };
   season: string;
+  roster_season?: string;
+  season_basis?: SeasonBasis;
   roster_size: number;
   skill_coverage: SkillCoverageEntry[];
   needs: ProfileNeedRow[];

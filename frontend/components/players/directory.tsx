@@ -181,6 +181,16 @@ export function DirectoryRow({
                 ·
               </span>
               <span className="truncate">{player.position ?? "—"}</span>
+              {/* R8.2: totals belong to the team they were earned with, not the current one. */}
+              {player.season_team_abbr && player.season_team_abbr !== player.team_abbr && (
+                <span
+                  className="shrink-0 text-faint"
+                  title={`These totals were accumulated with ${player.season_team_abbr}`}
+                  data-testid="totals-team"
+                >
+                  · totals with {player.season_team_abbr}
+                </span>
+              )}
             </span>
           </span>
         </span>

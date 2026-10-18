@@ -290,4 +290,6 @@ def test_a_second_evaluation_reuses_the_role_reference(db: Session, seeded_leagu
     service._league_role_reference()
     with counting(db) as counts:
         EvaluationService(db)._league_role_reference()
-    assert counts["n"] == 0
+    # R8.2: one query resolves the roster season (the cache key depends on it). The thirty-roster
+    # reference itself is not rebuilt, which is what this pins.
+    assert counts["n"] <= 1

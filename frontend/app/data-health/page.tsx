@@ -241,7 +241,10 @@ export default function DataHealthPage() {
           <Badge status={headline.status}>{headline.text}</Badge>
           {/* Badges, not adjacent eyebrows: two caps runs side by side read as one phrase
               ("2025-26 SEASON CAP YEAR 2026-27"). */}
-          <Badge status="info">{data.current_season} season</Badge>
+          <Badge status="info">{data.current_season} statistics</Badge>
+          {data.roster_season && data.roster_season !== data.current_season && (
+            <Badge status="info">{data.roster_season} rosters</Badge>
+          )}
           <Badge status="info">cap year {data.cap_league_year}</Badge>
           <span className="text-[12px] text-faint">generated {formatDate(data.generated_at)}</span>
         </>,

@@ -281,6 +281,10 @@ class IntelligenceService:
                 "full_name": team.full_name,
             },
             "season": season,
+            # R8.2: the roster is read from the roster season; `season` is where the statistics,
+            # roles and needs below were measured. `season_basis` says what that limits.
+            "roster_season": self._eval.roster_season,
+            "season_basis": self._eval.season_basis(),
             "roster_size": len(roster),
             "skill_coverage": self._skill_coverage(roster),
             "needs": need_rows,

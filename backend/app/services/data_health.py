@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.canonical.calendar import season_context, today_in_league
 from app.canonical.provenance import Freshness
+from app.canonical.rosters import resolve_roster_season
 from app.config import get_settings
 from app.core.cache import get_cache
 from app.core.provenance import upstream_for
@@ -434,6 +435,8 @@ def data_health(db: Session) -> dict:
     return {
         "generated_at": now.isoformat(),
         "current_season": settings.current_season,
+        # R8.2: `current_season` stays the statistics season; the roster season is stated beside it.
+        "roster_season": resolve_roster_season(db),
         "season_context": ctx.describe(),
         "cap_league_year": settings.cap_league_year,
         "source_cards": source_cards,

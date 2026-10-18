@@ -65,7 +65,12 @@ export default function HomePage() {
     <div className="mx-auto w-full max-w-[1560px] px-4 py-6 sm:px-6 lg:px-8 lg:py-7">
       <header className="mb-6">
         <div className="eyebrow text-faint">
-          Overview{health ? ` · ${health.current_season} season` : ""}
+          Overview
+          {health
+            ? health.roster_season && health.roster_season !== health.current_season
+              ? ` · ${health.roster_season} rosters · ${health.current_season} statistics`
+              : ` · ${health.current_season} season`
+            : ""}
         </div>
         <h1 className="title-xl mt-2.5 text-foreground">Workspace</h1>
       </header>

@@ -334,14 +334,34 @@ class TestToolsStayConsistentAcrossTheSeasonRollover:
         history = client.get(f"/api/v1/players/{rookie.id}/stats").json()
         assert history["seasons"] == [] or all(s["season"] != "2026-27" for s in history["seasons"])
 
-    def test_before_the_flip_nothing_about_2026_27_leaks_into_the_tools(self, client, db, league, monkeypatch):
-        """The staged 2026-27 roster is invisible while the tools read 2025-26."""
+    def test_before_the_stats_flip_the_roster_is_already_2026_27_and_the_statistics_are_not(
+        self, client, db, league, monkeypatch
+    ):
+        """R8.2 (replaces R8.1's "nothing leaks"): rosters follow the league year, statistics the rollover.
+
+        On 18 Oct 2026 the tools read 2025-26 *statistics* (the rollover is 3 Nov) but the 2026-27
+        *roster*. A player staged on a new team for 2026-27 is on that team, and the statistics
+        beside him are still named for the season they come from.
+        """
         from app.config import get_settings
 
-        db.add(RosterEntry(team_id=league["team_b"].id, player_id=league["roster_a"][0].id,
+        monkeypatch.setattr("app.canonical.calendar.today_in_league", lambda now=None: date(2026, 10, 18))
+        mover = league["roster_a"][0]
+        db.add(RosterEntry(team_id=league["team_b"].id, player_id=mover.id,
                            season="2026-27", is_current=True, source_retrieved_at=datetime.now(UTC)))
         db.commit()
         get_settings.cache_clear()
-        overview = client.get(f"/api/v1/teams/{league['team_a'].id}/roster").json()
-        assert overview["season"] == "2025-26"
-        assert league["roster_a"][0].id in {p["player_id"] for p in overview["roster"]}
+        try:
+            a = client.get(f"/api/v1/teams/{league['team_a'].id}/roster").json()
+            b = client.get(f"/api/v1/teams/{league['team_b'].id}/roster").json()
+            assert a["season"] == "2025-26", "the statistics season has not rolled over"
+            assert a["roster_season"] == b["roster_season"] == "2026-27"
+            assert mover.id not in {p["player_id"] for p in a["roster"]}
+            assert mover.id in {p["player_id"] for p in b["roster"]}
+            context = b["season_context"]
+            assert context["roster"]["season"] == "2026-27"
+            assert context["performance"]["season"] == "2025-26"
+            assert context["performance"]["is_baseline"] is True
+            assert context["roster"]["provisional"] is True
+        finally:
+            get_settings.cache_clear()

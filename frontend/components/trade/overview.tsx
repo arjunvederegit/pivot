@@ -130,7 +130,8 @@ function ImpactSide({
         </p>
         {standing && (
           <p className="mt-0.5 text-[12px] text-faint">
-            Current record <span className="numeral text-muted">{standing.wins}–{standing.losses}</span>
+            {/* R8.2: the record belongs to the statistics season, not the roster being shown. */}
+            {detail?.season ?? "Latest"} record <span className="numeral text-muted">{standing.wins}–{standing.losses}</span>
           </p>
         )}
       </div>

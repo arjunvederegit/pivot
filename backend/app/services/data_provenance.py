@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.canonical.calendar import SeasonContext, season_context, today_in_league
 from app.canonical.provenance import Freshness, SourceMeta, source_meta_from_aggregate
-from app.canonical.rosters import current_roster_clause, resolve_season
+from app.canonical.rosters import current_roster_clause, resolve_roster_season, resolve_season
 from app.canonical.seasons import Season, SeasonType
 from app.canonical.stats import spec_for
 from app.config import get_settings
@@ -93,20 +93,51 @@ def _last_refresh(db: Session, job: str) -> dict[str, Any] | None:
     }
 
 
+def _last_roster_refresh(db: Session, season: str) -> dict[str, Any] | None:
+    """The newest roster refresh *for ``season``*, whichever job ran it.
+
+    R8.2: the tools' roster season is refreshed by ``sync_rosters`` and, before R8.2, the incoming
+    season by ``prepare_league_rosters``. Rosters staged under the old job name are still the
+    roster the tools read once the roster season moves, so both names are considered and the
+    season each run recorded in its detail decides which belongs here.
+    """
+    runs = db.scalars(
+        select(DataSyncRun)
+        .where(DataSyncRun.job_name.in_(("sync_rosters", "prepare_league_rosters")))
+        .order_by(DataSyncRun.started_at.desc())
+        .limit(40)
+    ).all()
+    for run in runs:
+        detail = run.detail if isinstance(run.detail, dict) else {}
+        recorded = detail.get("season")
+        # Runs recorded before R8.2 may carry no season; those were the statistics-season roster
+        # refresh (`CURRENT_SEASON` was the only roster season), so they belong to that season only.
+        if recorded is None and run.job_name == "sync_rosters":
+            recorded = get_settings().current_season
+        if recorded == season:
+            return _last_refresh(db, run.job_name)
+    return None
+
+
 def _attach_refresh(
-    db: Session, metas: dict[str, SourceMeta], *, rosters_job: str = "sync_rosters"
+    db: Session, metas: dict[str, SourceMeta], *, roster_season: str | None = None
 ) -> None:
+    """Attach the latest refresh attempt to every dataset, so a failing job is visible even while the
+    stored rows still read ``fresh``."""
     for name, meta in metas.items():
-        job = rosters_job if name == "rosters" else REFRESH_JOB.get(name)
-        if job is None:
-            continue
-        info = _last_refresh(db, job)
+        info = (
+            _last_roster_refresh(db, roster_season)
+            if name == "rosters" and roster_season
+            else _last_refresh(db, REFRESH_JOB[name])
+            if name in REFRESH_JOB
+            else None
+        )
         meta.last_refresh = info
         if info and info["status"] == "failed":
             meta.refresh_failing = True
             meta.notes.append(
-                f"the latest {job} run failed ({info['error']}); the rows above are from the last "
-                "successful refresh and have been left untouched"
+                f"the latest {info['job']} run failed ({info['error']}); the rows above are from the "
+                "last successful refresh and have been left untouched"
             )
 
 
@@ -119,7 +150,12 @@ def dataset_freshness(
     ``app.canonical.provenance.assess_lifecycle``.
     """
     settings = get_settings()
+    explicit = season is not None
     season = resolve_season(season)
+    # R8.2: rosters are read from the roster season and everything else from the performance
+    # season — two clocks. An explicit ``season`` (a historical view, or "the league season" in
+    # `make season-status`) means that season for both.
+    roster_season = resolve_roster_season(db, season if explicit else None)
     now = now or datetime.now(UTC)
     ctx = season_context(today_in_league(now), grace_days=settings.season_rollover_grace_days)
     regular = SeasonType.REGULAR.value
@@ -128,10 +164,12 @@ def dataset_freshness(
 
     metas: dict[str, SourceMeta] = {}
 
-    count, oldest, newest, providers = _aggregate(db, RosterEntry, current_roster_clause(season))
+    count, oldest, newest, providers = _aggregate(db, RosterEntry, current_roster_clause(roster_season))
     covered_teams = (
         db.scalar(
-            select(func.count(distinct(RosterEntry.team_id))).where(current_roster_clause(season))
+            select(func.count(distinct(RosterEntry.team_id))).where(
+                current_roster_clause(roster_season)
+            )
         )
         or 0
     )
@@ -142,7 +180,7 @@ def dataset_freshness(
         oldest=oldest,
         newest=newest,
         providers=providers,
-        season=season,
+        season=roster_season,
         expected_count=team_count or None,
         notes=notes,
         **common,
@@ -171,7 +209,9 @@ def dataset_freshness(
 
     rostered = (
         db.scalar(
-            select(func.count(distinct(RosterEntry.player_id))).where(current_roster_clause(season))
+            select(func.count(distinct(RosterEntry.player_id))).where(
+                current_roster_clause(roster_season)
+            )
         )
         or 0
     )
@@ -186,7 +226,7 @@ def dataset_freshness(
         db.scalar(
             select(func.count(distinct(PlayerSeasonStats.player_id)))
             .join(RosterEntry, RosterEntry.player_id == PlayerSeasonStats.player_id)
-            .where(*base_where, current_roster_clause(season))
+            .where(*base_where, current_roster_clause(roster_season))
         )
         or 0
     )
@@ -201,8 +241,8 @@ def dataset_freshness(
         basis=spec.basis,
         notes=[
             spec.description,
-            f"{with_stats} of {rostered} currently rostered players have a base row; "
-            "the rest are absent, not zero",
+            f"{with_stats} of {rostered} players on the {roster_season} roster have a {season} base "
+            "row; the rest (rookies, new signings, players who did not play) are absent, not zero",
         ],
         **common,
     )
@@ -254,7 +294,7 @@ def dataset_freshness(
             .select_from(Contract)
             .join(ContractYear, ContractYear.contract_id == Contract.id)
             .join(RosterEntry, RosterEntry.player_id == Contract.player_id)
-            .where(ContractYear.season == league_year, current_roster_clause(season))
+            .where(ContractYear.season == league_year, current_roster_clause(roster_season))
         )
         or 0
     )
@@ -274,7 +314,7 @@ def dataset_freshness(
         meta.expected_count = rostered
         meta.completeness = round(min(with_salary / rostered, 1.0), 4)
         meta.notes.append(
-            f"{with_salary} of {rostered} currently rostered players have a {league_year} salary"
+            f"{with_salary} of {rostered} players on the {roster_season} roster have a {league_year} salary"
         )
     metas["contracts"] = meta
 
@@ -297,11 +337,7 @@ def dataset_freshness(
 
     metas["historical_stats"] = _historical_stats_meta(db, season, ctx, now)
     # Rosters for a season the tools are not reading yet are staged by their own job.
-    _attach_refresh(
-        db,
-        metas,
-        rosters_job="sync_rosters" if season == settings.current_season else "prepare_league_rosters",
-    )
+    _attach_refresh(db, metas, roster_season=roster_season)
     return metas
 
 
@@ -445,6 +481,10 @@ def rollover_readiness(db: Session, *, now: datetime | None = None) -> dict[str,
             pinned and Season.parse(settings.pinned_season.strip()) < ctx.analysis_season
         ),
         "tools_read_season": settings.current_season,
+        # R8.2: the two clocks. Rosters follow the league year; statistics follow the rollover.
+        "tools_read_roster_season": resolve_roster_season(db),
+        "roster_season_preferred": settings.roster_season_preferred,
+        "pinned_roster_season": settings.pinned_roster_season.strip() or None,
         "league_season": league,
         "checks": checks,
         "missing_before_rollover": blockers if ctx.analysis_is_baseline or pinned else [],

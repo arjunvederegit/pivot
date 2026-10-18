@@ -4,9 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas import Provenance, RosterPlayerOut, TeamOut, describe_providers
 from app.canonical.provenance import build_source_meta
-from app.canonical.rosters import current_roster, current_roster_clause
+from app.canonical.rosters import current_roster, current_roster_clause, resolve_roster_season
 from app.canonical.seasons import SeasonType
 from app.canonical.stat_access import player_stat_rows
+from app.canonical.tool_seasons import tool_seasons
 from app.cba import resolver
 from app.config import get_settings
 from app.core.errors import NotFoundError
@@ -14,6 +15,7 @@ from app.db.base import get_db
 from app.db.models import (
     ContractYear,
     ModelVersion,
+    Player,
     PlayerArchetype,
     PlayerImpactEstimate,
     RosterEntry,
@@ -102,6 +104,8 @@ def get_team(team_id: str, db: Session = Depends(get_db)) -> dict:
         "stats": stats,
         "stats_retrieved_at": stats_retrieved_at.isoformat() if stats_retrieved_at else None,
         "data_status": {"team_stats": team_stat_meta.model_dump(mode="json")},
+        # R8.2: `season` above is the statistics season. The roster season is stated beside it.
+        "season_context": tool_seasons(db),
     }
 
 
@@ -111,6 +115,7 @@ def get_roster(team_id: str, db: Session = Depends(get_db)) -> dict:
     team = _get_team(db, team_id)
     snapshot = current_roster(db, team.id, order_by=RosterEntry.position)
     entries = snapshot.entries
+    seasons = tool_seasons(db, roster_season=snapshot.season)
 
     impact_model = db.scalar(
         select(ModelVersion).where(
@@ -178,7 +183,11 @@ def get_roster(team_id: str, db: Session = Depends(get_db)) -> dict:
         )
     return {
         "team": _team_out(team).model_dump(),
+        # R8.2: `season` keeps naming the statistics season (archetypes, impact estimates);
+        # `roster_season` is the season the membership belongs to. They differ in the summer.
         "season": settings.current_season,
+        "roster_season": snapshot.season,
+        "season_context": seasons,
         "roster": players,
         # Read off the rows, not assumed. A demo-seeded roster says so here.
         "source": describe_providers(providers),
@@ -219,9 +228,28 @@ def get_needs(team_id: str, db: Session = Depends(get_db)) -> dict:
         .where(TeamNeed.team_id == team.id, TeamNeed.season == settings.current_season)
         .order_by(TeamNeed.severity.desc())
     ).all()
+    seasons = tool_seasons(db)
+    roster_season = seasons["roster"]["season"]
+    basis_differs = roster_season != settings.current_season
     return {
         "team_id": team.id,
         "season": settings.current_season,
+        "roster_season": roster_season,
+        "season_context": seasons,
+        # Needs are percentile rules over the team's statistics *and the roster that produced
+        # them*. After a roster turns over they still describe that earlier team.
+        "needs_basis": {
+            "season": settings.current_season,
+            "describes": f"the {settings.current_season} team (its statistics and roster)",
+            "matches_current_roster": not basis_differs,
+            "note": (
+                f"These needs were measured on the {settings.current_season} team. The current "
+                f"roster is {roster_season}, so they may not describe it; they are not recomputed "
+                "for the new roster."
+            )
+            if basis_differs
+            else None,
+        },
         "computed": bool(needs),
         "note": None
         if needs
@@ -296,8 +324,38 @@ def get_player_season_stats(team_id: str, db: Session = Depends(get_db)) -> dict
         db, player_ids, season=settings.current_season, stat_type="base"
     )
     by_player = result.rows
+    seasons = tool_seasons(db, roster_season=snapshot.season)
+    # R8.2: a statistic belongs to the team it was earned with. Name that team beside each line, so
+    # a player who moved is not presented as having produced this for his new one.
+    teams_by_id = {t.id: t for t in db.scalars(select(Team)).all()}
+    experience = {
+        p.id: p.years_experience
+        for p in db.scalars(select(Player).where(Player.id.in_(player_ids))).all()
+    }
+    attribution = {}
+    for pid in player_ids:
+        row = by_player.get(pid)
+        if row is None:
+            continue
+        stat_team = teams_by_id.get(row.team_id) if row.team_id else None
+        attribution[pid] = {
+            "stat_team_id": row.team_id,
+            "stat_team_abbreviation": stat_team.abbreviation if stat_team else None,
+            "with_current_team": None if row.team_id is None else row.team_id == team.id,
+        }
     return {
         "season": settings.current_season,
+        "roster_season": snapshot.season,
+        "season_context": seasons,
+        "stat_attribution": attribution,
+        "missing_reasons": {
+            pid: (
+                "rookie_no_nba_history"
+                if experience.get(pid) == 0
+                else "no_statistics_row_for_this_season"
+            )
+            for pid in result.missing_player_ids
+        },
         "stats": {
             pid: {
                 "GP": by_player[pid].games_played,
@@ -334,9 +392,10 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
 
     settings = get_settings()
     team = _get_team(db, team_id)
+    roster_season = resolve_roster_season(db)
     entries = db.scalars(
         select(RosterEntry).where(
-            RosterEntry.team_id == team.id, current_roster_clause(settings.current_season)
+            RosterEntry.team_id == team.id, current_roster_clause(roster_season)
         )
     ).all()
     roster_ids = {e.player_id: e.player.full_name for e in entries}
@@ -349,6 +408,8 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
         return {
             "team_id": team.id,
             "available": False,
+            "roster_season": roster_season,
+            "cap_league_year": settings.cap_league_year,
             "reason": (
                 "Contract data is configured but no contracts matched this roster yet — "
                 "run `make sync-data`."
@@ -413,6 +474,7 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
         "team_id": team.id,
         "available": True,
         "cap_league_year": settings.cap_league_year,
+        "roster_season": roster_season,
         "roster_size": len(roster_ids),
         "players_with_contracts": covered,
         "complete": covered == len(roster_ids),
