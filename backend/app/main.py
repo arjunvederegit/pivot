@@ -22,6 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app import __version__
 from app.api.v1 import (
     assets,
+    assistant,
     comparisons,
     health,
     intelligence,
@@ -117,6 +118,10 @@ app.add_exception_handler(StarletteHTTPException, http_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 
 API = "/api/v1"
+# Ask Pivot's Stop button: `observability` above is a BaseHTTPMiddleware, behind which a
+# route never sees the client disconnect. This pure-ASGI middleware records it on the scope
+# for POST /assistant/ask only, and must be added last so it sits outermost (see its doc).
+app.add_middleware(assistant.AskDisconnectMiddleware, path=f"{API}/assistant/ask")
 app.include_router(health.router, prefix=API)
 app.include_router(teams.router, prefix=API)
 app.include_router(players.router, prefix=API)
@@ -125,6 +130,9 @@ app.include_router(trades.router, prefix=API)
 app.include_router(comparisons.router, prefix=API)
 app.include_router(intelligence.router, prefix=API)
 app.include_router(assets.router, prefix=API)
+# A disabled deployment does not advertise the experimental routes (read at import, like
+# every other setting here): /status still answers `enabled: false`, but nothing is listed.
+app.include_router(assistant.router, prefix=API, include_in_schema=settings.assistant_enabled)
 
 
 @app.get("/")

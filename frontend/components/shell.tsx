@@ -20,8 +20,10 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
 import { dataHealthSchema } from "@/lib/schemas";
 import type { DataHealth, Team } from "@/lib/types";
+import { ASSISTANT_ENABLED } from "@/lib/features";
 import { BrandMark, BrandWordmark } from "@/components/brand";
 import {
+  IconAsk,
   IconCap,
   IconClose,
   IconCollapse,
@@ -47,6 +49,8 @@ interface NavLink {
   /** Other path prefixes that belong to this destination (a player page is Scouting). */
   also?: string[];
   icon: (p: { size?: number; className?: string }) => React.ReactNode;
+  /** A tiny uppercase pill beside the label ("Lab"), hidden in the collapsed rail. */
+  badge?: string;
 }
 
 /** The workspace: where a front office looks before it acts. */
@@ -70,14 +74,29 @@ const SECONDARY: NavLink[] = [
   { href: "/about", label: "About Pivot", hint: "What Pivot is, and what it will not ship", icon: IconInfo },
 ];
 
+/**
+ * Experimental surfaces, behind a build-time flag (`lib/features.ts`). Ask Pivot answers
+ * from a FICTIONAL corpus; a build without NEXT_PUBLIC_ASSISTANT_ENABLED=true has no nav
+ * entry for it and serves the ordinary 404 at its route.
+ */
+const LAB: NavLink[] = [
+  { href: "/assistant", label: "Ask Pivot", hint: "Experimental research partner — fictional data", icon: IconAsk, badge: "Lab" },
+];
+
 const GROUPS = [
   { label: "Workspace", items: PRIMARY },
   { label: "Decisions", items: GM_LAB },
+  ...(ASSISTANT_ENABLED ? [{ label: "Intelligence", items: LAB }] : []),
   { label: "Reference", items: SECONDARY },
 ];
 
 /** Every destination, for the mobile drawer. */
-export const ALL_DESTINATIONS: NavLink[] = [...PRIMARY, ...GM_LAB, ...SECONDARY];
+export const ALL_DESTINATIONS: NavLink[] = [
+  ...PRIMARY,
+  ...GM_LAB,
+  ...(ASSISTANT_ENABLED ? LAB : []),
+  ...SECONDARY,
+];
 
 function isActive(pathname: string, link: NavLink) {
   const own = link.exact
@@ -424,7 +443,12 @@ function NavItems({
                       size={19}
                       className={active ? "text-signal" : "text-faint group-hover:text-muted"}
                     />
-                    <span className={collapsed ? "sr-only" : "truncate"}>{item.label}</span>
+                    <span className={collapsed ? "sr-only" : "min-w-0 truncate"}>{item.label}</span>
+                    {item.badge && !collapsed && (
+                      <span className="ml-auto shrink-0 rounded-full border border-line px-1.5 py-px text-[10px] font-medium uppercase leading-[1.4] tracking-[0.1em] text-faint">
+                        {item.badge}
+                      </span>
+                    )}
                   </Link>
                 </li>
               );

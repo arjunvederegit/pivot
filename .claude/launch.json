@@ -24,6 +24,21 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "cd frontend && exec npm run dev"],
       "port": 3000
+    },
+    {
+      "name": "backend-assistant",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd backend && ASSISTANT_ENABLED=true exec .venv/bin/uvicorn app.main:app --reload --port 8000"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "frontend-assistant",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd frontend && NEXT_PUBLIC_ASSISTANT_ENABLED=true exec npm run dev -- --hostname 127.0.0.1"],
+      "port": 3000
     }
   ]
 }

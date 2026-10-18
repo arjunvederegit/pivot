@@ -34,6 +34,15 @@ dev = [
     "types-PyYAML",
     "types-Markdown",
 ]
+# Ask Pivot / Pivot Intelligence — the experimental synthetic research assistant. Optional:
+# nothing in the standard install, CI or the Docker image needs these, and the app imports
+# them lazily, so `pip install -e ".[dev]"` keeps working unchanged. Minimums are the
+# versions this was built and tested against (2026-10-17).
+assistant = [
+    "langchain-core>=1.6.12,<2",
+    "langchain-ollama>=1.1.0,<2",
+    "langsmith>=0.14.11,<1",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

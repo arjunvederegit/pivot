@@ -128,6 +128,17 @@ export function IconInfo(p: IconProps) {
   );
 }
 
+/** Ask Pivot: a question put to the record — a speech bubble holding a cited line. */
+export function IconAsk(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5h-7.2L7.5 20v-3.5H5A1.5 1.5 0 0 1 3.5 15V6.5A1.5 1.5 0 0 1 5 5Z" />
+      <path d="M7.5 9.2h9M7.5 12.3h5.2" />
+      <path d="M15.6 12.3h.9" />
+    </Svg>
+  );
+}
+
 export function IconSearch(p: IconProps) {
   return (
     <Svg {...p}>

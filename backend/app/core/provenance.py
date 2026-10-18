@@ -22,6 +22,9 @@ UPSTREAM_BY_PROVIDER: dict[str, str] = {
     "realgm_future_drafts": "RealGM (user-imported snapshot)",
     "local_assets": "Local asset index",
     "file": "User-imported file",
+    # Ask Pivot's research sandbox (app/assistant_rag). Fictional league, fictional players;
+    # it shares no table, id or name with the NBA data above.
+    "assistant_synthetic_corpus": "Fictional Ask Pivot research corpus (synthetic, not NBA data)",
 }
 
 UNKNOWN_UPSTREAM = "unknown source"

@@ -4,6 +4,13 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  experimental: {
+    // The /api/v1 rewrite is a proxy, and Next aborts proxied requests after 30 s by default
+    // with a bare 500. An Ask Pivot answer from a local model routinely takes 20-40 s (found
+    // in the live UI test: the backend finished in 30.2 s, the browser got a 500). 180 s sits
+    // above the backend's own 150 s answer budget, so the backend's enveloped 504 always wins.
+    proxyTimeout: 180_000,
+  },
   async rewrites() {
     return [
       {
