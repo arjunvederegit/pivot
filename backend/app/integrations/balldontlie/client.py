@@ -131,6 +131,9 @@ class BalldontlieClient:
         self._pacer = RequestPacer(TIER_LIMITS_PER_MINUTE[tier], sleep=sleep, clock=clock)
         self._http = httpx.Client(base_url=base_url, timeout=timeout, transport=transport)
         self.request_count = 0
+        #: Paginated reads that stopped before the end (page cap, repeated cursor). The evaluation
+        #: harness turns these into "incomplete" findings instead of letting a partial read pass.
+        self.truncations: list[str] = []
         #: True once any request has returned 2xx with this key (see the 401 note above).
         self.authenticated_ok = False
 
@@ -305,6 +308,7 @@ class BalldontlieClient:
                 )
                 break
             params["cursor"] = cursor
+        self.truncations.extend(f"{path}: {w}" for w in warnings)
         return PageResult(records, pages, self.request_count - requests_before, warnings)
 
 

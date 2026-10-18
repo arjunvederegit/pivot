@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.canonical.records import ProviderStatus
+from app.canonical.seasons import Season
 from app.db.models import Contract, ContractYear, PlayerSeasonStats, Standing
 from app.integrations.balldontlie import evaluation as ev
 from app.integrations.balldontlie.client import BalldontlieClient
@@ -124,6 +125,9 @@ def run(upstream, db, tmp_path, *, only=None, budget=200, tier="goat", replay=Fa
         budget=budget,
         only=only,
         replay_only=replay,
+        # The fixtures are 2025-26 data; the default (last completed season) would change under them
+        # when the calendar crosses 2027-04-11.
+        season=Season.parse("2025-26"),
     )
 
 
@@ -247,7 +251,10 @@ def test_contract_probe_measures_roster_coverage_and_value_agreement(db, world, 
     )
     result = run(upstream, db, tmp_path, only={"P1-P2", "P9"})
     p9, p9b = finding(result, "P9"), finding(result, "P9b")
-    assert p9["metrics"] == {"rostered": 4, "covered": 3, "rows": 4, "null_cap_hit": 1}
+    assert p9["metrics"] == {
+        "rostered": 4, "covered": 3, "rows": 4, "null_cap_hit": 1,
+        "roster_season": "2025-26",  # no 2026-27 rosters are staged in this fixture, and it says so
+    }
     assert p9["status"] == "fail"  # 75 % < the 90 % threshold
     assert p9b["status"] == "fail" and "50.0%" in p9b["summary"]
 
@@ -342,3 +349,201 @@ def test_an_invalid_key_probe_reports_unauthorized(db, world, tmp_path):
     )
     assert bad.teams().status == ProviderStatus.UNAUTHORIZED
     assert ctx.left() == 50
+
+
+# ------------------------------------------------------------------ R8.1: trial readiness
+
+
+class TestComparisonSeasonAndRosterScoping:
+    def test_the_default_comparison_season_is_the_last_completed_one_on_both_sides_of_the_rollover(
+        self, db, world, tmp_path, monkeypatch
+    ):
+        from datetime import date
+
+        upstream = MiniUpstream({"/nba/v1/teams": teams_route()})
+        for today, expected in ((date(2026, 10, 18), "2025-26"), (date(2026, 11, 20), "2025-26"),
+                                (date(2027, 5, 1), "2026-27")):
+            monkeypatch.setattr("app.canonical.calendar.today_in_league", lambda now=None, d=today: d)
+            result = ev.run_plan(provider_for(upstream), db, tmp_path / str(today),
+                                 only={"P1-P2"}, budget=50)
+            assert result["season"] == expected, today
+
+    def test_sampling_reads_the_roster_of_the_season_it_names_not_every_current_row(self, db, world):
+        from app.db.models import RosterEntry
+
+        bos, ann = world["bos"], world["a"]
+        db.add(RosterEntry(team_id=bos.id, player_id=ann.id, season="2026-27", is_current=True,
+                           source_retrieved_at=datetime.now(UTC)))
+        db.commit()
+        # Ann's 2025-26 stat row is ATL; her staged 2026-27 roster is BOS => "moved".
+        assert 1001 in ev.select_sample_players(db, "2025-26", "2026-27")["moved_teams"]
+        # Read against 2025-26 rosters she is where she was. The unscoped query (every is_current
+        # row) would have put her on both teams and listed her as moved either way.
+        assert 1001 not in ev.select_sample_players(db, "2025-26", "2025-26")["moved_teams"]
+
+    def test_rookies_are_drawn_from_the_roster_season_not_from_every_current_row(self, db, world):
+        from app.db.models import RosterEntry
+
+        old_rookie = make_player(db, 2001, "Last Year Rookie", world["atl"], season="2025-26")
+        old_rookie.years_experience = 0
+        new_rookie = make_player(db, 2002, "This Year Rookie", world["bos"], season="2026-27")
+        new_rookie.years_experience = 0
+        db.commit()
+        assert db.query(RosterEntry).filter_by(season="2025-26", is_current=True).count() >= 1
+        sample = ev.select_sample_players(db, "2025-26", "2026-27")
+        assert sample["rookies"] == [2002], "a 2025-26-only rookie is not on the 2026-27 roster"
+
+    def test_the_roster_season_is_the_league_season_only_once_it_is_staged(self, db, world, monkeypatch):
+        from datetime import date
+
+        from app.db.models import RosterEntry
+
+        monkeypatch.setattr("app.canonical.calendar.today_in_league", lambda now=None: date(2026, 10, 18))
+        assert ev.pick_roster_season(db, Season.parse("2025-26")).label == "2025-26"
+        db.add(RosterEntry(team_id=world["bos"].id, player_id=world["a"].id, season="2026-27",
+                           is_current=True, source_retrieved_at=datetime.now(UTC)))
+        db.commit()
+        assert ev.pick_roster_season(db, Season.parse("2025-26")).label == "2026-27"
+
+
+class TestPreflight:
+    @pytest.fixture()
+    def ready_db(self, db, world):
+        from app.db.models import Game
+
+        now = datetime.now(UTC)
+        db.query(PlayerSeasonStats).update({"source_retrieved_at": now})
+        db.query(Standing).update({"source_retrieved_at": now})
+        db.add(Game(nba_game_id="g1", season="2025-26", game_date=datetime(2025, 10, 21).date(),
+                    source_retrieved_at=now))
+        db.commit()
+        return db
+
+    def _provider(self, key=KEY):
+        return BalldontlieProvider(BalldontlieClient(key, tier="trial", transport=httpx.MockTransport(lambda r: httpx.Response(500)),
+                                                     sleep=lambda s: None))
+
+    def test_a_missing_key_is_a_blocker_but_replay_needs_none(self, ready_db, monkeypatch):
+        from datetime import date
+
+        monkeypatch.setattr("app.canonical.calendar.today_in_league", lambda now=None: date(2026, 10, 18))
+        gate = ev.preflight(ready_db, self._provider(""), season=Season.parse("2025-26"))
+        assert gate["ready"] is False and any("BALLDONTLIE_API_KEY" in b for b in gate["blockers"])
+
+    def test_local_data_that_is_missing_blocks_with_the_command_that_fixes_it(self, db, world, monkeypatch):
+        from datetime import date
+
+        monkeypatch.setattr("app.canonical.calendar.today_in_league", lambda now=None: date(2026, 10, 18))
+        gate = ev.preflight(db, self._provider(), season=Season.parse("2025-26"))
+        assert gate["ready"] is False
+        assert any("games" in b and "refresh" in b for b in gate["blockers"])
+
+    def test_a_finalized_comparison_season_passes_and_the_warnings_are_specific(self, ready_db, monkeypatch):
+        from datetime import date
+
+        monkeypatch.setattr("app.canonical.calendar.today_in_league", lambda now=None: date(2026, 10, 18))
+        gate = ev.preflight(ready_db, self._provider(), season=Season.parse("2025-26"))
+        assert gate["blockers"] == [] and gate["ready"] is True
+        assert gate["local_data"]["player_stats"]["freshness"] == "finalized"
+        assert any("no 2026-27 rosters are staged" in w for w in gate["warnings"])
+        assert any("no contract snapshot" in w for w in gate["warnings"])
+        assert any("never been called live" in w and "link-balldontlie" in w for w in gate["warnings"])
+        assert gate["estimated_requests"] == ev.plan_summary("trial")["estimated_requests"]
+
+    def test_a_budget_smaller_than_the_plan_is_a_blocker(self, ready_db, monkeypatch):
+        from datetime import date
+
+        monkeypatch.setattr("app.canonical.calendar.today_in_league", lambda now=None: date(2026, 10, 18))
+        gate = ev.preflight(ready_db, self._provider(), season=Season.parse("2025-26"), budget=20)
+        assert any("budget is 20" in b for b in gate["blockers"])
+
+    def test_preflight_makes_no_request(self, ready_db, monkeypatch):
+        from datetime import date
+
+        monkeypatch.setattr("app.canonical.calendar.today_in_league", lambda now=None: date(2026, 10, 18))
+        provider = self._provider()
+        ev.preflight(ready_db, provider, season=Season.parse("2025-26"))
+        assert provider.client.request_count == 0
+
+
+class TestTheReportSaysWhatDidNotRun:
+    def test_excluded_and_out_of_plan_probes_are_listed_not_silently_omitted(self, db, world, tmp_path):
+        upstream = MiniUpstream({"/nba/v1/teams": teams_route(), "/nba/v1/players/active": active_players_route()})
+        result = run(upstream, db, tmp_path, only={"P1-P2"}, tier="free")
+        statuses = {f["probe"]: f["status"] for f in result["findings"]}
+        assert statuses["P3"] == "not_run" and statuses["P13"] == "not_run"
+        assert result["status_counts"]["not_run"] >= 8
+        report = (tmp_path / "eval" / "report.md").read_text()
+        assert "not_run" in report and "compared on 2025-26 statistics" in report
+
+    def test_a_tier_that_excludes_a_probe_marks_it_restricted(self, db, world, tmp_path):
+        upstream = MiniUpstream({"/nba/v1/teams": teams_route(), "/nba/v1/players/active": active_players_route()})
+        result = run(upstream, db, tmp_path, tier="free", budget=300)
+        restricted = {f["probe"] for f in result["findings"] if f["status"] == "restricted"}
+        assert {"P5", "P9", "P11"} <= restricted
+
+    def test_a_truncated_read_makes_the_probe_incomplete_not_a_pass(self, db, world, tmp_path):
+        pages = {"n": 0}
+
+        def games(request):
+            pages["n"] += 1
+            return {"data": [], "meta": {"next_cursor": pages["n"]}}
+
+        upstream = MiniUpstream({"/nba/v1/teams": teams_route(), "/nba/v1/players/active": active_players_route(),
+                                 "/nba/v1/games": games})
+        provider = provider_for(upstream)
+        result = ev.run_plan(provider, db, tmp_path / "t", only={"P1-P2", "P3"}, budget=200,
+                             season=Season.parse("2025-26"))
+        incomplete = [f for f in result["findings"] if f["status"] == "inconclusive" and "incomplete read" in f["summary"]]
+        assert incomplete, "a capped pagination must surface as an incomplete finding"
+
+
+class TestRosterAndTeamAgreementProbes:
+    """R8.1: the trial must be able to say whether BALLDONTLIE agrees on *rosters* and *team* figures."""
+
+    def _active(self, moved_to_bos: tuple[int, ...] = ()):
+        def route(request):
+            rows = [
+                bdl_player(11, "Ann", "Alpha", BOS if 11 in moved_to_bos else ATL),
+                bdl_player(12, "Ben", "Bravo", BOS if 12 in moved_to_bos else ATL),
+                bdl_player(13, "Cal", "Charlie", BOS),
+                bdl_player(14, "Dee", "Delta", BOS),
+            ]
+            return {"data": rows, "meta": {}}
+
+        return route
+
+    def test_p2b_passes_when_both_sources_put_players_on_the_same_teams(self, db, world, tmp_path):
+        upstream = MiniUpstream({"/nba/v1/teams": teams_route(), "/nba/v1/players/active": self._active()})
+        p2b = finding(run(upstream, db, tmp_path, only={"P1-P2"}), "P2b")
+        assert p2b["status"] == "pass" and p2b["requests"] == 0
+        assert p2b["metrics"]["compared"] == 4 and p2b["metrics"]["agree"] == 4
+
+    def test_p2b_fails_and_names_who_disagrees(self, db, world, tmp_path):
+        upstream = MiniUpstream({"/nba/v1/teams": teams_route(),
+                                 "/nba/v1/players/active": self._active(moved_to_bos=(11, 12))})
+        p2b = finding(run(upstream, db, tmp_path, only={"P1-P2"}), "P2b")
+        assert p2b["status"] == "fail"
+        assert p2b["metrics"]["agree"] == 2
+        assert {e["player"] for e in p2b["metrics"]["disagreement_examples"]} == {"Ann Alpha", "Ben Bravo"}
+
+    def test_p5b_compares_team_points_per_game(self, db, world, tmp_path):
+        from app.db.models import TeamSeasonStats
+
+        for team, pts in ((world["atl"], 112.4), (world["bos"], 118.9)):
+            db.add(TeamSeasonStats(team_id=team.id, season="2025-26", season_type="regular",
+                                   stat_type="base", stats={"PTS": pts, "GP": 82}))
+        db.commit()
+        rows = [{"team": ATL, "season": 2025, "season_type": "regular", "stats": {"pts": 112.4}},
+                {"team": BOS, "season": 2025, "season_type": "regular", "stats": {"pts": 99.0}}]  # BOS wrong
+        upstream = MiniUpstream({"/nba/v1/teams": teams_route(), "/nba/v1/players/active": active_players_route(),
+                                 "/nba/v1/team_season_averages/general": lambda r: {"data": rows, "meta": {}}})
+        result = run(upstream, db, tmp_path, only={"P1-P2", "P5b"})
+        p5b = finding(result, "P5b")
+        assert p5b["metrics"]["compared"] == 2 and p5b["metrics"]["agree"] == 1
+        assert p5b["status"] == "fail"  # 50 % < 95 %
+
+    def test_the_plan_still_fits_the_trial_budget_and_names_both_probes(self):
+        plan = ev.plan_summary("trial")
+        assert "P5b" in {s["id"] for s in plan["steps"]}
+        assert plan["estimated_requests"] < 200

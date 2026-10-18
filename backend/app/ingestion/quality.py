@@ -118,9 +118,19 @@ def _r8_checks(db: Session) -> list[dict]:
                 _record(
                     db,
                     "stale_dataset",
-                    f"{name}: oldest row is {(meta.age_seconds or 0) // 86_400} days old "
-                    f"(window {(meta.stale_after_seconds or 0) // 3600} h); consumers will "
-                    "report it stale",
+                    f"{name}: {meta.status_reason}; consumers will report it stale",
+                    "warning",
+                    entity=name,
+                )
+            )
+        if meta.refresh_failing and meta.last_refresh:
+            found.append(
+                _record(
+                    db,
+                    "refresh_failing",
+                    f"{name}: the latest {meta.last_refresh['job']} run failed "
+                    f"({meta.last_refresh['error']}); the stored rows are from the last "
+                    "successful refresh",
                     "warning",
                     entity=name,
                 )

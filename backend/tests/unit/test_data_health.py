@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.orm import Session
 
-from app.db.models import DataSyncRun, RosterEntry, Standing, Team
+from app.db.models import DataSyncRun, Player, RosterEntry, Standing, Team
 from app.services.data_health import data_health
 
 
@@ -53,10 +53,13 @@ def stale_nba_data(db: Session) -> Team:
     # R8.1: only data that *should* be moving can be stale. A completed season's standings are
     # `finalized`, so the fixture's staleness comes from the live roster: membership describes
     # the present and is stale after a day, whatever the season.
+    live = Player(nba_player_id=7, full_name="Roster Fixture", is_active=True)
+    db.add(live)
+    db.flush()
     db.add(
         RosterEntry(
             team_id=team.id,
-            player_id="00000000-0000-0000-0000-000000000001",
+            player_id=live.id,
             season="2025-26",
             is_current=True,
             source_provider="nba_api",

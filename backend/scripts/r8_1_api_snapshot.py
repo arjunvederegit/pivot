@@ -12,7 +12,12 @@ Anything else that differs is a regression. Read-only against the database.
 from __future__ import annotations
 
 import json
+import re
 import sys
+
+#: Compare lists of objects as sets. Off by default (SQLite-to-SQLite order must not change);
+#: ``--unordered`` turns it on for cross-database comparisons, where row order is the database's.
+ORDER_INSENSITIVE = False
 
 #: Keys whose content is provenance metadata, deliberately extended in R8 / R8.1.
 ADDITIVE = {"data_status"}
@@ -49,11 +54,25 @@ def dump(path: str) -> int:
     return 0
 
 
+_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T[\d:.]+(Z|\+00:00)?$")
+
+
 def _strip(value):
+    """Drop additive metadata; read an ISO timestamp with or without 'Z' as the same instant.
+
+    SQLite hands timestamps back naive (stored as UTC) and PostgreSQL hands them back aware, so the
+    same row serialises with and without a trailing 'Z'. That is a representation difference between
+    databases, not a change in the data.
+    """
     if isinstance(value, dict):
         return {k: _strip(v) for k, v in value.items() if k not in ADDITIVE}
     if isinstance(value, list):
-        return [_strip(v) for v in value]
+        items = [_strip(v) for v in value]
+        if ORDER_INSENSITIVE and all(isinstance(i, dict) for i in items):
+            return sorted(items, key=lambda i: json.dumps(i, sort_keys=True, default=str))
+        return items
+    if isinstance(value, str) and _ISO.match(value):
+        return value.removesuffix("+00:00").removesuffix("Z")
     return value
 
 
@@ -100,7 +119,8 @@ def compare(before_path: str, after_path: str) -> int:
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "dump":
         sys.exit(dump(sys.argv[2]))
-    if len(sys.argv) == 4 and sys.argv[1] == "compare":
+    if len(sys.argv) in (4, 5) and sys.argv[1] == "compare":
+        ORDER_INSENSITIVE = "--unordered" in sys.argv
         sys.exit(compare(sys.argv[2], sys.argv[3]))
     print(__doc__)
     sys.exit(2)

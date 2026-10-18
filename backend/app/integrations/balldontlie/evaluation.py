@@ -38,10 +38,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.canonical.records import ContractAggregateRecord, ProviderResult, ProviderStatus
+from app.canonical.rosters import current_roster_clause
 from app.canonical.seasons import Season, SeasonType
 from app.config import get_settings
 from app.db.models import (
@@ -53,6 +54,7 @@ from app.db.models import (
     ProviderEntityId,
     RosterEntry,
     Standing,
+    TeamSeasonStats,
 )
 from app.integrations.balldontlie.client import BalldontlieClient, BalldontlieError
 from app.integrations.balldontlie.crosswalk import crosswalk_players, crosswalk_teams
@@ -71,6 +73,10 @@ THRESHOLDS = {
     "advanced_field_fill": 0.90,
     "contract_roster_coverage": 0.90,
     "contract_value_agreement": 0.90,
+    #: Added in R8.1, before any live data: share of linked active players whose BALLDONTLIE team is
+    #: the team Pivot's current roster has them on; and share of teams whose per-game points agree.
+    "roster_agreement": 0.90,
+    "team_average_agreement": 0.95,
 }
 #: Per-game points agree if within this many points of NBA.com's.
 PTS_TOLERANCE = 0.15
@@ -84,7 +90,9 @@ class BudgetExhaustedError(RuntimeError):
 class Finding:
     probe: str
     area: str
-    status: str  # pass | fail | inconclusive | restricted | error
+    #: pass | fail | inconclusive (ran, could not decide / incomplete) | restricted (skipped: outside
+    #: the plan) | error (blocked or failed) | not_run (excluded with --only)
+    status: str
     summary: str
     metrics: dict[str, Any] = field(default_factory=dict)
     requests: int = 0
@@ -100,6 +108,14 @@ class Context:
     findings: list[Finding] = field(default_factory=list)
     #: Replaying recorded responses costs nothing, so the budget does not apply.
     replay: bool = False
+    #: The season whose rosters stand for "now". It is the league's own season once Pivot has staged
+    #: that season's rosters (the summer and preseason, when ``season`` is the last completed one),
+    #: otherwise ``season``. Rosters, never statistics, are compared on this.
+    roster_season: Season | None = None
+
+    @property
+    def live_season(self) -> Season:
+        return self.roster_season or self.season
 
     @property
     def client(self) -> BalldontlieClient:
@@ -194,12 +210,31 @@ def _result_to_finding(
     )
 
 
-def select_sample_players(db: Session, season: str) -> dict[str, list[int]]:
+def pick_roster_season(db: Session, comparison: Season) -> Season:
+    """The season whose current rosters represent "now" for a comparison on ``comparison``.
+
+    Unscoped ``RosterEntry.is_current`` was R8's trap: with two seasons staged it mixes them (a
+    player on one team in 2025-26 and another in 2026-27 sits on both). Every roster read here goes
+    through ``current_roster_clause(season)`` instead.
+    """
+    league = get_settings().season_context.league_season
+    if league != comparison and (
+        db.scalar(select(func.count(RosterEntry.id)).where(current_roster_clause(league)))
+    ):
+        return league
+    return comparison
+
+
+def select_sample_players(
+    db: Session, season: str, roster_season: str | None = None
+) -> dict[str, list[int]]:
     """Deterministic representative players from Pivot's own data, as NBA.com ids.
 
     starters / reserves by minutes per game, rookies by experience, "moved" = whose stat-row
     team differs from the current roster team (traded since the season ended).
+    ``season`` scopes the statistics; ``roster_season`` (default: ``season``) scopes the roster.
     """
+    roster_season = roster_season or season
     rows = db.execute(
         select(Player.nba_player_id, PlayerSeasonStats.minutes, PlayerSeasonStats.team_id)
         .join(PlayerSeasonStats, PlayerSeasonStats.player_id == Player.id)
@@ -218,14 +253,14 @@ def select_sample_players(db: Session, season: str) -> dict[str, list[int]]:
     rookies = db.scalars(
         select(Player.nba_player_id)
         .join(RosterEntry, RosterEntry.player_id == Player.id)
-        .where(RosterEntry.is_current, Player.years_experience == 0)
+        .where(current_roster_clause(roster_season), Player.years_experience == 0)
         .order_by(Player.nba_player_id)
         .limit(6)
     ).all()
     sample["rookies"] = list(rookies)
     current_team = {
         e.player_id: e.team_id
-        for e in db.scalars(select(RosterEntry).where(RosterEntry.is_current)).all()
+        for e in db.scalars(select(RosterEntry).where(current_roster_clause(roster_season))).all()
     }
     moved: list[int] = []
     for player_id, nba_id, team_id in db.execute(
@@ -265,7 +300,7 @@ def probe_identity(ctx: Context) -> list[Finding]:
     if failure:
         out.append(failure)
         return out
-    report = crosswalk_players(ctx.db, list(active.records), season=ctx.season.label)
+    report = crosswalk_players(ctx.db, list(active.records), season=ctx.live_season.label)
     ctx.db.commit()
     out.append(
         Finding(
@@ -283,7 +318,76 @@ def probe_identity(ctx: Context) -> list[Finding]:
             active.meta.requests,
         )
     )
+    out.append(_roster_agreement(ctx, list(active.records)))
     return out
+
+
+def _roster_agreement(ctx: Context, records: list[Any]) -> Finding:
+    """P2b: does BALLDONTLIE put each linked player on the team Pivot's roster does? No request.
+
+    The active-player list already says which team each player is on, so "current rosters" costs
+    nothing extra to test. Compared against ``ctx.live_season``'s current roster (the league
+    season's once staged) — a disagreement is either a stale Pivot roster or a stale provider, and the
+    finding does not say which.
+    """
+    team_internal = {
+        r.provider_id: r.internal_id
+        for r in ctx.db.scalars(
+            select(ProviderEntityId).where(
+                ProviderEntityId.entity_type == "team", ProviderEntityId.provider == "balldontlie"
+            )
+        )
+    }
+    player_internal = {
+        r.provider_id: r.internal_id
+        for r in ctx.db.scalars(
+            select(ProviderEntityId).where(
+                ProviderEntityId.entity_type == "player", ProviderEntityId.provider == "balldontlie"
+            )
+        )
+    }
+    pivot_team = {
+        e.player_id: e.team_id
+        for e in ctx.db.scalars(
+            select(RosterEntry).where(current_roster_clause(ctx.live_season))
+        ).all()
+    }
+    compared = agree = not_on_roster = 0
+    examples: list[dict[str, Any]] = []
+    for rec in records:
+        internal = player_internal.get(rec.provider_id)
+        if internal is None or not rec.team_provider_id:
+            continue
+        if internal not in pivot_team:
+            not_on_roster += 1
+            continue
+        compared += 1
+        if team_internal.get(rec.team_provider_id) == pivot_team[internal]:
+            agree += 1
+        elif len(examples) < 10:
+            examples.append({"player": rec.full_name, "balldontlie_team": rec.team_provider_id})
+    rate = agree / compared if compared else 0.0
+    status = (
+        "inconclusive"
+        if not compared
+        else ("pass" if rate >= THRESHOLDS["roster_agreement"] else "fail")
+    )
+    return Finding(
+        "P2b",
+        "identity",
+        status,
+        f"{agree}/{compared} linked players are on the same team in BALLDONTLIE and in Pivot's "
+        f"{ctx.live_season.label} roster ({rate:.1%}); {not_on_roster} linked players are on no "
+        "Pivot roster",
+        {
+            "compared": compared,
+            "agree": agree,
+            "linked_not_on_a_pivot_roster": not_on_roster,
+            "roster_season": ctx.live_season.label,
+            "disagreement_examples": examples,
+        },
+        0,
+    )
 
 
 def probe_games(ctx: Context) -> list[Finding]:
@@ -458,6 +562,71 @@ def probe_season_averages(ctx: Context) -> list[Finding]:
     ]
 
 
+def probe_team_averages(ctx: Context) -> list[Finding]:
+    """P5b: team per-game points vs Pivot's team statistics (one request for all 30 teams)."""
+    ctx.need(3)
+    result = ctx.provider.team_season_stats(
+        ctx.season, SeasonType.REGULAR, category="general", stat_type="base"
+    )
+    failure = _result_to_finding("P5b", "stats", result, ctx)
+    if failure:
+        return [failure]
+    team_internal = {
+        r.provider_id: r.internal_id
+        for r in ctx.db.scalars(
+            select(ProviderEntityId).where(
+                ProviderEntityId.entity_type == "team", ProviderEntityId.provider == "balldontlie"
+            )
+        )
+    }
+    mine = {
+        t.team_id: (t.stats or {})
+        for t in ctx.db.scalars(
+            select(TeamSeasonStats).where(
+                TeamSeasonStats.season == ctx.season.label,
+                TeamSeasonStats.season_type == "regular",
+                TeamSeasonStats.stat_type == "base",
+            )
+        )
+    }
+    compared = agree = 0
+    for row in result.records:
+        internal = team_internal.get(row.team_provider_id)
+        pivot = mine.get(internal or "")
+        bdl_pts = _first(row.values, "pts")
+        if bdl_pts is None or not pivot or pivot.get("PTS") is None:
+            continue
+        compared += 1
+        games = pivot.get("GP") or 1
+        # Per-game as documented, or season totals (the aggregation is undocumented).
+        if abs(bdl_pts - pivot["PTS"]) <= PTS_TOLERANCE or abs(bdl_pts - pivot["PTS"] * games) <= max(
+            2.0, 0.01 * pivot["PTS"] * games
+        ):
+            agree += 1
+    rate = agree / compared if compared else 0.0
+    status = (
+        "inconclusive"
+        if not compared
+        else ("pass" if rate >= THRESHOLDS["team_average_agreement"] else "fail")
+    )
+    return [
+        Finding(
+            "P5b",
+            "stats",
+            status,
+            f"{agree}/{compared} teams' PTS equal nba_api's team per-game (or season total) "
+            f"within tolerance ({rate:.1%})",
+            {
+                "provider_rows": len(result.records),
+                "compared": compared,
+                "agree": agree,
+                "stat_keys": sorted({k for r in result.records[:30] for k in r.values}),
+            },
+            result.meta.requests,
+        )
+    ]
+
+
 _ADVANCED_ALIASES = {
     "OFF_RATING": ("off_rating", "offensive_rating"),
     "DEF_RATING": ("def_rating", "defensive_rating"),
@@ -617,7 +786,15 @@ def probe_contracts(ctx: Context) -> list[Finding]:
     }
     cap_season = Season.parse(get_settings().cap_league_year)
     rostered: dict[str, set[int]] = {}
-    for e in ctx.db.scalars(select(RosterEntry).where(RosterEntry.is_current)).all():
+    # Contracts are for the cap year, so they are compared with that year's roster when Pivot has
+    # staged it, else with the roster the tools are reading (and the finding says which).
+    staged = ctx.db.scalar(
+        select(func.count(RosterEntry.id)).where(current_roster_clause(cap_season))
+    )
+    contract_roster = cap_season if staged else ctx.live_season
+    for e in ctx.db.scalars(
+        select(RosterEntry).where(current_roster_clause(contract_roster))
+    ).all():
         rostered.setdefault(e.team_id, set()).add(e.player.nba_player_id)
     nba_ids = _bdl_to_nba_player_ids(ctx.db)
     mine: dict[int, int] = {}
@@ -661,9 +838,16 @@ def probe_contracts(ctx: Context) -> list[Finding]:
             "P9",
             "contracts",
             "pass" if coverage >= THRESHOLDS["contract_roster_coverage"] else "fail",
-            f"{covered}/{total} rostered players have a {cap_season.label} cap hit "
-            f"({coverage:.1%}); {null_cap_hit}/{rows} returned rows have a null cap hit",
-            {"rostered": total, "covered": covered, "rows": rows, "null_cap_hit": null_cap_hit},
+            f"{covered}/{total} players on the {contract_roster.label} rosters have a "
+            f"{cap_season.label} cap hit ({coverage:.1%}); {null_cap_hit}/{rows} returned rows "
+            "have a null cap hit",
+            {
+                "rostered": total,
+                "covered": covered,
+                "rows": rows,
+                "null_cap_hit": null_cap_hit,
+                "roster_season": contract_roster.label,
+            },
             0,
         )
     ]
@@ -687,7 +871,7 @@ def probe_contracts(ctx: Context) -> list[Finding]:
 def probe_aggregates(ctx: Context) -> list[Finding]:
     ctx.need(12)
     nba_to_bdl = {v: k for k, v in _bdl_to_nba_player_ids(ctx.db).items()}
-    sample = select_sample_players(ctx.db, ctx.season.label)
+    sample = select_sample_players(ctx.db, ctx.season.label, ctx.live_season.label)
     chosen = [nba_to_bdl[n] for n in (sample["starters"][:4] + sample["reserves"][:4]) if n in nba_to_bdl]
     rows: list[ContractAggregateRecord] = []
     for provider_id in chosen[:8]:
@@ -834,6 +1018,8 @@ PLAN: list[PlanStep] = [
     PlanStep("P4", "standings", "standings", 1, probe_standings, "Standings vs nba_api"),
     PlanStep("P5", "stats", "season_averages/general?type=base", 8, probe_season_averages,
              "Per-game vs totals; agreement with nba_api per-game rows"),
+    PlanStep("P5b", "stats", "team_season_averages/general?type=base", 1, probe_team_averages,
+             "Team per-game points vs nba_api team statistics"),
     PlanStep("P6", "advanced", "season_averages/general?type=advanced", 8, probe_advanced,
              "Advanced-field coverage and agreement"),
     PlanStep("P7", "advanced", "other categories", 6, probe_other_categories,
@@ -891,6 +1077,90 @@ def _allowed(step: PlanStep, tier: str) -> bool:
     return tier_allows(tier, keys[step.area])
 
 
+def preflight(
+    db: Session,
+    provider: BalldontlieProvider,
+    *,
+    season: Season | None = None,
+    budget: int = 200,
+) -> dict[str, Any]:
+    """Is Pivot ready for the 48-hour clock to start? Makes no request and needs no key.
+
+    The trial window is short and paid-for, so everything that can be checked beforehand is:
+    the comparison season's local data must be usable (a finalized season, or fresh in-season
+    data) because every probe measures *agreement with it*; the plan must fit the budget; and the
+    things that would make probes inconclusive (no staged league-season rosters, an empty contract
+    snapshot) are listed as warnings rather than discovered in hour 30.
+    """
+    from app.canonical.provenance import USABLE
+    from app.services.data_provenance import dataset_freshness
+
+    settings = get_settings()
+    context = settings.season_context
+    comparison = season or context.last_completed_season
+    datasets = dataset_freshness(db, comparison)
+    blockers: list[str] = []
+    warnings: list[str] = []
+    if not provider.configured:
+        blockers.append("BALLDONTLIE_API_KEY is not set (needed for a live run; replay needs none)")
+    for name in ("player_stats", "standings", "games"):
+        meta = datasets[name]
+        if meta.freshness not in USABLE or meta.needs_attention:
+            blockers.append(
+                f"Pivot's own {comparison} {name} are {meta.freshness.value}"
+                + (f" ({meta.status_reason})" if meta.status_reason else "")
+                + ": every probe compares against them, so refresh first"
+                + f" (`make refresh DATASETS={name.replace('_', '-')} ARGS='--season {comparison}'`)"
+            )
+    roster_season = pick_roster_season(db, comparison)
+    if roster_season == comparison and context.league_season != comparison:
+        warnings.append(
+            f"no {context.league_season} rosters are staged: the 'players who changed team' sample "
+            "and the contract coverage probe will describe last season's rosters "
+            "(`make refresh DATASETS=rosters ARGS='--season "
+            f"{context.league_season}'`)"
+        )
+    linked = db.scalar(
+        select(func.count(ProviderEntityId.id)).where(ProviderEntityId.provider == "balldontlie")
+    )
+    if not linked:
+        warnings.append(
+            "nothing from BALLDONTLIE has been linked yet, so the adapter has never been called "
+            "live. Before the trial, run `make link-balldontlie DRY=1` with a FREE key: it "
+            "verifies the key, the API path prefix (/nba/v1 vs /v1) and pagination at no cost"
+        )
+    if datasets["rosters"].needs_attention:
+        warnings.append(f"rosters for {comparison} are {datasets['rosters'].freshness.value}")
+    if datasets["contracts"].freshness.value == "missing":
+        warnings.append(
+            "no contract snapshot is loaded: P9 (coverage) will run, P9b (agreement) will be "
+            "inconclusive"
+        )
+    plan = plan_summary(provider.client.tier)
+    needed = plan["estimated_requests"]
+    if needed > budget:
+        blockers.append(f"the plan needs ~{needed} requests but the budget is {budget}")
+    skipped = [s["id"] for s in plan["steps"] if not s["allowed_on_tier"]]
+    return {
+        "comparison_season": comparison.label,
+        "roster_season": roster_season.label,
+        "league_season": context.league_season.label,
+        "tier": provider.client.tier,
+        "estimated_requests": needed,
+        "paced_minutes": plan["paced_minutes"],
+        "budget": budget,
+        "probes_outside_the_plan": skipped,
+        "local_data": {
+            name: {"freshness": m.freshness.value, "reason": m.status_reason}
+            for name, m in datasets.items()
+            if name in ("player_stats", "standings", "games", "rosters", "contracts")
+        },
+        "blockers": blockers,
+        "warnings": warnings,
+        "ready": not blockers,
+    }
+
+
 def run_plan(
     provider: BalldontlieProvider,
     db: Session,
@@ -899,17 +1169,33 @@ def run_plan(
     budget: int = 200,
     only: set[str] | None = None,
     replay_only: bool = False,
+    season: Season | None = None,
 ) -> dict[str, Any]:
-    """Execute the plan and write ``findings.json`` + ``report.md`` under ``out_dir``."""
+    """Execute the plan and write ``findings.json`` + ``report.md`` under ``out_dir``.
+
+    ``season`` is the season statistics are compared on. It defaults to the **last completed**
+    season, not the season the tools happen to read: a trial run after the 2026-27 rollover would
+    otherwise compare BALLDONTLIE against a season Pivot has barely any data for.
+    """
     settings = get_settings()
     out_dir.mkdir(parents=True, exist_ok=True)
     install_disk_cache(provider.client, out_dir / "responses", replay_only=replay_only)
+    comparison = season or settings.season_context.last_completed_season
     ctx = Context(
-        provider, db, Season.parse(settings.current_season), out_dir, budget, replay=replay_only
+        provider,
+        db,
+        comparison,
+        out_dir,
+        budget,
+        replay=replay_only,
+        roster_season=pick_roster_season(db, comparison),
     )
     started = datetime.now(UTC)
     for step in PLAN:
         if only and step.id not in only and step.area not in only:
+            ctx.findings.append(
+                Finding(step.id, step.area, "not_run", "not run: excluded by --only")
+            )
             continue
         if not _allowed(step, provider.client.tier):
             ctx.findings.append(
@@ -918,19 +1204,30 @@ def run_plan(
                         "per the published table")
             )
             continue
+        truncated_before = len(provider.client.truncations)
         try:
             ctx.findings.extend(step.run(ctx))
         except BudgetExhaustedError as exc:
             ctx.findings.append(Finding(step.id, step.area, "error", f"budget: {exc}"))
         except BalldontlieError as exc:
             ctx.findings.append(Finding(step.id, step.area, "error", str(exc)))
+        for note in provider.client.truncations[truncated_before:]:
+            ctx.findings.append(
+                Finding(step.id, step.area, "inconclusive", f"incomplete read: {note}")
+            )
+    counts: dict[str, int] = {}
+    for f in ctx.findings:
+        counts[f.status] = counts.get(f.status, 0) + 1
     result = {
         "started_at": started.isoformat(),
         "finished_at": datetime.now(UTC).isoformat(),
         "tier": provider.client.tier,
+        "season": comparison.label,
+        "roster_season": ctx.live_season.label,
         "requests_made": provider.client.request_count,
         "budget": budget,
         "live": not replay_only,
+        "status_counts": counts,
         "findings": [f.__dict__ for f in ctx.findings],
         "thresholds": THRESHOLDS,
     }
@@ -947,6 +1244,12 @@ def render_report(result: dict[str, Any]) -> str:
         f"- tier setting: {result['tier']}; requests made: {result['requests_made']} "
         f"of a {result['budget']} budget; "
         + ("LIVE responses" if result["live"] else "REPLAYED from the recorded cache"),
+        f"- compared on {result.get('season', '?')} statistics; rosters from "
+        f"{result.get('roster_season', '?')}",
+        "- results: "
+        + ", ".join(f"{n} {k}" for k, n in sorted(result.get("status_counts", {}).items())),
+        "- `restricted` = skipped, outside the plan; `error` = blocked or failed; "
+        "`inconclusive` = ran but incomplete or undecidable; `not_run` = excluded with --only",
         "",
         "| Probe | Area | Result | Finding |",
         "| --- | --- | --- | --- |",

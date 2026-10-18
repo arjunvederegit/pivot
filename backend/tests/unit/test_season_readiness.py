@@ -628,6 +628,16 @@ class TestDatasetStatusOverTime:
         )
         assert report["ready"] is False
 
+    def test_a_cap_year_that_has_fallen_behind_the_league_year_is_flagged(self, db: Session, monkeypatch):
+        """1 July 2027 turns the league year to 2027-28; CAP_LEAGUE_YEAR is still a hand edit."""
+        from app.config import get_settings
+
+        report = rollover_readiness(db, now=at(2027, 7, 15))
+        check = report["checks"]["cap_parameters_for_league_year"]
+        assert check["present"] is False and check["league_year"] == "2027-28"
+        assert check["configured_cap_league_year"] == get_settings().cap_league_year
+        assert "cap_parameters_for_league_year" in report["missing_before_rollover"] or report["ready"] is False
+
 
 # ----------------------------------------------------------------- rosters across the rollover
 

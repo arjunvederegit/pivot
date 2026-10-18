@@ -14,7 +14,7 @@ E2E_DB ?= $(CURDIR)/backend/rosterlab-e2e.db
         import-draft-picks pick-ownership fetch-transactions import-transactions \
         transaction-coverage comparable-validation acquisition-validation lineup-availability \
         adversarial-validation \
-        data-status refresh link-balldontlie balldontlie-plan balldontlie-evaluate \
+        data-status season-status refresh link-balldontlie balldontlie-plan balldontlie-preflight balldontlie-evaluate \
         assistant-setup assistant-models assistant-dev assistant-test assistant-eval \
         assistant-eval-selftest assistant-eval-retrieval assistant-eval-conversations
 
@@ -74,9 +74,15 @@ contract-coverage: ## Report contract coverage without importing anything
 data-status: ## Freshness, completeness and provider of every dataset the tools read (read-only)
 	cd $(BACKEND) && .venv/bin/python -m app.cli data-status
 
-refresh: ## Refresh selected datasets: make refresh DATASETS=rosters,standings,player-stats
-	@test -n "$(DATASETS)" || (echo "usage: make refresh DATASETS=rosters,standings,player-stats,team-stats,games,season-calendar,contracts"; exit 2)
-	cd $(BACKEND) && .venv/bin/python -m app.cli refresh $(DATASETS)
+refresh: ## Refresh selected datasets: make refresh DATASETS=rosters,standings,player-stats [ARGS='--season 2026-27 --season-type preseason']
+	@test -n "$(DATASETS)" || (echo "usage: make refresh DATASETS=rosters,standings,player-stats,team-stats,games,season-calendar,contracts [ARGS='--season 2026-27']"; exit 2)
+	cd $(BACKEND) && .venv/bin/python -m app.cli refresh $(DATASETS) $(ARGS)
+
+season-status: ## Where the NBA calendar is, what exists for the league's season, and whether the tools can roll over (read-only)
+	cd $(BACKEND) && .venv/bin/python -m app.cli season-status
+
+balldontlie-preflight: ## Is Pivot ready for the 48-hour trial clock? (no request, no key needed)
+	cd $(BACKEND) && .venv/bin/python -m app.cli balldontlie-preflight $(if $(BUDGET),--budget $(BUDGET),) $(if $(SEASON),--season $(SEASON),)
 
 balldontlie-plan: ## Print the GOAT trial evaluation plan and its request cost (no requests)
 	cd $(BACKEND) && .venv/bin/python -m app.cli balldontlie-plan $(TIER)
@@ -85,7 +91,7 @@ link-balldontlie: ## Link BALLDONTLIE ids to Pivot players/teams (needs BALLDONT
 	cd $(BACKEND) && .venv/bin/python -m app.cli link-balldontlie $(if $(DRY),--dry-run,) $(if $(ACTIVE_ONLY),--active-only,)
 
 balldontlie-evaluate: ## Run the trial evaluation (needs a key; REPLAY=<dir> re-analyses recorded responses)
-	cd $(BACKEND) && .venv/bin/python -m app.cli balldontlie-evaluate $(if $(REPLAY),--replay $(REPLAY),) $(if $(BUDGET),--budget $(BUDGET),) $(if $(ONLY),--only $(ONLY),)
+	cd $(BACKEND) && .venv/bin/python -m app.cli balldontlie-evaluate $(if $(REPLAY),--replay $(REPLAY),) $(if $(BUDGET),--budget $(BUDGET),) $(if $(ONLY),--only $(ONLY),) $(if $(SEASON),--season $(SEASON),) $(if $(FORCE),--force,)
 
 purge-fixtures: ## List test-run leftovers in the dev DB (add APPLY=1 to delete)
 	cd $(BACKEND) && .venv/bin/python -m app.cli purge-fixtures $(if $(APPLY),--apply,)

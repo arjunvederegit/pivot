@@ -30,6 +30,7 @@ from app.db.models import (
     DataSyncRun,
     Game,
     Injury,
+    LeagueCapParameters,
     MediaAsset,
     PlayerImpactEstimate,
     PlayerSeasonStats,
@@ -416,6 +417,20 @@ def rollover_readiness(db: Session, *, now: datetime | None = None) -> dict[str,
             "rows": impact,
             "note": "produced by `make train && make score`; run it before the rollover date",
         },
+    }
+    # The cap year is configuration (CAP_LEAGUE_YEAR) and the league year turns over on 1 July, so it
+    # is the one season setting that still needs a hand edit; make it impossible to miss.
+    cap_year = settings.cap_league_year
+    cap_rows = db.scalar(
+        select(func.count(LeagueCapParameters.id)).where(LeagueCapParameters.league_year == league)
+    ) or 0
+    checks["cap_parameters_for_league_year"] = {
+        "present": cap_year == league and cap_rows > 0,
+        "configured_cap_league_year": cap_year,
+        "league_year": league,
+        "cap_rows_for_league_year": cap_rows,
+        "note": "set CAP_LEAGUE_YEAR and add a cap_rules YAML (`make seed-config`) when the league "
+        "year turns over on 1 July",
     }
     pinned = bool(settings.pinned_season.strip())
     blockers = [

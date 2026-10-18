@@ -2,6 +2,10 @@
 
 *For the product owner. 2026-10-18. Branch `feat/r8-canonical-data-foundation`; nothing merged to `main`.*
 
+> **Superseded in part by [R8.1](../r8-1/R8-1-EXECUTIVE-REPORT.md)** (same day): "every dataset is stale" was a clock applied
+> to finished seasons (only the rosters were); `nba_api` now runs through the canonical contract; live NBA.com
+> and PostgreSQL were exercised; the BALLDONTLIE plan is 103 requests / 26 min, not ≈130 / 35.
+
 ## Did we actually complete R8?
 
 **Yes for the foundation; with three things I want you to know are *not* done.** All ten acceptance

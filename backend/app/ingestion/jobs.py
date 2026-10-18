@@ -486,6 +486,7 @@ def sync_player_stats(
         players = _player_map(db)
         teams = _team_map(db)
         counts: Counter[str] = Counter()
+        unknown_players: dict[int, str] = {}
 
         def one(season: str) -> bool:
             rows = _fetch_rows(
@@ -511,6 +512,11 @@ def sync_player_stats(
             for row in rows:
                 player = players.get(row["nba_player_id"])
                 if player is None:
+                    # Counted, not hidden: a player the identity table does not know has no home for
+                    # his row, and the run should say how many there were.
+                    counts["skipped_unknown_player"] += 1
+                    name = (row.get("stats") or {}).get("PLAYER_NAME")
+                    unknown_players.setdefault(row["nba_player_id"], str(name or ""))
                     continue
                 team = teams.get(row.get("nba_team_id") or -1)
                 values = {
@@ -547,6 +553,13 @@ def sync_player_stats(
         finally:
             if counts:
                 run.detail = {**(run.detail or {}), "rows": dict(counts)}
+            if unknown_players:
+                run.detail = {
+                    **(run.detail or {}),
+                    "unknown_players": [
+                        {"nba_player_id": k, "name": v} for k, v in sorted(unknown_players.items())
+                    ][:25],
+                }
         return run.rows_written
 
 
@@ -583,6 +596,7 @@ def sync_team_stats(
             for row in rows:
                 team = teams.get(row["nba_team_id"])
                 if team is None:
+                    counts["skipped_unknown_team"] += 1
                     continue
                 values = {
                     "team_id": team.id,

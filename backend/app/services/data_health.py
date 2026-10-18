@@ -259,7 +259,12 @@ def data_health(db: Session) -> dict:
         nba_status = "incomplete"
     else:
         nba_status = "fresh"
-    refresh_args = ",".join(n.replace("_", "-") for n in needs_attention) or "rosters"
+    # Identity tables (teams, players) are refreshable too; name them when they are the stale part.
+    to_refresh = [
+        *needs_attention,
+        *(t for t in ("teams", "players") if t in nba_tables_stale),
+    ]
+    refresh_args = ",".join(n.replace("_", "-") for n in to_refresh) or "rosters"
 
     csv_run = latest_run("import_stats_csv")
     kaggle_run = latest_run("import_kaggle_history")

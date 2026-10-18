@@ -18,7 +18,7 @@ Commands
   score            Score current players, compute availability and team needs
   validate-data    Run data-quality checks
   index-assets     Index local player photos / team logos into the media manifest
-  import-stats-csv <path>  Import the user-supplied season-totals CSV (default
+  import-stats-csv <path> [season]  Import the user-supplied season-totals CSV (default season 2025-26; default
                    data/imports/nba_player_stats_2026.csv)
   import-kaggle    Import historical enrichment from the Kaggle basketball dataset
   seed-demo        Populate a DEDICATED database with the synthetic demo league used by
@@ -75,7 +75,8 @@ Commands
                    intelligence tools read, plus the provider registry (read-only).
   refresh <datasets> [--season 2026-27] [--season-type regular|preseason]
                    Refresh selected datasets (comma-separated: rosters, standings,
-                   player-stats, team-stats, games, season-calendar, contracts) and print
+                   player-stats, team-stats, games, season-calendar, contracts, plus the identity
+                   tables teams and players) and print
                    the resulting freshness. A snapshot a provider answers with but that
                    cannot be the league (empty, a fraction of it) is rejected and the
                    stored data is left untouched. Network required.
@@ -88,7 +89,10 @@ Commands
   balldontlie-plan [tier]
                    Print the GOAT trial evaluation plan, its request cost and pacing.
                    Makes no request.
-  balldontlie-evaluate [--budget N] [--only P5,P9] [--replay DIR]
+  balldontlie-preflight [--budget N] [--season 2025-26]
+                   Is Pivot ready for the 48-hour trial clock? Checks the comparison season's local
+                   data, the plan against the budget and the staged rosters. No request, no key.
+  balldontlie-evaluate [--budget N] [--only P5,P9] [--replay DIR] [--season 2025-26] [--force]
                    Run the trial evaluation against Pivot's own data and write evidence to
                    data/imports/balldontlie/ (gitignored). --replay re-analyses recorded
                    responses with no requests. Needs BALLDONTLIE_API_KEY unless replaying.
@@ -173,6 +177,8 @@ def seed_config() -> None:
 
 
 REFRESH_DATASETS = {
+    "teams": "sync-teams",
+    "players": "sync-players",
     "rosters": "sync-rosters",
     "standings": "sync-standings",
     "player-stats": "sync-player-stats",
@@ -297,6 +303,10 @@ def _balldontlie_evaluate(args: list[str]) -> int:
 
     replay = option("--replay")
     provider = BalldontlieProvider.from_settings()
+    from app.canonical.seasons import Season
+
+    season_arg = option("--season")
+    season = Season.parse(season_arg) if season_arg else None
     if not replay and not provider.configured:
         print(json.dumps({"error": "BALLDONTLIE_API_KEY is not set; nothing was requested"}, indent=2))
         return 2
@@ -312,6 +322,13 @@ def _balldontlie_evaluate(args: list[str]) -> int:
         / f"eval-{datetime.now().strftime('%Y%m%d-%H%M')}"
     )
     with SessionLocal() as db:
+        if not replay:
+            from app.integrations.balldontlie.evaluation import preflight
+
+            gate = preflight(db, provider, season=season, budget=int(option("--budget") or 200))
+            if not gate["ready"] and "--force" not in args:
+                print(json.dumps({"refused": "preflight failed; nothing was requested", **gate}, indent=2))
+                return 2
         result = run_plan(
             provider,
             db,
@@ -319,6 +336,7 @@ def _balldontlie_evaluate(args: list[str]) -> int:
             budget=int(option("--budget") or 200),
             only=only,
             replay_only=bool(replay),
+            season=season,
         )
     print((out_dir / "report.md").read_text())
     print(f"evidence written to {out_dir}")
@@ -417,6 +435,26 @@ def main() -> None:
 
         tier = sys.argv[2] if len(sys.argv) > 2 else get_settings().balldontlie_tier
         print(json.dumps(plan_summary(tier), indent=2))
+    elif command == "balldontlie-preflight":
+        from app.canonical.seasons import Season
+        from app.integrations.balldontlie.evaluation import preflight
+        from app.integrations.balldontlie.provider import BalldontlieProvider
+
+        def opt(name: str) -> str | None:
+            a = sys.argv[2:]
+            return a[a.index(name) + 1] if name in a and a.index(name) + 1 < len(a) else None
+
+        provider = BalldontlieProvider.from_settings()
+        season_opt = opt("--season")
+        with SessionLocal() as db:
+            gate = preflight(
+                db,
+                provider,
+                season=Season.parse(season_opt) if season_opt else None,
+                budget=int(opt("--budget") or 200),
+            )
+        print(json.dumps(gate, indent=2, default=str))
+        sys.exit(0 if gate["ready"] else 2)
     elif command == "balldontlie-evaluate":
         sys.exit(_balldontlie_evaluate(sys.argv[2:]))
     elif command == "import-draft-picks":
@@ -549,8 +587,14 @@ def main() -> None:
         from app.ingestion.stats_csv import import_stats_csv
 
         csv_path = sys.argv[2] if len(sys.argv) > 2 else "../data/imports/nba_player_stats_2026.csv"
+        # The season is a property of the FILE, not of today's calendar: the default CSV holds
+        # 2025-26 totals and must keep that label after the tools move to 2026-27.
         with SessionLocal() as db:
-            summary = import_stats_csv(db, csv_path)
+            summary = (
+                import_stats_csv(db, csv_path, sys.argv[3])
+                if len(sys.argv) > 3
+                else import_stats_csv(db, csv_path)
+            )
         print(json.dumps(summary, indent=2, default=str))
     elif command == "import-kaggle":
         from app.integrations.kaggle_nba.importer import import_history
