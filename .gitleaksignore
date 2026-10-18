@@ -1,0 +1,4 @@
+# Fake credentials used as fixtures by Ask Pivot's tests (they assert that a key is never echoed back).
+# Not real secrets; reported by gitleaks' generic-api-key rule because of the `lsv2_pt_` prefix.
+1bd4ceb9c078e8bff4bd123793a00cc6c792f852:backend/tests/unit/test_assistant_service.py:generic-api-key:342
+1bd4ceb9c078e8bff4bd123793a00cc6c792f852:backend/tests/unit/test_assistant_api.py:generic-api-key:193
