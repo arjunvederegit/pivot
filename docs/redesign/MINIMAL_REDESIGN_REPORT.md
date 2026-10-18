@@ -38,7 +38,7 @@ restores the dark-default variant if wanted.
   against a non-demo database; its Trade heading expectation was updated to "Trade Analysis").
 
 ## Known gaps
-- Logo: see the final message — the orange-basketball source image must be saved to disk to extract it exactly
-  (`scripts/brand/extract_logo.py`). `the logo is `public/brand/pivot-logo.png`, keyed from `scripts/brand/source/pivot-logo-source.png`.
+- Logo: `public/brand/pivot-logo.png`, keyed from the supplied orange-basketball image (`scripts/brand/extract_logo.py`,
+  source kept in `scripts/brand/source/`). Orange appears only in the logo and favicon.
 - No player headshots render in this environment (asset manifest lists none); the silhouette fallback shows.
 - Reference columns BPM/OVR, team-selector account and cap figures are not shown: there is no served data for them.
