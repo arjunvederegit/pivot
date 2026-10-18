@@ -104,6 +104,9 @@ make dev            # backend :8000 + frontend :3000
 
 ```bash
 make index-assets      # player photos (./nbaplayerimages) + team logos (./nbalogos)
+                       # Both folders are local and gitignored. Without them the app still works:
+                       # teams show colour crests and players show initials/silhouettes. After adding
+                       # or moving the folders, re-run this (or set ASSET_PLAYER_IMAGES_DIR / ASSET_LOGOS_DIR).
 make import-stats-csv  # 2025-26 season totals (data/imports/nba_player_stats_2026.csv)
 make import-kaggle     # Kaggle basketball DB enrichment (~700MB download; no auth for
                        # public datasets — see docs/kaggle-setup.md)

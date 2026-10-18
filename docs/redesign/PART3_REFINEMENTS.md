@@ -15,7 +15,7 @@ Verified on direct load, client navigation, refresh, back/forward and return hom
 
 ## Headshots — root cause
 `<repo>/nbaplayerimages` (gitignored, user-supplied) did not exist in this checkout, so `make index-assets` had indexed 0 player
-photos (`/assets/manifest` → `players: []`, coverage 0.0). The folder exists at `~/Downloads/nbaplayerimages` (2,476 name-keyed
+photos (`/assets/manifest` → `players: []`, coverage 0.0). A local copy of the dataset existed outside the repo (2,476 name-keyed
 folders). Fix: symlink it to the supported default location (excluded via `.git/info/exclude`) and run the project's own
 `index-assets`. The indexer's conservative exact/normalised name match plus recorded confidence is the *existing* mapping
 (the dataset is name-keyed; there is no ID-keyed source). Result: 446 of 530 rostered players matched (84%); 84 have no photo in the
