@@ -559,6 +559,13 @@ function TradeEvaluator() {
             pickMoves={picks}
             playerIndex={playerIndex}
             originOf={originOf}
+            inputs={{
+              season: Object.values(rosters.data ?? {})[0]?.season,
+              rosterAsOf: Object.values(rosters.data ?? {})
+                .map((r) => r.source_retrieved_at)
+                .filter((d): d is string => Boolean(d))
+                .sort()[0],
+            }}
           />
         )}
       </div>
@@ -838,6 +845,7 @@ function EvaluationSection({
   pickMoves,
   playerIndex,
   originOf,
+  inputs,
 }: {
   evaluation: { legality: LegalityResponse; evaluations: Record<string, TeamEvaluation> };
   teams: Team[];
@@ -846,6 +854,8 @@ function EvaluationSection({
   pickMoves: PickMove[];
   playerIndex: Record<string, RosterPlayer>;
   originOf: Record<string, string>;
+  /** Where the evaluation's INPUT data came from — distinct from when the evaluation ran. */
+  inputs: { season?: string; rosterAsOf?: string };
 }) {
   const [activeTeam, setActiveTeam] = useState(teamIds[0]);
   const resolvedTeam = evaluation.evaluations[activeTeam] ? activeTeam : teamIds[0];
@@ -986,9 +996,22 @@ function EvaluationSection({
             }
           />
           <div className="mt-2">
+            {/* Two different timestamps: when this evaluation ran, and how old the data under it is.
+                A fresh evaluation says nothing about the freshness of its inputs. */}
             <SourceRail
               source="Pivot evaluation model over ingested NBA data"
-              retrievedAt={teamEval.evaluated_at}
+              extra={
+                <>
+                  <span aria-hidden>·</span>
+                  <span>Evaluated {formatDate(teamEval.evaluated_at)}</span>
+                  <span aria-hidden>·</span>
+                  <span>
+                    Input data: {inputs.season ? `${inputs.season} season stats` : "season stats"}, roster
+                    snapshot {inputs.rosterAsOf ? formatDate(inputs.rosterAsOf) : "date unavailable"}, cap year{" "}
+                    {evaluation.legality.league_year}
+                  </span>
+                </>
+              }
             />
           </div>
         </div>

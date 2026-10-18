@@ -22,7 +22,8 @@ import { useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { LEGALITY_SHORT, VERDICT_LABEL, fanVerdict, ordinal, payrollDisclosure } from "@/lib/format";
+import { LEGALITY_SHORT, ordinal, payrollDisclosure } from "@/lib/format";
+import { assessSide } from "@/lib/assessment";
 import { teamIdentity } from "@/lib/teamIdentity";
 import type { Team, TeamEvaluation, TeamLegality } from "@/lib/types";
 import { FitChip } from "@/components/fit";
@@ -495,7 +496,7 @@ function AfterColumn({ side, axis, refused }: { side: SheetSide; axis: number; r
     );
   }
   const suppressed = ev.decision_status === "suppressed_illegal";
-  const verdict = fanVerdict(ev.composite_utility, ev.confidence);
+  const assessment = assessSide(ev, side.name);
   const u = ev.uncertainty;
   const band = !refused && hasOutcomeBand(u);
   const fit = ev.components?.fit ?? null;
@@ -505,8 +506,8 @@ function AfterColumn({ side, axis, refused }: { side: SheetSide; axis: number; r
 
   return (
     <div>
-      <p className="font-serif text-[1.85rem] leading-[1.05] text-foreground">
-        {refused ? "No decision score" : VERDICT_LABEL[verdict]}
+      <p className="text-[1.2rem] font-semibold leading-[1.2] tracking-[-0.015em] text-foreground">
+        {refused ? "No decision score" : assessment.headline}
       </p>
       {refused ? (
         <p className="mt-1.5 text-[12.5px] leading-snug text-muted">
@@ -525,13 +526,26 @@ function AfterColumn({ side, axis, refused }: { side: SheetSide; axis: number; r
           — the deal is not scored.
         </p>
       ) : (
-        <p className="mt-1.5 text-[12.5px] text-muted">
-          Decision score{" "}
-          <span className="numeral text-foreground">
-            {ev.composite_utility != null ? ev.composite_utility.toFixed(0) : "—"}
-          </span>{" "}
-          of 100 · confidence {ev.confidence}
-        </p>
+        <>
+          {assessment.reason && <p className="mt-1.5 text-[13px] leading-snug text-foreground/90">{assessment.reason}</p>}
+          <p className="mt-1.5 text-[12.5px] text-muted">
+            Model category <span className="text-foreground">{assessment.category}</span> · score{" "}
+            <span className="numeral text-foreground">
+              {ev.composite_utility != null ? ev.composite_utility.toFixed(0) : "—"}
+            </span>{" "}
+            of 100 · confidence {ev.confidence}
+          </p>
+          {assessment.limitations.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {assessment.limitations.slice(0, 3).map((l) => (
+                <li key={l} className="flex gap-1.5 text-[12px] leading-snug text-conditional">
+                  <span aria-hidden>!</span>
+                  <span className="text-muted">{l}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
 
       <div className="mt-5">

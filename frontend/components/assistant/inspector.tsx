@@ -378,10 +378,20 @@ export function InspectorDrawer({
   onClose,
   returnFocusTo,
   children,
+  label = "Evidence",
+  closeLabel = "Close evidence",
+  drawerId = "evidence-inspector-drawer",
+  showFrom = "xl",
 }: {
   onClose: () => void;
   returnFocusTo: HTMLElement | null;
   children: React.ReactNode;
+  /** The dialog's accessible name (the evidence inspector by default; the context drawer reuses this). */
+  label?: string;
+  closeLabel?: string;
+  drawerId?: string;
+  /** The breakpoint from which the drawer is not used (a docked panel or popovers take over). */
+  showFrom?: "md" | "xl";
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -424,15 +434,15 @@ export function InspectorDrawer({
 
   return (
     <div
-      className="fade-in fixed inset-0 z-[60] flex items-end bg-ink/75 sm:items-stretch sm:justify-end xl:hidden"
+      className={`fade-in fixed inset-0 z-[60] flex items-end bg-ink/75 sm:items-stretch sm:justify-end ${showFrom === "md" ? "md:hidden" : "xl:hidden"}`}
       role="dialog"
       aria-modal="true"
-      aria-label="Evidence"
+      aria-label={label}
       onClick={onClose}
     >
       <div
         ref={panelRef}
-        id="evidence-inspector-drawer"
+        id={drawerId}
         onClick={(event) => event.stopPropagation()}
         className="scroll-thin max-h-[88dvh] w-full overflow-y-auto rounded-t-xl border-t border-line bg-arena p-4 shadow-[var(--shadow-pop)] sm:h-full sm:max-h-none sm:max-w-md sm:rounded-none sm:border-l sm:border-t-0 sm:p-5"
       >
@@ -441,7 +451,7 @@ export function InspectorDrawer({
             ref={closeRef}
             type="button"
             onClick={onClose}
-            aria-label="Close evidence"
+            aria-label={closeLabel}
             className="grid h-9 w-9 place-items-center rounded-lg border border-line text-muted transition-colors hover:bg-panel2 hover:text-foreground"
           >
             <IconClose size={16} />

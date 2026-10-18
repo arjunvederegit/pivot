@@ -10,7 +10,7 @@
  * corpus) as a starting point the GM can then change.
  */
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { possessive, priorityLevelLabel } from "@/lib/assistant-format";
 import {
   MAX_CONSTRAINT_CHARS,
@@ -20,12 +20,15 @@ import {
   teamDefaults,
   type AssistantContext,
   type AssistantMode,
+  type Starter,
   type AssistantTeam,
   type PriorityKey,
   type PriorityLevel,
   type Priorities,
 } from "@/lib/assistant-types";
 import { Button, SegmentedControl, Skeleton } from "@/components/ui";
+import { IconChevron, IconClose } from "@/components/icons";
+import { InspectorDrawer } from "@/components/assistant/inspector";
 
 const FIELD =
   "rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-[13px] text-foreground transition-colors placeholder:text-faint hover:border-[#4a4a50] focus:border-signal/60 disabled:opacity-50";
@@ -247,9 +250,56 @@ function ConstraintEditor({
   );
 }
 
-/* ------------------------------------------------------------------------ bar */
+/* ------------------------------------------------------------- compact strip */
 
-export function ContextBar({
+/**
+ * The context controls, sized like a chat app's model selector: a row of small labelled chips
+ * above the composer. Each chip opens a compact popover holding the SAME editor the old
+ * always-open form held; on a narrow screen one "Context" chip opens all of them in a drawer.
+ *
+ * What a chip shows is what is applied: closing a popover changes nothing, and a constraint or
+ * priority that will be sent is always counted on its chip. Nothing here adds a field or a
+ * model switch — it is the existing team / mode / priorities / constraints context.
+ */
+
+type SectionKey = "team" | "mode" | "strategy" | "constraints" | "suggestions";
+
+function Chip({
+  label,
+  value,
+  open,
+  onClick,
+  id,
+  panelId,
+}: {
+  label: string;
+  value: string;
+  open: boolean;
+  onClick: () => void;
+  id: string;
+  panelId: string;
+}) {
+  return (
+    <button
+      type="button"
+      id={id}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-controls={open ? panelId : undefined}
+      aria-label={`${label}: ${value}`}
+      onClick={onClick}
+      className={`inline-flex max-w-[15rem] items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] transition-colors ${
+        open ? "border-[#55555b] bg-panel3" : "border-line bg-transparent hover:bg-panel2"
+      }`}
+    >
+      <span className="text-faint">{label}</span>
+      <span className="truncate font-medium text-foreground">{value}</span>
+      <IconChevron size={13} className="shrink-0 text-faint" />
+    </button>
+  );
+}
+
+export function ContextControls({
   context,
   loading,
   error,
@@ -262,6 +312,9 @@ export function ContextBar({
   onMode,
   onPriorities,
   onConstraints,
+  starters,
+  startersDisabled,
+  onStarter,
 }: {
   context: AssistantContext | undefined;
   loading: boolean;
@@ -275,27 +328,51 @@ export function ContextBar({
   onMode: (mode: AssistantMode) => void;
   onPriorities: (next: Priorities) => void;
   onConstraints: (next: string[]) => void;
+  starters: Starter[];
+  startersDisabled: boolean;
+  onStarter: (prompt: string) => void;
 }) {
-  const teamSelectId = useId();
-  const team = context?.teams.find((t) => t.id === teamId) ?? null;
+  const uid = useId();
+  const [open, setOpen] = useState<SectionKey | null>(null);
+  const [drawer, setDrawer] = useState<{ opener: HTMLElement | null } | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  // A popover closes on an outside press or Escape, and focus returns to its chip.
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(event: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(event.target as Node)) setOpen(null);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setOpen(null);
+      openerRef.current?.focus();
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   if (loading) {
     return (
-      <div className="panel space-y-3 p-4 sm:p-5" aria-label="Loading teams and priorities" role="status">
-        <Skeleton className="h-9 w-full max-w-xl" />
-        <Skeleton className="h-7 w-full max-w-2xl" />
+      <div role="status" aria-label="Loading teams and priorities" className="mb-3">
+        <Skeleton className="h-8 w-full max-w-md" />
       </div>
     );
   }
   if (!context) {
     return (
-      <div className="panel flex flex-wrap items-center gap-3 p-4 text-[13px] text-muted sm:p-5">
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-[13px] text-muted">
         <span aria-hidden className="text-illegal">
           ✕
         </span>
         <span className="min-w-0 flex-1">
-          Couldn’t load the fictional teams and priorities{error ? `: ${error}` : "."} You can
-          still ask research questions without a team.
+          Couldn’t load the fictional teams and priorities{error ? `: ${error}` : "."} You can still ask
+          research questions without a team.
         </span>
         <Button size="sm" variant="secondary" onClick={onRetry}>
           Try again
@@ -304,76 +381,250 @@ export function ContextBar({
     );
   }
 
-  const defaults = team ? teamDefaults(team) : null;
-  // Only roster fit falls back to a team's own position (backend `effective_priorities`).
+  const team = context.teams.find((t) => t.id === teamId) ?? null;
+  const filled = constraints.filter((c) => c.trim());
+  const prioCount = Object.keys(priorities).length;
+  const modeLabel = MODE_OPTIONS.find((m) => m.value === mode)?.label ?? mode;
   const fallbackTeam = mode === "roster_fit" ? team : null;
+  const defaults = team ? teamDefaults(team) : null;
   const differsFromDefaults =
     defaults !== null &&
     (!samePriorities(priorities, defaults.priorities) || !sameList(constraints, defaults.constraints));
+  const prioValue =
+    prioCount > 0
+      ? `${prioCount} set`
+      : fallbackTeam && Object.keys(teamDefaults(fallbackTeam).priorities).length > 0
+        ? "team defaults"
+        : "none";
+  const conValue =
+    filled.length > 0
+      ? `${filled.length} set`
+      : fallbackTeam && fallbackTeam.default_constraints.length > 0
+        ? "team defaults"
+        : "none";
 
-  return (
-    <section aria-label="Question context" className="panel space-y-4 p-4 sm:p-5">
-      <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-        <div className="min-w-0 flex-1 basis-64">
-          <label htmlFor={teamSelectId} className="eyebrow mb-1.5 block">
-            Fictional team
-          </label>
-          <select
-            id={teamSelectId}
-            value={team?.id ?? ""}
-            onChange={(event) =>
-              onTeam(context.teams.find((t) => t.id === event.target.value) ?? null)
-            }
-            className={`${FIELD} w-full max-w-sm cursor-pointer`}
-          >
-            <option value="">No team (research)</option>
-            {context.teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-          {team && (
-            <p className="mt-1.5 max-w-xl text-[12px] leading-relaxed text-faint">{team.identity}</p>
-          )}
-        </div>
-        <div className="min-w-0">
-          <span className="eyebrow mb-1.5 block">Mode</span>
-          <SegmentedControl
-            ariaLabel="Mode"
-            options={MODE_OPTIONS}
-            value={mode}
-            onChange={(v) => onMode(v as AssistantMode)}
-          />
-          <p className="mt-1.5 max-w-xs text-[12px] leading-relaxed text-faint">
-            {mode === "roster_fit" && !team
-              ? "Pick a team to read players against its priorities."
-              : MODE_HINT[mode]}
+  const panelFor = (key: SectionKey) => `${uid}-${key}`;
+  const toggle = (key: SectionKey, el: HTMLElement) => {
+    openerRef.current = el;
+    setOpen((cur) => (cur === key ? null : key));
+  };
+
+  const sections: Record<SectionKey, { title: string; node: React.ReactNode }> = {
+    team: {
+      title: "Fictional team",
+      node: (
+        <TeamSection
+          context={context}
+          team={team}
+          onTeam={(t) => {
+            onTeam(t);
+          }}
+        />
+      ),
+    },
+    mode: { title: "Mode", node: <ModeSection mode={mode} team={team} onMode={onMode} /> },
+    strategy: {
+      title: team ? `${possessive(team.name)} priorities` : "Your priorities",
+      node: (
+        <div className="space-y-3">
+          <p className="text-[12.5px] leading-snug text-faint">
+            Your stated position — sent with every question, never treated as evidence.
           </p>
-        </div>
-      </div>
-
-      <div className="border-t border-hairline pt-4">
-        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="eyebrow">{team ? `${possessive(team.name)} priorities` : "Your priorities"}</span>
-          <span className="text-[11.5px] text-faint">Your stated position — sent with every question, never treated as evidence</span>
+          <PriorityEditor
+            priorities={priorities}
+            dimensions={context.priority_dimensions}
+            fallbackTeam={fallbackTeam}
+            onChange={onPriorities}
+          />
           {differsFromDefaults && team && (
-            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => onTeam(team)}>
+            <Button size="sm" variant="ghost" onClick={() => onTeam(team)}>
               Reset to team defaults
             </Button>
           )}
         </div>
-        <PriorityEditor
-          priorities={priorities}
-          dimensions={context.priority_dimensions}
-          fallbackTeam={fallbackTeam}
-          onChange={onPriorities}
-        />
+      ),
+    },
+    constraints: {
+      title: "Constraints",
+      node: <ConstraintEditor constraints={constraints} fallbackTeam={fallbackTeam} onChange={onConstraints} />,
+    },
+    suggestions: {
+      title: "Suggestions",
+      node: (
+        <div className="space-y-2">
+          <p className="text-[12.5px] leading-snug text-faint">
+            Selecting a suggestion sends it, with the context shown on the chips.
+          </p>
+          {starters.length === 0 ? (
+            <p className="text-[13px] text-muted">No suggestions for this team and mode.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {starters.map((s) => (
+                <li key={s.prompt}>
+                  <button
+                    type="button"
+                    disabled={startersDisabled}
+                    onClick={() => {
+                      setOpen(null);
+                      setDrawer(null);
+                      onStarter(s.prompt);
+                    }}
+                    className="hover-frame flex w-full flex-col items-start gap-0.5 rounded-md border border-line bg-panel2/70 px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <span className="text-[13.5px] leading-snug text-foreground [overflow-wrap:anywhere]">{s.prompt}</span>
+                    {s.intent && <span className="text-[11.5px] leading-snug text-faint">{s.intent}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ),
+    },
+  };
+
+  const chips: { key: SectionKey; label: string; value: string }[] = [
+    { key: "team", label: "Team", value: team?.name ?? "None" },
+    { key: "mode", label: "Mode", value: modeLabel },
+    { key: "strategy", label: "Strategy", value: prioValue },
+    { key: "constraints", label: "Constraints", value: conValue },
+    { key: "suggestions", label: "Suggestions", value: String(starters.length) },
+  ];
+
+  return (
+    <div ref={boxRef} aria-label="Question context" role="group" className="mb-2.5">
+      {/* Wide screens: one chip per control, each opening its own compact popover. */}
+      <div className="hidden flex-wrap items-center gap-1.5 md:flex">
+        {chips.map((c) => (
+          <div key={c.key} className="relative">
+            <Chip
+              id={`${uid}-chip-${c.key}`}
+              panelId={panelFor(c.key)}
+              label={c.label}
+              value={c.value}
+              open={open === c.key}
+              onClick={() => {
+                const el = document.getElementById(`${uid}-chip-${c.key}`);
+                if (el) toggle(c.key, el);
+              }}
+            />
+            {open === c.key && (
+              <div
+                id={panelFor(c.key)}
+                role="dialog"
+                aria-label={`${c.label} settings`}
+                className="fade-in absolute bottom-full left-0 z-40 mb-2 w-[min(92vw,26rem)] rounded-md border border-line bg-arena p-4 shadow-[var(--shadow-pop)]"
+              >
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-[13.5px] font-semibold text-foreground">{sections[c.key].title}</h3>
+                  <button
+                    type="button"
+                    aria-label={`Close ${sections[c.key].title}`}
+                    onClick={() => {
+                      setOpen(null);
+                      openerRef.current?.focus();
+                    }}
+                    className="grid h-7 w-7 place-items-center rounded-md text-muted hover:bg-panel2 hover:text-foreground"
+                  >
+                    <IconClose size={15} />
+                  </button>
+                </div>
+                <div className="scroll-thin max-h-[22rem] overflow-y-auto pr-0.5">{sections[c.key].node}</div>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
 
-      <div className="border-t border-hairline pt-3">
-        <ConstraintEditor constraints={constraints} fallbackTeam={fallbackTeam} onChange={onConstraints} />
+      {/* Narrow screens: one Context chip, all of it in a drawer. */}
+      <div className="md:hidden">
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          onClick={(e) => setDrawer({ opener: e.currentTarget })}
+          className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[12.5px] hover:bg-panel2"
+        >
+          <span className="text-faint">Context</span>
+          <span className="truncate font-medium text-foreground">
+            {team?.name ?? "No team"} · {modeLabel} · {prioCount + filled.length} set
+          </span>
+          <IconChevron size={13} className="shrink-0 text-faint" />
+        </button>
       </div>
-    </section>
+      {drawer && (
+        <InspectorDrawer
+          label="Context"
+          closeLabel="Close context"
+          onClose={() => setDrawer(null)}
+          returnFocusTo={drawer.opener}
+          drawerId="assistant-context-drawer"
+          showFrom="md"
+        >
+          <div className="space-y-5">
+            {(["team", "mode", "strategy", "constraints", "suggestions"] as SectionKey[]).map((k) => (
+              <section key={k} aria-label={sections[k].title}>
+                <h3 className="eyebrow mb-2 text-foreground">{sections[k].title}</h3>
+                {sections[k].node}
+              </section>
+            ))}
+          </div>
+        </InspectorDrawer>
+      )}
+    </div>
+  );
+}
+
+function TeamSection({
+  context,
+  team,
+  onTeam,
+}: {
+  context: AssistantContext;
+  team: AssistantTeam | null;
+  onTeam: (team: AssistantTeam | null) => void;
+}) {
+  const id = useId();
+  return (
+    <div>
+      <label htmlFor={id} className="sr-only">
+        Fictional team
+      </label>
+      <select
+        id={id}
+        value={team?.id ?? ""}
+        onChange={(event) => onTeam(context.teams.find((t) => t.id === event.target.value) ?? null)}
+        className={`${FIELD} w-full cursor-pointer`}
+      >
+        <option value="">No team (research)</option>
+        {context.teams.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+      {team && <p className="mt-2 text-[12.5px] leading-relaxed text-faint">{team.identity}</p>}
+      <p className="mt-2 text-[12px] leading-snug text-faint">
+        A fictional team for this sandbox — not the NBA team selected elsewhere in Pivot.
+      </p>
+    </div>
+  );
+}
+
+function ModeSection({
+  mode,
+  team,
+  onMode,
+}: {
+  mode: AssistantMode;
+  team: AssistantTeam | null;
+  onMode: (mode: AssistantMode) => void;
+}) {
+  return (
+    <div>
+      <SegmentedControl ariaLabel="Mode" options={MODE_OPTIONS} value={mode} onChange={(v) => onMode(v as AssistantMode)} />
+      <p className="mt-2 text-[12.5px] leading-relaxed text-faint">
+        {mode === "roster_fit" && !team ? "Pick a team to read players against its priorities." : MODE_HINT[mode]}
+      </p>
+    </div>
   );
 }

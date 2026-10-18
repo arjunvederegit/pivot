@@ -20,7 +20,8 @@ import { useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { COMPONENT_EXPLAIN, COMPONENT_LABEL, VERDICT_LABEL, fanVerdict, height, money } from "@/lib/format";
+import { COMPONENT_EXPLAIN, COMPONENT_LABEL, height, money } from "@/lib/format";
+import { assessSide } from "@/lib/assessment";
 import type { RosterPlayer, TeamEvaluation } from "@/lib/types";
 import { PlayerPhoto, TeamLogo } from "@/components/media";
 import { SegmentedControl } from "@/components/ui";
@@ -462,25 +463,25 @@ export function buildInsights(side: SheetSide): string[] {
     return out;
   }
 
-  const verdict = VERDICT_LABEL[fanVerdict(ev.composite_utility, ev.confidence)].toLowerCase();
-  if (hasOutcomeBand(u)) {
-    out.push(
-      `The model reads this as ${verdict} for ${side.abbreviation}: ${signedWins(u.median)} projected wins, ${signedWins(u.p10)} to ${signedWins(u.p90)} across the simulation, with a ${((u.prob_positive ?? 0) * 100).toFixed(0)}% chance it helps.`,
-    );
-  } else {
-    out.push(`The model reads this as ${verdict} for ${side.abbreviation}, with no outcome distribution to project wins.`);
-  }
-
+  const assessment = assessSide(ev, side.name);
+  out.push(
+    hasOutcomeBand(u)
+      ? `${assessment.headline}: ${signedWins(u.median)} projected wins (range ${signedWins(u.p10)} to ${signedWins(u.p90)}, ${((u.prob_positive ?? 0) * 100).toFixed(0)}% model-reported chance it helps). The model's category is "${assessment.category}".`
+      : `${assessment.headline}; the simulation produced no outcome distribution, so no wins are projected.`,
+  );
+  if (assessment.limitations.length > 0)
+    out.push(`Not established by this score: ${assessment.limitations.map((l) => l.replace(/\.$/, "")).join("; ")}.`);
+  if (assessment.tone === "favorable" || assessment.tone === "neutral")
+    out.push("A favorable basketball estimate does not show the deal is legal, financially sound or feasible.");
+  // The headline already carries the main driver; add the strongest driver pulling the other way.
   const drivers = [...(ev.drivers ?? [])].sort((x, y) => y.contribution - x.contribution);
-  const best = drivers.find((d) => d.contribution > 0.5);
-  const worst = [...drivers].reverse().find((d) => d.contribution < -0.5);
-  if (best)
+  const counter =
+    assessment.tone === "unfavorable"
+      ? drivers.find((d) => d.contribution > 0.5)
+      : [...drivers].reverse().find((d) => d.contribution < -0.5);
+  if (counter)
     out.push(
-      `${COMPONENT_LABEL[best.component] ?? best.component} helps most (+${best.contribution.toFixed(1)} score points): ${lower(COMPONENT_EXPLAIN[best.component])}`,
-    );
-  if (worst)
-    out.push(
-      `${COMPONENT_LABEL[worst.component] ?? worst.component} costs the most (${worst.contribution.toFixed(1)}): ${lower(COMPONENT_EXPLAIN[worst.component])}`,
+      `${COMPONENT_LABEL[counter.component] ?? counter.component} pulls the other way (${counter.contribution > 0 ? "+" : ""}${counter.contribution.toFixed(1)}): ${lower(COMPONENT_EXPLAIN[counter.component])}`,
     );
 
   const lg = ev.legality;
@@ -491,18 +492,6 @@ export function buildInsights(side: SheetSide): string[] {
     );
   }
 
-  const gaps: string[] = [];
-  if (ev.excluded_components.length > 0)
-    gaps.push(`${ev.excluded_components.map((c) => COMPONENT_LABEL[c] ?? c).join(", ")} could not be scored`);
-  if (ev.has_unmodeled_players) {
-    const n = (ev.unmodeled_players ?? []).length;
-    const inDeal = [...ev.incoming, ...ev.outgoing].filter((p) => p.tei === null).length;
-    gaps.push(
-      `${n || "some"} ${n === 1 ? "player" : "players"} on the roster ${n === 1 ? "has" : "have"} no impact estimate and ${n === 1 ? "was" : "were"} left out of the projection${inDeal > 0 ? `, ${inDeal === 1 ? "one" : "some"} of them in this deal` : ""}`,
-    );
-  }
-  if (ev.confidence === "low") gaps.push("confidence is low");
-  if (gaps.length > 0) out.push(`Read with care: ${gaps.join("; ")}.`);
   return out;
 }
 
@@ -549,7 +538,7 @@ export function Insights({
         ) : (
           <ol className="space-y-3">
             {items.map((text, i) => (
-              <li key={i} className="grid grid-cols-[1.5rem_minmax(0,1fr)] items-start gap-3 text-[13.5px] leading-snug text-foreground">
+              <li key={i} className="grid grid-cols-[1.5rem_minmax(0,1fr)] items-start gap-3 text-[14.5px] leading-[1.5] text-foreground">
                 <span className="numeral grid h-6 w-6 place-items-center rounded-full border border-line text-[12px] text-muted">
                   {i + 1}
                 </span>

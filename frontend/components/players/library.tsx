@@ -22,7 +22,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { COUNTING_COLUMNS, QUALIFY_MIN, formatStat } from "@/lib/playerStats";
 import type { Mode, StatColumn } from "@/lib/playerStats";
-import { teamIdentity } from "@/lib/teamIdentity";
+import { teamVars } from "@/lib/teamIdentity";
 import type { SeasonTotalsPlayer } from "@/lib/types";
 import { PlayerPhoto, TeamLogo } from "@/components/media";
 import { SlotMarker } from "@/components/players/compare";
@@ -66,18 +66,22 @@ export function LibraryCard({
   onToggle: () => void;
 }) {
   const selected = slot !== null;
-  const identity = teamIdentity(player.team_abbr);
   const sortShown = INDICATOR_KEYS.includes(sortColumn.key);
 
   return (
     <li
       className={clsx(
-        "panel hover-frame group flex min-w-0 flex-col p-4",
+        "panel team-wash hover-frame group flex min-w-0 flex-col p-4",
         selected &&
           "border-signal/55 bg-[color-mix(in_srgb,var(--signal)_7%,var(--arena))] hover:border-signal/70",
       )}
-      // A thin line in the team's own colour along the top edge — identity, not data.
-      style={player.team_abbr ? ({ "--edge": identity.bright } as React.CSSProperties) : undefined}
+      // The team's colour, quietly, around the headshot and name — identity, not data. The team is
+      // the player's team in this dataset/season (`team_abbr`), not the selected organisation.
+      style={
+        player.team_abbr
+          ? ({ ...teamVars(player.team_abbr), "--wash-a": "26%", "--wash-w": "340px", "--wash-h": "150px" } as React.CSSProperties)
+          : undefined
+      }
     >
       <div className="mb-4 flex items-start gap-3.5">
         <PlayerPhoto nbaPlayerId={player.nba_player_id} name={player.name} size={56} square />

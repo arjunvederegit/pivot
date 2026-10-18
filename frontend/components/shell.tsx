@@ -513,7 +513,7 @@ function Sidebar({ pathname }: { pathname: string }) {
   return (
     <aside
       aria-label="Sidebar"
-      className="fixed inset-y-0 left-0 z-40 hidden w-[var(--sidebar-w)] flex-col border-r border-hairline bg-arena transition-[width] duration-200 lg:flex"
+      className="fixed inset-y-0 left-0 z-40 hidden w-[var(--sidebar-w)] flex-col border-r border-hairline bg-court transition-[width] duration-200 lg:flex"
     >
       <div className={`flex h-[var(--topbar-h)] shrink-0 items-center border-b border-hairline ${collapsed ? "justify-center px-0" : "px-5"}`}>
         <Link
@@ -642,7 +642,7 @@ function TeamSelector() {
 function TopBar() {
   const searchRef = useRef<HTMLInputElement>(null);
   return (
-    <div className="sticky top-0 z-30 hidden h-[var(--topbar-h)] items-center gap-4 border-b border-hairline bg-ink/95 px-6 backdrop-blur lg:flex xl:px-8">
+    <div className="sticky top-0 z-30 hidden h-[var(--topbar-h)] items-center gap-4 border-b border-hairline bg-court px-6 lg:flex xl:px-8">
       <div className="w-full max-w-[34rem]">
         <GlobalSearch hotkey listId="global-search-results" inputRef={searchRef} />
       </div>
@@ -677,7 +677,7 @@ function MobileBar({ pathname }: { pathname: string }) {
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex h-[var(--nav-h)] items-center gap-3 border-b border-hairline bg-ink/95 px-4 backdrop-blur lg:hidden">
+      <header className="sticky top-0 z-40 flex h-[var(--nav-h)] items-center gap-3 border-b border-hairline bg-court px-4 lg:hidden">
         <Link href="/" className="flex min-w-0 items-center" aria-label="Pivot — home">
           <PivotLogo height={26} />
         </Link>
@@ -708,7 +708,7 @@ function MobileBar({ pathname }: { pathname: string }) {
           />
           <div
             id="mobile-nav"
-            className="fade-in scroll-thin absolute inset-y-0 left-0 flex w-[min(86vw,20rem)] flex-col overflow-y-auto border-r border-hairline bg-arena px-3 pb-6 pt-4"
+            className="fade-in scroll-thin absolute inset-y-0 left-0 flex w-[min(86vw,20rem)] flex-col overflow-y-auto border-r border-hairline bg-court px-3 pb-6 pt-4"
           >
             <div className="mb-4 flex items-center justify-between px-1">
               <Link href="/" onClick={() => setOpen(false)} className="flex items-center" aria-label="Pivot — home">

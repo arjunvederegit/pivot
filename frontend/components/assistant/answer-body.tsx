@@ -131,7 +131,7 @@ export function AnswerBody({
 }) {
   const blocks = parseAnswer(text);
   return (
-    <div className="max-w-[72ch] space-y-3 text-[14.5px] leading-[1.65] text-foreground/90 [overflow-wrap:anywhere]">
+    <div className="max-w-[72ch] space-y-3.5 text-[15.5px] leading-[1.7] text-foreground/90 [overflow-wrap:anywhere]">
       {blocks.map((block, i) => (
         <BlockView
           key={i}

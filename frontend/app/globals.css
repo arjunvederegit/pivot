@@ -22,9 +22,9 @@
   --volt: #f4f4f5; /* the "accent" is white; name kept for existing `bg-volt` utilities */
   --volt-2: #d4d4d8;
   --volt-ink: #f4f4f5;
-  --ink: #070707;
-  --ink-2: #0e0e0f;
-  --ink-3: #151516;
+  --ink: #000000;
+  --ink-2: #0d0d0e;
+  --ink-3: #141415;
   --paper: #efeff0; /* white interactive surfaces — selected / hovered entities */
   --paper-hi: #f7f7f8;
   --white: #fafafa;
@@ -69,16 +69,16 @@
   .scope-terminal,
   .scope-paper,
   .panel {
-    --court-black: #070707; /* page ground */
-    --arena: #0e0e0f; /* cards, sidebar */
-    --arena-raised: #151516; /* elevated cards, inputs */
-    --arena-high: #1e1e20; /* hover, tracks */
-    --hairline: #2c2c2f; /* borders */
-    --hairline-soft: #232326; /* quiet dividers */
+    --court-black: #000000; /* canvas, sidebar, top bar: true black */
+    --arena: #0c0c0d; /* cards: barely lighter than the canvas */
+    --arena-raised: #141415; /* elevated cards, inputs */
+    --arena-high: #1d1d1f; /* hover, tracks */
+    --hairline: #2d2d30; /* borders: thin but visible */
+    --hairline-soft: #242427; /* quiet dividers */
 
-    --chalk: #f4f4f5;
-    --chalk-dim: #a1a1a6;
-    --chalk-faint: #86868c;
+    --chalk: #ededee; /* primary text: comfortable near-white */
+    --chalk-dim: #aeaeb4; /* secondary text: readable gray */
+    --chalk-faint: #8e8e95;
 
     /* The interactive "accent" is white: active nav, focus rings, the primary action. */
     --signal: #f4f4f5;
@@ -171,10 +171,10 @@
   /* Geist carries the interface. `font-mono` is pointed at Geist too: the product
      sets small labels and figures in the UI face with tabular numerals, not in a
      terminal mono. Real code (code/kbd/pre) gets Geist Mono in the base layer. */
-  --font-sans: var(--font-geist);
-  --font-display: var(--font-display-serif);
-  --font-serif: var(--font-display-serif);
-  --font-mono: var(--font-geist);
+  --font-sans: var(--font-sans-app);
+  --font-display: var(--font-sans-app);
+  --font-serif: var(--font-sans-app);
+  --font-mono: var(--font-sans-app);
 
   --radius-sm: var(--r-sm);
   --radius-md: var(--r-md);
@@ -189,8 +189,8 @@
   body {
     background: var(--ink);
     color: var(--chalk);
-    font-family: var(--font-geist), system-ui, sans-serif;
-    font-feature-settings: "ss01", "cv11";
+    font-family: var(--font-sans-app), system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-feature-settings: "cv11", "ss03";
     text-rendering: optimizeLegibility;
   }
   code,
@@ -293,71 +293,75 @@
 
   /* --- typographic roles -------------------------------------------------- */
 
-  /* Editorial display: Instrument Serif, used with restraint. */
+  /* Display role: the same sans, heavier and tighter — hierarchy by weight, not by a second face.
+     (`font-serif` is the historical class name used across the app.) */
   .font-display,
   .display,
   .font-serif {
-    font-family: var(--font-display-serif), Georgia, serif;
-    font-weight: 500;
-    letter-spacing: -0.012em;
+    font-family: var(--font-sans-app), system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.015em;
   }
 
   .title-xl {
-    font-family: var(--font-display-serif), Georgia, serif;
-    font-weight: 500;
-    font-size: clamp(2rem, 1.55rem + 1.35vw, 2.75rem);
-    line-height: 1.05;
-    letter-spacing: -0.018em;
+    font-family: var(--font-sans-app), system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-weight: 600;
+    font-size: clamp(1.65rem, 1.45rem + 0.7vw, 2.1rem);
+    line-height: 1.15;
+    letter-spacing: -0.022em;
     text-wrap: balance;
   }
   .title-lg {
-    font-family: var(--font-display-serif), Georgia, serif;
-    font-weight: 500;
-    font-size: clamp(1.5rem, 1.25rem + 0.8vw, 1.95rem);
-    line-height: 1.1;
-    letter-spacing: -0.012em;
+    font-family: var(--font-sans-app), system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-weight: 600;
+    font-size: clamp(1.25rem, 1.15rem + 0.4vw, 1.5rem);
+    line-height: 1.2;
+    letter-spacing: -0.018em;
     text-wrap: balance;
   }
   .title-md {
-    font-family: var(--font-geist), system-ui, sans-serif;
+    font-family: var(--font-sans-app), system-ui, -apple-system, "Segoe UI", sans-serif;
     font-weight: 600;
-    font-size: 0.975rem;
+    font-size: 1.0625rem;
     line-height: 1.3;
-    letter-spacing: -0.005em;
+    letter-spacing: -0.01em;
   }
   .title-sm {
-    font-family: var(--font-geist), system-ui, sans-serif;
+    font-family: var(--font-sans-app), system-ui, -apple-system, "Segoe UI", sans-serif;
     font-weight: 600;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     line-height: 1.3;
   }
 
   /* Figures: the UI face with tabular numerals. */
   .numeral {
-    font-family: var(--font-geist), system-ui, sans-serif;
+    font-family: var(--font-sans-app), system-ui, -apple-system, "Segoe UI", sans-serif;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
+    font-feature-settings: "tnum", "cv11", "ss03";
+    letter-spacing: -0.015em;
   }
   /* A headline statistic set in the serif — the scouting-report figure. */
   .stat-serif {
-    font-family: var(--font-geist), system-ui, sans-serif;
+    font-family: var(--font-sans-app), system-ui, -apple-system, "Segoe UI", sans-serif;
     font-weight: 600;
     font-variant-numeric: lining-nums tabular-nums;
-    letter-spacing: -0.025em;
+    font-feature-settings: "tnum", "cv11", "ss03";
+    letter-spacing: -0.03em;
   }
   .data,
   .tabular {
     font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum", "cv11", "ss03";
   }
 
   /* Small label: quiet caps, generous tracking. */
   .eyebrow {
-    font-family: var(--font-geist), system-ui, sans-serif;
+    font-family: var(--font-sans-app), system-ui, -apple-system, "Segoe UI", sans-serif;
     font-weight: 500;
-    font-size: 0.6875rem;
+    font-size: 0.71875rem;
     line-height: 1.2;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
     color: var(--chalk-dim);
   }
@@ -430,6 +434,29 @@
     .pt-row {
       grid-template-columns: minmax(0, 1fr) 1.75rem 4rem 1.75rem 3.5rem var(--act-w, 2rem);
     }
+  }
+
+  /* A quiet wash of a team's colour around an identity block, fading to the surface. The same
+     recipe as the player file header, at browse-card strength: set the team's variables with
+     `teamVars()`, then tune `--wash-a` (opacity %), `--wash-w`/`--wash-h` (size). Identity only —
+     it is never a performance signal (green/red keep that job). */
+  .team-wash {
+    position: relative;
+    isolation: isolate;
+  }
+  .team-wash::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: var(--wash-h, 150px);
+    z-index: -1;
+    pointer-events: none;
+    border-radius: inherit;
+    background: radial-gradient(
+      var(--wash-w, 320px) var(--wash-h, 150px) at 0% 0%,
+      color-mix(in srgb, var(--team-primary) var(--wash-a, 34%), transparent),
+      transparent 72%
+    );
   }
 
   /* --- team card ---------------------------------------------------------

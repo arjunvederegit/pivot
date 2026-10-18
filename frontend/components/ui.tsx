@@ -49,7 +49,7 @@ export function Panel({
           <div className="min-w-0">
             {title && <h2 className="title-md truncate text-foreground">{title}</h2>}
             {subtitle && (
-              <div className="mt-1 text-[12.5px] leading-relaxed text-muted">{subtitle}</div>
+              <div className="mt-1 text-[13.5px] leading-relaxed text-muted">{subtitle}</div>
             )}
           </div>
           {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -101,7 +101,7 @@ export function PageHeader({
           {/* One step above the title-lg section headings pages use under it. */}
           <h1 className="title-xl text-balance text-foreground">{title}</h1>
           {lede && (
-            <p className="mt-2.5 max-w-3xl text-[14.5px] leading-relaxed text-muted">{lede}</p>
+            <p className="mt-2.5 max-w-3xl text-[15.5px] leading-relaxed text-muted">{lede}</p>
           )}
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}

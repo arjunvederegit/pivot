@@ -78,7 +78,7 @@ test.describe("Ask Pivot with the build flag", () => {
     const asked = await mockAssistant(page);
     await page.goto("/assistant");
 
-    await expect(page.getByRole("heading", { name: "Pivot Intelligence", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Ask Pivot", level: 1 })).toBeVisible();
     await expect(page.getByText("FICTIONAL DATA / SANDBOX.")).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Primary" }).first();
     await expect(nav.getByRole("link", { name: /Ask Pivot/ })).toHaveAttribute("aria-current", "page");

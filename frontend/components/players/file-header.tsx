@@ -165,10 +165,10 @@ export function PlayerFileHeader({
             {team && (
               <div className="flex flex-wrap gap-2">
                 <ButtonLink href={`/trade-evaluator?team=${team.id}`} variant="primary" size="sm">
-                  Trade this roster
+                  Open {team.abbreviation} in Trade Evaluator
                 </ButtonLink>
                 <ButtonLink href={`/player-explorer?team=${team.id}`} size="sm">
-                  Compare teammates
+                  Compare {team.abbreviation} players
                 </ButtonLink>
               </div>
             )}

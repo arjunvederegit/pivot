@@ -48,7 +48,7 @@ export function SkillCoveragePanel({
       className={clsx("flex flex-col", className)}
       bodyClassName="flex flex-1 flex-col"
       title="Skill coverage"
-      subtitle="The rotation's third-best value in each skill, as a league percentile — what the roster already covers"
+      subtitle="The top-10 rotation's third-best player in each skill, as a league player percentile — what the roster already covers. A player measure, not the team statistic used in the diagnosis above."
     >
       {error ? (
         <ErrorState message={`Could not load skill coverage: ${String(error)}`} />

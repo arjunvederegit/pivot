@@ -44,7 +44,7 @@ interface TeamDetailResponse {
 
 /** The team card beside the page header: a panel, nothing more. */
 const HERO_CARD =
-  "panel max-w-xl lg:max-w-none";
+  "panel";
 
 /* ------------------------------------------------------------ your team */
 
@@ -178,7 +178,7 @@ export function YourTeamCard({
               ? `${diff > 0 ? "+" : diff < 0 ? "−" : ""}${Math.abs(diff).toFixed(1)}`
               : "—"
           }
-          sub={typeof diff === "number" ? "per game" : undefined}
+          sub={typeof diff === "number" ? "/ game" : undefined}
         />
       </dl>
 

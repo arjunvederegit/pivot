@@ -24,6 +24,7 @@ export function Composer({
   disabledReason,
   placeholder,
   textareaRef,
+  controls,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -34,6 +35,8 @@ export function Composer({
   disabledReason?: string | null;
   placeholder: string;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  /** The compact context strip, shown above the box (team, mode, strategy, constraints, suggestions). */
+  controls?: React.ReactNode;
 }) {
   const id = useId();
   const hintId = `${id}-hint`;
@@ -54,8 +57,9 @@ export function Composer({
         event.preventDefault();
         if (canSend) onSend();
       }}
-      className="panel p-3 sm:p-4"
+      className="panel p-3 sm:p-3.5"
     >
+      {controls}
       {/* A fixed name on the box itself: the placeholder changes with the team and the
           priorities, so it must never be what the box is called. */}
       <textarea

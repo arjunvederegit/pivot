@@ -154,6 +154,12 @@ describe("asking a question", () => {
   });
 });
 
+/** The context controls are compact chips above the composer; each opens its own popover. */
+async function openChip(label: "Team" | "Mode" | "Strategy" | "Constraints" | "Suggestions") {
+  // The catalogue loads after the composer does, so wait for the chip.
+  fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${label}\\b`) }));
+}
+
 describe("the evidence inspector", () => {
   it("opens the cited passage: excerpt, author and date", async () => {
     mockApi();
@@ -161,9 +167,11 @@ describe("the evidence inspector", () => {
     typeAndSend(await readyComposer(), "Who defends the point of attack best?");
     const log = screen.getByRole("log");
     await within(log).findByText("Fictional data");
-    const inspector = screen.getByRole("complementary", { name: "Evidence inspector" });
+    // The evidence panel stays closed until a citation is opened.
+    expect(screen.queryByRole("complementary", { name: "Evidence inspector" })).not.toBeInTheDocument();
 
     fireEvent.click(within(log).getByRole("button", { name: "Source S05: Theo Vance — shooting volume and defensive role" }));
+    const inspector = screen.getByRole("complementary", { name: "Evidence inspector" });
     expect(within(inspector).getByText(/Vance takes seven threes a game/)).toBeInTheDocument();
     expect(within(inspector).getAllByText("Priya Raman").length).toBeGreaterThan(0);
 
@@ -179,6 +187,9 @@ describe("the evidence inspector", () => {
     renderWorkspace();
     typeAndSend(await readyComposer(), "Who defends the point of attack best?");
     await within(screen.getByRole("log")).findByText("Fictional data");
+    fireEvent.click(
+      within(screen.getByRole("log")).getByRole("button", { name: /^Sources for answer 1/ }),
+    );
     const inspector = screen.getByRole("complementary", { name: "Evidence inspector" });
     const options = within(inspector).getAllByRole("option");
     expect(options[0]).toHaveAttribute("aria-selected", "true");
@@ -346,7 +357,10 @@ describe("the composer", () => {
     const { asked } = mockApi();
     renderWorkspace();
     const box = await readyComposer();
+    await readyComposer();
+    await openChip("Team");
     fireEvent.change(await screen.findByLabelText("Fictional team"), { target: { value: "COMETS" } });
+    await openChip("Strategy");
     expect(screen.getByLabelText("Spacing level")).toHaveValue("must_preserve");
     expect(box.placeholder).toContain("Hartford Comets’ spacing");
 
@@ -368,6 +382,7 @@ describe("accessible names", () => {
     // The box carries its own name: the placeholder changes with the team and priorities.
     expect(box).toHaveAttribute("aria-label", COMPOSER);
     const before = box.placeholder;
+    await openChip("Team");
     fireEvent.change(await screen.findByLabelText("Fictional team"), { target: { value: "COMETS" } });
     expect(box.placeholder).not.toBe(before);
     expect(screen.getByRole("textbox", { name: COMPOSER })).toBe(box);
@@ -378,6 +393,7 @@ describe("accessible names", () => {
     fireEvent.click(debug);
     expect(debug).toHaveAttribute("aria-pressed", "true");
 
+    await openChip("Strategy");
     expect(screen.getByRole("combobox", { name: "Point-of-attack defense level" })).toHaveValue("high");
     expect(screen.getByRole("combobox", { name: "Spacing level" })).toHaveValue("must_preserve");
   });
@@ -388,8 +404,11 @@ describe("team defaults in roster fit", () => {
     mockApi();
     renderWorkspace();
     await readyComposer();
+    await openChip("Team");
     fireEvent.change(await screen.findByLabelText("Fictional team"), { target: { value: "COMETS" } });
+    await openChip("Mode");
     fireEvent.click(screen.getByRole("radio", { name: "Roster fit" }));
+    await openChip("Strategy");
     for (const name of ["Spacing level", "Point-of-attack defense level", "Rebounding level"]) {
       fireEvent.change(screen.getByRole("combobox", { name }), { target: { value: "remove" } });
     }
@@ -398,12 +417,15 @@ describe("team defaults in roster fit", () => {
         "None set — the Hartford Comets’ documented defaults will be used: Spacing · Must preserve; Point-of-attack defense · High; Rebounding · Low.",
       ),
     ).toBeInTheDocument();
+    await openChip("Constraints");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove constraint 1" }));
     expect(screen.getByText("None set — the Hartford Comets’ documented constraints will be used")).toBeInTheDocument();
 
     // Research mode does not fall back to anything.
+    await openChip("Mode");
     fireEvent.click(screen.getByRole("radio", { name: "Research" }));
+    await openChip("Strategy");
     expect(screen.getByText("None set — the assistant reads the question alone.")).toBeInTheDocument();
   });
 });

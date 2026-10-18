@@ -76,8 +76,8 @@ export function DecisionsPanel({
               className="group flex items-center gap-4 px-5 py-3 transition-colors hover:bg-panel2"
             >
               <span className="min-w-0 flex-1">
-                <span className="block text-[14px] font-semibold text-foreground">{d.title}</span>
-                <span className="mt-0.5 block text-[12.5px] leading-snug text-muted">{d.prompt}</span>
+                <span className="block text-[15px] font-semibold text-foreground">{d.title}</span>
+                <span className="mt-0.5 block text-[13.5px] leading-snug text-muted">{d.prompt}</span>
               </span>
               {d.note && <span className="shrink-0 text-[12px] text-faint">{d.note}</span>}
               <IconArrowRight

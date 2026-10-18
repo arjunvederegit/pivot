@@ -18,7 +18,8 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useState } from "react";
 import { sectionOf } from "@/lib/evaluationDetail";
-import { COMPONENT_EXPLAIN, COMPONENT_LABEL, VERDICT_LABEL, count, fanVerdict, money } from "@/lib/format";
+import { COMPONENT_EXPLAIN, COMPONENT_LABEL, count, money } from "@/lib/format";
+import { assessSide } from "@/lib/assessment";
 import { teamIdentity } from "@/lib/teamIdentity";
 import type { PerformanceDetail, TeamEvaluation } from "@/lib/types";
 import { UncertaintyStrip } from "@/components/charts";
@@ -134,21 +135,23 @@ export function TeamPerspective({
 
 function Headline({ evaluation, abbreviation }: { evaluation: TeamEvaluation; abbreviation: string }) {
   const identity = teamIdentity(abbreviation);
-  const verdict = fanVerdict(evaluation.composite_utility, evaluation.confidence);
+  const assessment = assessSide(evaluation, identity.nickname === "Team" ? abbreviation : identity.name);
   const u = evaluation.uncertainty;
   const band = hasOutcomeBand(u);
 
   return (
     <div className="overflow-hidden rounded-xl border border-hairline">
-      <div className="grid gap-px bg-hairline md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div className="grid gap-px bg-hairline md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1.1fr)]">
         <div className="min-w-0 bg-panel px-5 py-5">
           <div className="eyebrow flex items-center gap-2">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: identity.bright }} />
-            Verdict for {abbreviation}
+            Assessment for {abbreviation}
           </div>
-          <h3 className="title-lg mt-2 text-balance text-foreground">{VERDICT_LABEL[verdict]}</h3>
+          <h3 className="title-lg mt-2 text-balance text-foreground">{assessment.headline}</h3>
+          {assessment.reason && <p className="mt-2 text-[14px] leading-snug text-foreground/90">{assessment.reason}</p>}
           <p className="mt-2 text-[12.5px] text-muted">
-            Confidence {evaluation.confidence} ·{" "}
+            Model category: <span className="text-foreground">{assessment.category}</span> · confidence{" "}
+            {evaluation.confidence} ·{" "}
             <Link href="/methodology#utility" className="text-signal underline-offset-2 hover:underline">
               how this is calculated
             </Link>
@@ -156,24 +159,24 @@ function Headline({ evaluation, abbreviation }: { evaluation: TeamEvaluation; ab
         </div>
         <div className="min-w-0 bg-panel px-5 py-5">
           <div className="eyebrow">Decision score</div>
-          <p className="stat-serif mt-2 text-[3rem] leading-none text-foreground">
+          <p className="stat-serif mt-2 text-[2.6rem] leading-none text-foreground">
             {evaluation.composite_utility != null ? evaluation.composite_utility.toFixed(0) : "—"}
           </p>
-          <p className="mt-2 text-[12px] text-muted">0–100 · 50 is neutral</p>
+          <p className="mt-2 text-[12.5px] text-muted">0–100 · 50 is neutral · covers evaluated factors only</p>
         </div>
         <div className="min-w-0 bg-panel px-5 py-5">
           <div className="eyebrow">Projected wins</div>
-          <p className="stat-serif mt-2 text-[3rem] leading-none text-foreground">
+          <p className="stat-serif mt-2 text-[2.6rem] leading-none text-foreground">
             {band ? signedWins(u.median) : "—"}
           </p>
-          <p className="mt-2 text-[12px] leading-snug text-muted">
+          <p className="mt-2 text-[12.5px] leading-snug text-muted">
             {band ? (
               <>
-                median ·{" "}
+                median · range{" "}
                 <span className="numeral text-foreground">
                   {signedWins(u.p10)} to {signedWins(u.p90)}
                 </span>{" "}
-                10th–90th pct · {((u.prob_positive ?? 0) * 100).toFixed(0)}% chance it helps
+                (10th–90th pct) · {((u.prob_positive ?? 0) * 100).toFixed(0)}% model-reported chance it helps
               </>
             ) : (
               (u.unavailable ?? "no outcome distribution")
@@ -181,20 +184,24 @@ function Headline({ evaluation, abbreviation }: { evaluation: TeamEvaluation; ab
           </p>
         </div>
       </div>
-      {(evaluation.excluded_components.length > 0 || evaluation.has_unmodeled_players) && (
-        <div className="space-y-2 border-t border-hairline bg-panel px-5 py-3">
-          {evaluation.excluded_components.length > 0 && (
-            <p className="flex gap-2 text-[12px] leading-snug text-muted">
-              <span aria-hidden className="text-unavail">
-                —
-              </span>
-              <span>
-                Not scored because the data is missing:{" "}
-                {evaluation.excluded_components.map((c) => COMPONENT_LABEL[c] ?? c).join(", ")} — the
-                remaining weights were rescaled so the score stays comparable.
-              </span>
-            </p>
-          )}
+      {assessment.limitations.length > 0 && (
+        <div className="space-y-1.5 border-t border-hairline bg-panel px-5 py-3.5">
+          <p className="text-[11px] font-medium uppercase tracking-[0.07em] text-conditional">Not established by this score</p>
+          <ul className="space-y-1">
+            {assessment.limitations.map((l) => (
+              <li key={l} className="flex gap-2 text-[13px] leading-snug text-muted">
+                <span aria-hidden className="text-unavail">
+                  —
+                </span>
+                <span>{l}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="pt-0.5 text-[12px] leading-snug text-faint">
+            Remaining weights are rescaled when a component is missing, so scores with different
+            missing components are not directly comparable. A favorable basketball estimate does not
+            show the deal is legal, financially sound or feasible.
+          </p>
           <UnmodeledNote teamEval={evaluation} />
         </div>
       )}

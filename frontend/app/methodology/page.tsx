@@ -11,7 +11,7 @@ import {
 } from "@/components/reference/doc";
 import { ImpactReferenceLive } from "@/components/reference/impact-reference";
 
-export const metadata: Metadata = { title: "Methodology — Pivot" };
+export const metadata: Metadata = { title: "Methodology" };
 
 /*
  * Anchors other pages link to — #utility, #tei, #needs, #skills, #archetypes, #weights,

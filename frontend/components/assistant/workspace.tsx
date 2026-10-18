@@ -56,7 +56,7 @@ import {
 } from "@/lib/assistant-types";
 import { AssistantAnswer } from "@/components/assistant/answer";
 import { Composer } from "@/components/assistant/composer";
-import { ContextBar } from "@/components/assistant/context-bar";
+import { ContextControls } from "@/components/assistant/context-bar";
 import {
   EvidenceInspector,
   InspectorDrawer,
@@ -71,7 +71,7 @@ import {
   StatusRecheckWarning,
 } from "@/components/assistant/states";
 import { EmptyThread, ErrorTurn, PendingTurn, UnansweredNote, UserTurn } from "@/components/assistant/turns";
-import { Badge, Button, PageHeader, Skeleton } from "@/components/ui";
+import { Badge, Button, Skeleton } from "@/components/ui";
 
 /** The inspector rail appears at Tailwind's `xl`; below it the inspector is a drawer. */
 const DESKTOP_QUERY = "(min-width: 1280px)";
@@ -188,6 +188,8 @@ export function AssistantWorkspace({ initialQuestion }: { initialQuestion?: stri
     chunkId: null,
   });
   const [drawer, setDrawer] = useState<{ opener: HTMLElement | null } | null>(null);
+  /** Desktop: the evidence panel docks beside the conversation only once evidence is opened. */
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
@@ -398,6 +400,7 @@ export function AssistantWorkspace({ initialQuestion }: { initialQuestion?: stri
     setConfirmingClear(false);
     setInspected({ messageId: null, chunkId: null });
     setDrawer(null);
+    setInspectorOpen(false);
     composerRef.current?.focus();
   }
 
@@ -408,6 +411,7 @@ export function AssistantWorkspace({ initialQuestion }: { initialQuestion?: stri
     const chunk = rankOrder(response?.sources ?? []).find((s) => s.source_id === sourceId);
     setInspected({ messageId, chunkId: chunk?.chunk_id ?? null });
     if (!isDesktop()) setDrawer({ opener });
+    else setInspectorOpen(true);
   }
 
   function showSources(messageId: string, opener: HTMLElement) {
@@ -416,6 +420,7 @@ export function AssistantWorkspace({ initialQuestion }: { initialQuestion?: stri
       setDrawer({ opener });
       return;
     }
+    setInspectorOpen(true);
     requestAnimationFrame(() =>
       document
         .querySelector<HTMLElement>(`#${DESKTOP_INSPECTOR_ID} [role="option"][tabindex="0"]`)
@@ -442,65 +447,60 @@ export function AssistantWorkspace({ initialQuestion }: { initialQuestion?: stri
 
   const checking = status.isFetching;
   const header = (
-    <PageHeader
-      eyebrow="Ask Pivot · Experimental"
-      title="Pivot Intelligence"
-      lede="Research the game. Pressure-test the move. Make the call."
-      meta={
-        <>
-          <Badge status="warning">Fictional data</Badge>
-          {status.data?.provider && (
-            <Badge status="info">Local model · {status.data.provider.chat_model}</Badge>
-          )}
-          {status.data?.tracing?.enabled && (
-            <span title="Prompts, retrieved fictional passages and answers are sent to LangSmith while tracing is on.">
-              <Badge status="warning">
-                Tracing to LangSmith{status.data.tracing.project ? ` · ${status.data.tracing.project}` : ""}
-              </Badge>
-            </span>
-          )}
-        </>
-      }
-      actions={
-        enabled ? (
-          <>
-            {confirmingClear ? (
-              <ConfirmClear
-                count={messages.length}
-                onConfirm={newConversation}
-                onCancel={() => {
-                  refocusNewConversationRef.current = true;
-                  setConfirmingClear(false);
-                }}
-              />
-            ) : (
-              <Button
-                ref={newConversationRef}
-                size="sm"
-                variant="secondary"
-                onClick={() => (messages.length > 0 || pending ? setConfirmingClear(true) : newConversation())}
-              >
-                New conversation
-              </Button>
-            )}
+    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+        <h1 className="text-[1.5rem] font-semibold leading-tight tracking-[-0.02em] text-foreground">Ask Pivot</h1>
+        <Badge status="warning">Fictional data</Badge>
+        <span className="text-[12px] text-faint">Experimental</span>
+        {status.data?.provider && (
+          <Badge status="info">Local model · {status.data.provider.chat_model}</Badge>
+        )}
+        {status.data?.tracing?.enabled && (
+          <span title="Prompts, retrieved fictional passages and answers are sent to LangSmith while tracing is on.">
+            <Badge status="warning">
+              Tracing to LangSmith{status.data.tracing.project ? ` · ${status.data.tracing.project}` : ""}
+            </Badge>
+          </span>
+        )}
+      </div>
+      {enabled && (
+        <div className="flex flex-wrap items-center gap-2">
+          {confirmingClear ? (
+            <ConfirmClear
+              count={messages.length}
+              onConfirm={newConversation}
+              onCancel={() => {
+                refocusNewConversationRef.current = true;
+                setConfirmingClear(false);
+              }}
+            />
+          ) : (
             <Button
+              ref={newConversationRef}
               size="sm"
-              variant={debug ? "secondary" : "ghost"}
-              aria-pressed={debug}
-              onClick={() => setDebug(!debug)}
-              // The name starts with the visible word, so "Debug" finds it by voice or search.
-              aria-label="Debug: show how each answer was produced"
-              title="Show how each answer was produced: retrieval candidates, thresholds, timings"
+              variant="secondary"
+              onClick={() => (messages.length > 0 || pending ? setConfirmingClear(true) : newConversation())}
             >
-              <span aria-hidden className={debug ? "text-signal" : "text-faint"}>
-                {debug ? "●" : "○"}
-              </span>
-              Debug
+              New conversation
             </Button>
-          </>
-        ) : undefined
-      }
-    />
+          )}
+          <Button
+            size="sm"
+            variant={debug ? "secondary" : "ghost"}
+            aria-pressed={debug}
+            onClick={() => setDebug(!debug)}
+            // The name starts with the visible word, so "Debug" finds it by voice or search.
+            aria-label="Debug: show how each answer was produced"
+            title="Show how each answer was produced: retrieval candidates, thresholds, timings"
+          >
+            <span aria-hidden className={debug ? "text-signal" : "text-faint"}>
+              {debug ? "●" : "○"}
+            </span>
+            Debug
+          </Button>
+        </div>
+      )}
+    </header>
   );
 
   let body: React.ReactNode;
@@ -539,22 +539,15 @@ export function AssistantWorkspace({ initialQuestion }: { initialQuestion?: stri
           <SetupNotice status={status.data} onCheckAgain={() => void status.refetch()} checking={checking} />
         )}
 
-        <ContextBar
-          context={catalog}
-          loading={context.isPending}
-          error={context.error ? describeAssistantError(context.error).detail : null}
-          onRetry={() => void context.refetch()}
-          teamId={teamId}
-          mode={session.mode}
-          priorities={session.priorities}
-          constraints={session.constraints}
-          onTeam={chooseTeam}
-          onMode={(mode) => updateSession((s) => ({ ...s, mode }))}
-          onPriorities={(priorities) => updateSession((s) => ({ ...s, priorities }))}
-          onConstraints={(constraints) => updateSession((s) => ({ ...s, constraints }))}
-        />
-
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+        {/* Conversation first. The evidence panel docks beside it only once a citation or
+            "Sources" is opened (and as a drawer on narrow screens). */}
+        <div
+          className={
+            inspectorOpen && active
+              ? "grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]"
+              : "mx-auto w-full max-w-[48rem]"
+          }
+        >
           <section aria-labelledby="assistant-thread-heading" className="min-w-0 space-y-4">
             <h2 id="assistant-thread-heading" className="sr-only">
               Conversation
@@ -564,10 +557,10 @@ export function AssistantWorkspace({ initialQuestion }: { initialQuestion?: stri
               aria-live="polite"
               aria-relevant="additions"
               aria-label="Conversation with Ask Pivot"
-              className="space-y-5"
+              className="space-y-6"
             >
               {messages.length === 0 && !pending ? (
-                <EmptyThread starters={starters} mode={session.mode} disabled={!ready} onStart={ask} />
+                <EmptyThread mode={session.mode} />
               ) : (
                 messages.map((m, i) => (
                   <Turn
@@ -591,7 +584,7 @@ export function AssistantWorkspace({ initialQuestion }: { initialQuestion?: stri
                         debug={debug}
                         selectedSourceId={active?.id === m.id ? (activeSelected?.source_id ?? null) : null}
                         dimensionLabel={dimensionLabel}
-                        shownInInspector={active?.id === m.id && answers.length > 1}
+                        shownInInspector={inspectorOpen && active?.id === m.id && answers.length > 1}
                       />
                     )}
                     teamName={teamName}
@@ -627,22 +620,56 @@ export function AssistantWorkspace({ initialQuestion }: { initialQuestion?: stri
                 }
                 placeholder={placeholderFor(session.mode, team, session.priorities, dimensionLabel)}
                 textareaRef={composerRef}
+                controls={
+                  <ContextControls
+                    context={catalog}
+                    loading={context.isPending}
+                    error={context.error ? describeAssistantError(context.error).detail : null}
+                    onRetry={() => void context.refetch()}
+                    teamId={teamId}
+                    mode={session.mode}
+                    priorities={session.priorities}
+                    constraints={session.constraints}
+                    onTeam={chooseTeam}
+                    onMode={(mode) => updateSession((s) => ({ ...s, mode }))}
+                    onPriorities={(priorities) => updateSession((s) => ({ ...s, priorities }))}
+                    onConstraints={(constraints) => updateSession((s) => ({ ...s, constraints }))}
+                    starters={starters}
+                    startersDisabled={!ready || pending !== null}
+                    onStarter={ask}
+                  />
+                }
               />
             </div>
           </section>
 
-          <aside id={DESKTOP_INSPECTOR_ID} aria-label="Evidence inspector" className="hidden min-w-0 xl:block">
-            <div className="panel scroll-thin p-4 xl:sticky xl:top-6 xl:max-h-[calc(100dvh-3rem)] xl:overflow-y-auto">
-              <EvidenceInspector
-                response={active?.response ?? null}
-                turnLabel={active ? `Answer ${answerNumber.get(active.id)} of ${answers.length}` : undefined}
-                question={activeQuestion}
-                selectedChunkId={activeSelected?.chunk_id ?? null}
-                onSelect={(chunkId) => setInspected({ messageId: active?.id ?? null, chunkId })}
-                nameOf={nameOf}
-              />
-            </div>
-          </aside>
+          {inspectorOpen && active && (
+            <aside id={DESKTOP_INSPECTOR_ID} aria-label="Evidence inspector" className="hidden min-w-0 xl:block">
+              <div className="panel scroll-thin p-4 xl:sticky xl:top-6 xl:max-h-[calc(100dvh-3rem)] xl:overflow-y-auto">
+                <div className="mb-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInspectorOpen(false);
+                      composerRef.current?.focus();
+                    }}
+                    aria-label="Close evidence panel"
+                    className="rounded-md px-2 py-1 text-[12px] text-muted hover:bg-panel2 hover:text-foreground"
+                  >
+                    Close ✕
+                  </button>
+                </div>
+                <EvidenceInspector
+                  response={active?.response ?? null}
+                  turnLabel={active ? `Answer ${answerNumber.get(active.id)} of ${answers.length}` : undefined}
+                  question={activeQuestion}
+                  selectedChunkId={activeSelected?.chunk_id ?? null}
+                  onSelect={(chunkId) => setInspected({ messageId: active?.id ?? null, chunkId })}
+                  nameOf={nameOf}
+                />
+              </div>
+            </aside>
+          )}
         </div>
 
         {drawer && (

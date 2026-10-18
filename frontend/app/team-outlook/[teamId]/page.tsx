@@ -192,12 +192,16 @@ export default function TeamOutlookPage({ params }: { params: Promise<{ teamId: 
                 <h1 className="title-xl mt-2 text-balance text-foreground">{team.full_name}</h1>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <ButtonLink href={`/trade-evaluator?team=${teamId}`} variant="primary">
-                Start a trade
-              </ButtonLink>
-              <ButtonLink href={`/player-explorer?team=${teamId}`}>Compare players</ButtonLink>
-              <ButtonLink href={`/salary-cap-center?team=${teamId}`}>Salary-Cap Center</ButtonLink>
+            <div>
+              {/* The team being viewed — not necessarily the selected organisation. */}
+              <p className="eyebrow mb-1.5 sm:text-right">Actions for {team.abbreviation}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <ButtonLink href={`/trade-evaluator?team=${teamId}`} variant="primary">
+                  Start a trade
+                </ButtonLink>
+                <ButtonLink href={`/player-explorer?team=${teamId}`}>Compare players</ButtonLink>
+                <ButtonLink href={`/salary-cap-center?team=${teamId}`}>Salary-Cap Center</ButtonLink>
+              </div>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">

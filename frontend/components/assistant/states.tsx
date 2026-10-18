@@ -23,17 +23,14 @@ function CodeLine({ children }: { children: string }) {
 /** Persistent, above everything: this is a sandbox of invented data. */
 export function SandboxBanner() {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-conditional/30 bg-conditional/[0.06] px-4 py-3">
-      <span
-        aria-hidden
-        className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-conditional/50 text-[11px] font-semibold text-conditional"
-      >
+    <div className="flex items-start gap-2.5 rounded-md border border-conditional/30 bg-conditional/[0.05] px-3.5 py-2">
+      <span aria-hidden className="mt-px text-[12px] font-semibold text-conditional">
         !
       </span>
-      <p className="text-[12.5px] leading-relaxed text-muted">
+      <p className="text-[12.5px] leading-snug text-muted">
         <span className="font-semibold text-foreground">FICTIONAL DATA / SANDBOX.</span> Every team,
-        player, scout and report in Ask Pivot is invented for research practice — none of it is
-        NBA data, and none of it touches Pivot’s real database or trade engines.
+        player, scout and report here is invented — none of it is NBA data, and none of it touches
+        Pivot’s real database or trade engines.
       </p>
     </div>
   );

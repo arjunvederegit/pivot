@@ -4,7 +4,7 @@ import { IconArrowRight } from "@/components/icons";
 import { DOC_HEADING, DOC_PROSE } from "@/components/reference/doc";
 import { Badge, PageHeader } from "@/components/ui";
 
-export const metadata: Metadata = { title: "About — Pivot" };
+export const metadata: Metadata = { title: "About" };
 
 // R5 and R6 shipped three surfaces an earlier version of this page never mentioned —
 // comparable trades, need-driven acquisition and the decision memo. Each one now sits at

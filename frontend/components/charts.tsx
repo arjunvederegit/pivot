@@ -35,7 +35,7 @@ import {
 import { COMPONENT_LABEL } from "@/lib/format";
 import type { TornadoBar, Uncertainty } from "@/lib/types";
 
-const FONT = "var(--font-geist), system-ui, sans-serif";
+const FONT = "var(--font-sans-app), system-ui, sans-serif";
 /** Tick labels: quiet ink, tabular figures. */
 const AXIS = { fill: "var(--chalk-faint)", fontSize: 11, fontFamily: FONT };
 /** Category labels (the left column of a horizontal bar chart) read as text, one step louder. */

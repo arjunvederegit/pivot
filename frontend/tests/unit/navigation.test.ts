@@ -213,6 +213,6 @@ describe("the experimental Intelligence group is gated", () => {
   it("does not name the feature in the 404's tab title when the flag is off", () => {
     // Static `metadata` survives `notFound()`; only a flag-aware generateMetadata hides it.
     expect(PAGE).not.toMatch(/export const metadata/);
-    expect(PAGE).toMatch(/ASSISTANT_ENABLED \? \{ title: "Pivot Intelligence — Pivot" \} : \{\}/);
+    expect(PAGE).toMatch(/ASSISTANT_ENABLED \? \{ title: "Ask Pivot" \} : \{\}/);
   });
 });

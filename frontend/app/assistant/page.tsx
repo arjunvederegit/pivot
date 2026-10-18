@@ -26,7 +26,7 @@ import { ASSISTANT_ENABLED } from "@/lib/features";
  * 404 under a "Pivot Intelligence" tab title — naming the feature it is meant to hide.
  */
 export function generateMetadata(): Metadata {
-  return ASSISTANT_ENABLED ? { title: "Pivot Intelligence — Pivot" } : {};
+  return ASSISTANT_ENABLED ? { title: "Ask Pivot" } : {};
 }
 
 export default function AssistantPage() {

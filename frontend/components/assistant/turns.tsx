@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from "react";
 import type { AssistantErrorInfo } from "@/lib/assistant-api";
-import type { AssistantMode, AskRequest, Starter } from "@/lib/assistant-types";
+import type { AssistantMode, AskRequest } from "@/lib/assistant-types";
 import { Button, Skeleton } from "@/components/ui";
 
 /* -------------------------------------------------------------------- question */
@@ -187,76 +187,43 @@ const CANNOT = [
   "Discuss real NBA players or teams. Every name here is invented.",
 ];
 
-export function EmptyThread({
-  starters,
-  mode,
-  disabled,
-  onStart,
-}: {
-  starters: Starter[];
-  mode: AssistantMode;
-  disabled: boolean;
-  onStart: (prompt: string) => void;
-}) {
+export function EmptyThread({ mode }: { mode: AssistantMode }) {
   return (
-    <div className="court-grid relative overflow-hidden rounded-lg border border-dashed border-line bg-panel px-5 py-7 sm:px-7">
-      <p className="eyebrow">Start with a question a GM would ask</p>
-      <h2 className="mt-2 font-serif text-[1.6rem] leading-tight text-foreground">
-        {mode === "roster_fit" ? "Read the roster against your priorities" : "Research the fictional league"}
+    <div className="px-1 py-6 sm:py-10">
+      <h2 className="text-[1.35rem] font-semibold leading-tight tracking-[-0.015em] text-foreground">
+        {mode === "roster_fit" ? "Read the roster against your priorities" : "Ask about the fictional league"}
       </h2>
-      {starters.length > 0 ? (
-        <ul className="mt-4 grid gap-2 md:grid-cols-2">
-          {starters.map((s) => (
-            <li key={s.prompt} className="min-w-0">
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onStart(s.prompt)}
-                className="hover-frame group flex h-full w-full flex-col items-start gap-1 rounded-lg border border-line bg-panel2/70 px-3.5 py-3 text-left disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <span className="text-[13.5px] leading-snug text-foreground [overflow-wrap:anywhere]">
-                  {s.prompt}
-                </span>
-                {s.intent && <span className="text-[11.5px] leading-snug text-faint">{s.intent}</span>}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-3 text-[13px] text-muted">
-          Type a question below — about a fictional player, a team’s needs, or how two reports
-          disagree.
-        </p>
-      )}
-
-      <div className="mt-6 grid gap-5 border-t border-hairline pt-5 text-[12.5px] leading-relaxed md:grid-cols-2">
-        <div>
-          <p className="mb-1.5 font-medium text-foreground">
-            <span aria-hidden className="mr-1 text-legal">
-              ✓
-            </span>
-            What Ask Pivot can do
-          </p>
-          <ul className="list-disc space-y-1 pl-5 text-muted marker:text-faint">
-            {CAN.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
+      <p className="mt-2 max-w-[60ch] text-[15px] leading-relaxed text-muted">
+        Ask about a fictional player, a team&apos;s needs, or where two scouting reports disagree. Set
+        the team, mode, strategy and constraints from the chips above the box; open Suggestions for
+        starter questions.
+      </p>
+      <details className="group mt-5 max-w-[60ch] text-[13.5px] leading-relaxed">
+        <summary className="cursor-pointer list-none text-muted transition-colors hover:text-foreground">
+          <span aria-hidden className="mr-1.5 inline-block w-3 text-center transition-transform group-open:rotate-90">
+            ›
+          </span>
+          What Ask Pivot can and cannot do
+        </summary>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <div>
+            <p className="mb-1.5 font-medium text-foreground">Can</p>
+            <ul className="list-disc space-y-1 pl-5 text-muted marker:text-faint">
+              {CAN.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="mb-1.5 font-medium text-foreground">Cannot</p>
+            <ul className="list-disc space-y-1 pl-5 text-muted marker:text-faint">
+              {CANNOT.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          </div>
         </div>
-        <div>
-          <p className="mb-1.5 font-medium text-foreground">
-            <span aria-hidden className="mr-1 text-unavail">
-              —
-            </span>
-            What it cannot do
-          </p>
-          <ul className="list-disc space-y-1 pl-5 text-muted marker:text-faint">
-            {CANNOT.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-        </div>
-      </div>
+      </details>
     </div>
   );
 }

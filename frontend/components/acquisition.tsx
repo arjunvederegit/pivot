@@ -135,9 +135,12 @@ function TargetRow({
               {skillLabel}{" "}
               <span className="numeral text-foreground">{ordinal(target.skill_percentile * 100)}</span>
               {rosterLevel !== null && (
-                <span className="text-faint">
+                <span
+                  className="text-faint"
+                  title="Roster benchmark: the third-best value in this skill among ALL of the roster's players with minutes, as a league percentile. Skill coverage on this page uses only the top-10 rotation by minutes, and the team diagnosis uses a team statistic against the other 29 teams — three different measures, so they can differ."
+                >
                   {" "}
-                  vs {teamAbbr}{" "}
+                  vs {teamAbbr} roster benchmark{" "}
                   <span className="numeral text-seriesb">{ordinal(rosterLevel * 100)}</span>
                 </span>
               )}
