@@ -1130,27 +1130,33 @@ class EvaluationService:
             "evaluated_at": datetime.now(UTC).isoformat(),
         }
 
-    def _membership_warnings(self, incoming: list[PlayerCard]) -> list[dict]:
-        """Players arriving in the deal who are on no current roster in Pivot's snapshot.
+    def _membership_warnings(self, moved_player_ids: list[str]) -> list[dict]:
+        """Players in this team's side of the deal (arriving OR leaving) who are on no current roster.
 
         The trade builder deliberately lets such a player through — refusing him would block every
-        offseason free agent — so without a label he is scored as if he were available to acquire.
-        That is more common once the roster season moves on (87 players of the 2025-26 rosters are on
-        none of the 2026-27 ones). Uncertain membership is named, never settled in either direction.
+        offseason free agent — so without a label he is scored as if he were on the roster he is said to
+        leave, or available to acquire. That is more common once the roster season moves on (87 players of
+        the 2025-26 rosters are on none of the 2026-27 ones). Uncertain membership is named, never settled in
+        either direction, and a leaving player absent from the roster contributes nothing to the evaluation.
         """
         membership = resolver.current_roster(self.db, self.roster_season)
+        unlisted = [pid for pid in dict.fromkeys(moved_player_ids) if pid not in membership]
+        if not unlisted:
+            return []
+        by_id = resolver.players(self.db, unlisted)
         return [
             {
-                "player_id": card.player_id,
-                "name": card.name,
+                "player_id": pid,
+                "name": by_id[pid].full_name,
                 "message": (
-                    f"{card.name} is on no {self.roster_season} roster in Pivot's snapshot (free agent, "
-                    "waived, retired, or not yet listed). He is scored as available to acquire; "
-                    "that is not confirmed."
+                    f"{by_id[pid].full_name} is on no {self.roster_season} roster in Pivot's snapshot (free "
+                    "agent, waived, retired, or not yet listed). His membership is unverified: the deal is "
+                    "scored as if he could move, which is not confirmed, and a player leaving a team he is "
+                    "not listed on contributes nothing to that team's evaluation."
                 ),
             }
-            for card in incoming
-            if card.player_id not in membership
+            for pid in unlisted
+            if pid in by_id
         ]
 
     @staticmethod
@@ -1314,7 +1320,9 @@ class EvaluationService:
         confidence = "high"
         if excluded:
             confidence = "medium" if len(excluded) <= 2 else "low"
-        membership_warnings = self._membership_warnings(incoming)
+        membership_warnings = self._membership_warnings(
+            [m["player_id"] for m in player_moves if team_id in (m["to_team_id"], m["from_team_id"])]
+        )
         if membership_warnings and confidence == "high":
             confidence = "medium"
         season_basis = self.season_basis()

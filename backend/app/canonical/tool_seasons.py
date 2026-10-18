@@ -311,7 +311,7 @@ def roster_verification(db: Session, season: str | None = None) -> dict[str, Any
                 "status": run.status,
                 "finished_at": run.finished_at.isoformat() if run.finished_at else None,
                 "error": f"{run.error_class}: {(run.error_message or '')[:200]}" if run.error_class else None,
-                **{k: detail[k] for k in ("added", "confirmed", "closed", "duplicate_rows", "player_on_two_teams") if k in detail},
+                **{k: detail[k] for k in ("added", "confirmed", "closed", "duplicate_rows", "player_on_two_teams", "existing_player_bio_updated") if k in detail},
             }
             break
 

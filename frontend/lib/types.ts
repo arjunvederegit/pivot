@@ -379,6 +379,8 @@ export interface ComparisonAlternative {
   confidence: string;
   has_unmodeled_players: boolean;
   unmodeled_players: string[];
+  /** R8.2: players in the deal on no current roster — scored, but their membership is unverified. */
+  membership_warnings?: { player_id: string; name: string; message: string }[];
   composite_utility: number | null;
   components: Record<string, number | null>;
   delta_wins: number | null;

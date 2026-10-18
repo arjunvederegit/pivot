@@ -178,3 +178,40 @@ class TestRosterVerification:
         )
         db.commit()
         assert roster_verification(db)["players_without_performance_season_statistics"] == 1
+
+
+class TestRosterOnlyMode:
+    """Activation safety: memberships and new identities, never a silent rewrite of known players' bio."""
+
+    def _rows(self):
+        rows = _roster((ATL, 201939), (BOS, 999999), (BOS, 4242001))
+        for row in rows:
+            row.update({"height_inches": 99, "weight_lbs": 300, "birth_date": date(1990, 1, 1),
+                        "years_experience": 9, "position": "C"})
+        return rows
+
+    def test_default_refresh_still_enriches_existing_players(self, db, synced, clock):
+        clock(date(2026, 10, 18))
+        from app.db.models import Player
+
+        before = db.scalars(select(Player).where(Player.nba_player_id == 201939)).one().height_inches
+        jobs.sync_rosters(db, provider=FakeProvider(rosters=self._rows()))
+        after = db.scalars(select(Player).where(Player.nba_player_id == 201939)).one().height_inches
+        assert after == 99 and after != before
+
+    def test_roster_only_writes_memberships_and_new_identities_but_leaves_known_bio_alone(
+        self, db, synced, clock
+    ):
+        clock(date(2026, 10, 18))
+        from app.db.models import Player
+
+        known = db.scalars(select(Player).where(Player.nba_player_id == 201939)).one()
+        snapshot = (known.position, known.height_inches, known.weight_lbs, known.birth_date, known.years_experience)
+        jobs.sync_rosters(db, provider=FakeProvider(rosters=self._rows()), update_existing_bio=False)
+        db.refresh(known)
+        assert (known.position, known.height_inches, known.weight_lbs, known.birth_date, known.years_experience) == snapshot
+        assert (str(ATL), 201939) in _current(db, "2026-27") and len(_current(db, "2026-27")) == 3
+        new = db.scalars(select(Player).where(Player.nba_player_id == 4242001)).one()
+        assert (new.height_inches, new.position, new.years_experience) == (99, "C", 9), "a new identity is complete"
+        run = db.scalars(select(DataSyncRun).where(DataSyncRun.job_name == "sync_rosters")).first()
+        assert run.detail["existing_player_bio_updated"] is False

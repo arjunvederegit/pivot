@@ -243,8 +243,16 @@ def sync_rosters(
     provider=None,
     *,
     job_name: str = "sync_rosters",
+    update_existing_bio: bool = True,
 ) -> int:
     """Refresh current rosters by *diffing* against the stored snapshot.
+
+    ``update_existing_bio=False`` is the roster-only mode (``make refresh DATASETS=rosters ARGS=--roster-only``):
+    memberships and the identities of players Pivot has never seen are written, but the position, height, weight,
+    birth date and experience of players it already knows are left exactly as stored. Those fields feed the
+    skill vectors and archetypes, so refreshing them is a deliberate step of its own, not a side effect of
+    looking at who is on a roster (R8.2 activation found 6 newly filled birth dates alone move the acquisition
+    battery's headline numbers).
 
     Membership that has not changed is **confirmed** — its ``source_retrieved_at`` moves
     forward and nothing else does, so ``valid_from`` keeps meaning "first observed on this
@@ -295,6 +303,7 @@ def sync_rosters(
         for row in usable:
             team = teams[row["nba_team_id"]]
             player = players.get(row["nba_player_id"])
+            is_new_player = player is None
             if player is None:
                 # Player appears on an NBA.com roster but not in static data (e.g. new
                 # signing): create the identity record from the roster row itself.
@@ -316,7 +325,7 @@ def sync_rosters(
                 "weight_lbs",
                 "years_experience",
             ):
-                if row.get(field) is not None:
+                if row.get(field) is not None and (update_existing_bio or is_new_player):
                     setattr(player, field, row[field])
             key = (team.id, player.id)
             seen.add(key)
@@ -377,6 +386,7 @@ def sync_rosters(
             "confirmed": confirmed,
             "closed": closed,
             "season": season,
+            "existing_player_bio_updated": update_existing_bio,
             **duplicates,
         }
         db.commit()

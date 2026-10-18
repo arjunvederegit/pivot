@@ -400,7 +400,9 @@ class TestTradeEvaluation:
         warnings = evaluations[b.id]["membership_warnings"]
         assert [w["name"] for w in warnings] == ["Left The League"]
         assert "no 2026-27 roster" in warnings[0]["message"]
-        assert evaluations[a.id]["membership_warnings"] == [], "only arriving players are unlisted"
+        assert [w["name"] for w in evaluations[a.id]["membership_warnings"]] == ["Left The League"], (
+            "the team he is said to leave is told too: nothing of his is in its evaluation"
+        )
         assert evaluations[b.id]["confidence"] != "high"
 
     def test_nothing_is_flagged_when_roster_and_statistics_seasons_agree(self, client, seeded_league, on):

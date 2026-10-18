@@ -231,6 +231,9 @@ def _refresh(args: list[str], single_jobs: dict[str, Callable[..., int]]) -> int
         if job_name in ("sync-player-stats", "sync-team-stats"):
             seasons = [season] if season else None
             return job(db, seasons, season_type=season_type)
+        if job_name == "sync-rosters" and "--roster-only" in args:
+            # Memberships + brand-new identities only; existing players' bio fields stay as stored.
+            return job(db, season, update_existing_bio=False)
         if job_name in ("sync-rosters", "sync-standings", "sync-games") and season:
             return job(db, season)
         return job(db)
