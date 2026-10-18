@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.canonical.calendar import season_context, today_in_league
+from app.canonical.provenance import Freshness
 from app.config import get_settings
 from app.core.cache import get_cache
 from app.core.provenance import upstream_for
@@ -30,6 +32,7 @@ from app.db.models import (
 )
 from app.integrations.contracts import get_contract_provider
 from app.integrations.nba_api.health import get_provider_health
+from app.services.data_provenance import dataset_freshness
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -48,6 +51,19 @@ def data_health(db: Session) -> dict:
     settings = get_settings()
     now = datetime.now(UTC)
     stale_cutoff = now - timedelta(seconds=settings.nba_api_stale_after_seconds)
+    identity_cutoff = now - timedelta(seconds=settings.identity_stale_after_seconds)
+    ctx = season_context(today_in_league(now), grace_days=settings.season_rollover_grace_days)
+    # R8.1: staleness is judged by the calendar, not by a 24 h clock on every table. A completed
+    # season's statistics are `finalized`; a season that has not started is `not_yet_available`.
+    datasets = dataset_freshness(db, now=now)
+    #: table -> the lifecycle-aware dataset that decides whether it needs attention.
+    table_dataset = {
+        "rosters": "rosters",
+        "standings": "standings",
+        "player_season_stats": "player_stats",
+        "team_season_stats": "team_stats",
+        "games": "games",
+    }
 
     # Tables whose freshness is a claim about NBA.com data. `contracts` is deliberately
     # absent: it comes from a user-supplied provider on its own cadence.
@@ -98,7 +114,12 @@ def data_health(db: Session) -> dict:
         if hasattr(model, "source_retrieved_at"):
             last_retrieved = _aware(db.scalar(select(func.max(model.source_retrieved_at))))
             if last_retrieved is not None:
-                stale = last_retrieved < stale_cutoff
+                stale = last_retrieved < (
+                    identity_cutoff if name in ("teams", "players") else stale_cutoff
+                )
+                meta = datasets.get(table_dataset.get(name, ""))
+                if meta is not None and meta.freshness is not Freshness.MISSING:
+                    stale = meta.freshness in (Freshness.STALE, Freshness.UNKNOWN) or meta.refresh_failing
             if name in NBA_TABLES:
                 # Per-source, and filtered to the NBA provider. The audit suggested
                 # reusing `tables[*].last_retrieved_at`, but `player_season_stats` also
@@ -121,6 +142,10 @@ def data_health(db: Session) -> dict:
             "last_retrieved_at": last_retrieved.isoformat() if last_retrieved else None,
             "stale": stale,
         }
+        table_meta = datasets.get(table_dataset.get(name, ""))
+        if table_meta is not None:
+            tables[name]["lifecycle"] = table_meta.freshness.value
+            tables[name]["lifecycle_reason"] = table_meta.status_reason
 
     nba_tables_stale = [
         name
@@ -219,11 +244,22 @@ def data_health(db: Session) -> dict:
     # Invariant: NBA data is never reported fresh while any NBA table is stale. The
     # per-table `stale` flags and this headline now derive from the same timestamps, so
     # they cannot disagree.
-    nba_fresh = (
-        last_success is not None
-        and not nba_tables_stale
-        and (now - last_success) < timedelta(seconds=settings.nba_api_stale_after_seconds)
+    needs_attention = sorted(
+        name
+        for name, meta in datasets.items()
+        if name in ("rosters", "standings", "player_stats", "team_stats", "games")
+        and (meta.freshness in (Freshness.STALE, Freshness.UNKNOWN) or meta.refresh_failing)
     )
+    roster_missing = datasets["rosters"].freshness is Freshness.MISSING
+    if last_success is None:
+        nba_status = "unavailable"
+    elif nba_tables_stale or needs_attention:
+        nba_status = "stale"
+    elif roster_missing:
+        nba_status = "incomplete"
+    else:
+        nba_status = "fresh"
+    refresh_args = ",".join(n.replace("_", "-") for n in needs_attention) or "rosters"
 
     csv_run = latest_run("import_stats_csv")
     kaggle_run = latest_run("import_kaggle_history")
@@ -251,13 +287,18 @@ def data_health(db: Session) -> dict:
         {
             "key": "current_nba_data",
             "title": "Current NBA data",
-            "status": "fresh" if nba_fresh else ("stale" if last_success else "unavailable"),
+            "status": nba_status,
+            "season": ctx.describe(),
+            "datasets": {name: meta.freshness.value for name, meta in datasets.items()},
+            "datasets_needing_attention": needs_attention,
             "last_update": last_success.isoformat() if last_success else None,
             "coverage": f"{tables.get('rosters', {}).get('rows', 0)} roster spots · "
             f"{tables.get('player_season_stats', {}).get('rows', 0)} stat rows",
             "source": _nba_card_source(table_providers, nba_api_pkg.__version__),
             "stale_tables": nba_tables_stale,
-            "action": None if nba_fresh else "Run `make sync-data` to refresh from NBA.com.",
+            "action": None
+            if nba_status in ("fresh",)
+            else f"Run `make refresh DATASETS={refresh_args}` to refresh from NBA.com.",
         },
         {
             "key": "contracts",
@@ -388,6 +429,7 @@ def data_health(db: Session) -> dict:
     return {
         "generated_at": now.isoformat(),
         "current_season": settings.current_season,
+        "season_context": ctx.describe(),
         "cap_league_year": settings.cap_league_year,
         "source_cards": source_cards,
         "asset_coverage": assets,

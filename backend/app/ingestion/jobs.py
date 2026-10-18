@@ -13,7 +13,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.canonical.seasons import SeasonType
+from app.canonical.calendar import ScopeState, state_of_scope, today_in_league
+from app.canonical.seasons import Season, SeasonType, StatScope
 from app.config import get_settings
 from app.core.cache import get_cache
 from app.core.logging import get_logger
@@ -39,6 +40,7 @@ from app.ingestion.identity import PlayerIdentityIndex
 from app.ingestion.quality import _record as record_quality_issue
 from app.ingestion.runs import sync_run
 from app.integrations.contracts import get_contract_provider
+from app.integrations.nba_api.canonical import fetch_result
 from app.integrations.nba_api.provider import SwarNBAApiProvider, get_provider
 
 logger = get_logger(__name__)
@@ -74,17 +76,59 @@ class SnapshotRejectedError(RuntimeError):
     """
 
 
-def _require_rows(job: str, season: str, rows: list) -> None:
-    """A season-scoped refresh that returns nothing is a rejected snapshot, not a no-op.
+class PartialRefreshError(RuntimeError):
+    """A multi-season refresh in which some seasons were written and some were not.
 
-    Writing nothing is safe; *reporting success* while writing nothing hides that the
-    dataset is going stale. nba_api already raises on a zero-row response; this makes the
-    same guarantee hold for any provider.
+    The seasons that succeeded are committed and stay; the run is recorded as failed so the
+    gap is visible, and the message names both lists.
     """
-    if not rows:
-        raise SnapshotRejectedError(
-            f"{job}: provider returned no rows for {season}; stored data left unchanged"
-        )
+
+
+def _fetch_rows(endpoint: str, call, **params: Any) -> list[dict[str, Any]]:
+    """One provider call, classified canonically (``ProviderResult``).
+
+    A well-formed "no rows" comes back as ``[]``; any failure re-raises the original exception, so
+    callers keep their existing error handling and the run records the real error class.
+    """
+    result, error = fetch_result(endpoint, call, **params)
+    if error is not None:
+        raise error
+    return list(result.records)
+
+
+def _empty_is_expected(season: str, season_type: SeasonType = SeasonType.REGULAR) -> bool:
+    """Is "the provider has no rows" the right answer today for this scope?
+
+    True only when the calendar says the games have not been played — 2026-27 regular-season
+    statistics before 20 October 2026. For a season in progress or finished, no rows is a defect.
+    """
+    scope = StatScope(Season.parse(season), season_type)
+    return state_of_scope(scope, today_in_league()) is ScopeState.UPCOMING
+
+
+def _handle_empty(
+    run, job: str, season: str, season_type: SeasonType = SeasonType.REGULAR
+) -> None:
+    """The provider answered with no rows: legitimate before the first game, a rejection after.
+
+    Writing nothing is safe either way; what differs is the *report*. Before the first game the run
+    succeeds with ``outcome: expected_empty`` — it is not a failing dataset. Afterwards it is a
+    rejected snapshot, because *reporting success* while writing nothing hides a dataset going stale.
+    """
+    if _empty_is_expected(season, season_type):
+        outcomes = dict((run.detail or {}).get("outcomes", {}))
+        outcomes[season] = "expected_empty"
+        run.detail = {
+            **(run.detail or {}),
+            "outcome": "expected_empty",
+            "outcomes": outcomes,
+            "season_type": season_type.value,
+            "reason": f"{season} {season_type.value}-season games have not been played yet",
+        }
+        return
+    raise SnapshotRejectedError(
+        f"{job}: provider returned no rows for {season}; stored data left unchanged"
+    )
 
 
 def sync_teams(db: Session, provider: SwarNBAApiProvider | None = None) -> int:
@@ -140,6 +184,16 @@ def _check_roster_snapshot_plausible(
             "previous snapshot kept"
         )
     if not current:
+        # A first snapshot of a season (2026-27 rosters appearing) has nothing to compare with,
+        # but it still has to look like a league: most of the teams Pivot knows.
+        known = len(teams)
+        covered = len({r["nba_team_id"] for r in usable})
+        needed = math.ceil(round(ROSTER_MIN_TEAM_COVERAGE * known, 9))
+        if known and covered < needed:
+            raise SnapshotRejectedError(
+                f"sync_rosters: first snapshot covers {covered} of {known} known teams "
+                f"(need {needed}); nothing written"
+            )
         return
     previous_teams = {e.team_id for e in current}
     new_teams = {teams[r["nba_team_id"]].id for r in usable}
@@ -156,7 +210,39 @@ def _check_roster_snapshot_plausible(
         )
 
 
-def sync_rosters(db: Session, season: str | None = None, provider=None) -> int:
+def _dedupe_roster_rows(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """One row per player.
+
+    Two rows for the same player and team are one fact seen twice. Two rows for *different*
+    teams mean the player moved between the first team's fetch and the second's (the 30 rosters
+    are fetched one after another): the later retrieval is the newer state, so it wins. Without
+    this a trade during the fetch put the player on two current rosters.
+    """
+    best: dict[int, dict[str, Any]] = {}
+    same_team = moved = 0
+    for row in rows:
+        previous = best.get(row["nba_player_id"])
+        if previous is None:
+            best[row["nba_player_id"]] = row
+            continue
+        if previous["nba_team_id"] == row["nba_team_id"]:
+            same_team += 1
+            continue
+        moved += 1
+        if (row.get("source_retrieved_at") or datetime.min.replace(tzinfo=UTC)) >= (
+            previous.get("source_retrieved_at") or datetime.min.replace(tzinfo=UTC)
+        ):
+            best[row["nba_player_id"]] = row
+    return list(best.values()), {"duplicate_rows": same_team, "player_on_two_teams": moved}
+
+
+def sync_rosters(
+    db: Session,
+    season: str | None = None,
+    provider=None,
+    *,
+    job_name: str = "sync_rosters",
+) -> int:
     """Refresh current rosters by *diffing* against the stored snapshot.
 
     Membership that has not changed is **confirmed** — its ``source_retrieved_at`` moves
@@ -174,13 +260,14 @@ def sync_rosters(db: Session, season: str | None = None, provider=None) -> int:
     settings = get_settings()
     season = season or settings.current_season
     provider = provider or get_provider()
-    with sync_run(db, "sync_rosters") as run:
-        rows = asyncio.run(provider.fetch_rosters(season))
+    with sync_run(db, job_name) as run:
+        rows = _fetch_rows("rosters", lambda: provider.fetch_rosters(season), season=season)
         teams = _team_map(db)
         players = _player_map(db)
         now = datetime.now(UTC)
 
         usable = [r for r in rows if teams.get(r["nba_team_id"]) is not None]
+        usable, duplicates = _dedupe_roster_rows(usable)
         current = list(
             db.scalars(
                 select(RosterEntry).where(RosterEntry.season == season, RosterEntry.is_current)
@@ -277,7 +364,13 @@ def sync_rosters(db: Session, season: str | None = None, provider=None) -> int:
                 entry.is_current = False
                 entry.valid_to = now
                 closed += 1
-        run.detail = {"added": added, "confirmed": confirmed, "closed": closed}
+        run.detail = {
+            "added": added,
+            "confirmed": confirmed,
+            "closed": closed,
+            "season": season,
+            **duplicates,
+        }
         db.commit()
         return run.rows_written
 
@@ -287,8 +380,11 @@ def sync_standings(db: Session, season: str | None = None, provider=None) -> int
     season = season or settings.current_season
     provider = provider or get_provider()
     with sync_run(db, "sync_standings") as run:
-        rows = asyncio.run(provider.fetch_standings(season))
-        _require_rows("sync_standings", season, rows)
+        rows = _fetch_rows("standings", lambda: provider.fetch_standings(season), season=season)
+        if not rows:
+            _handle_empty(run, "sync_standings", season)
+            db.commit()
+            return 0
         teams = _team_map(db)
         for row in rows:
             team = teams.get(row["nba_team_id"])
@@ -322,22 +418,96 @@ def sync_standings(db: Session, season: str | None = None, provider=None) -> int
         return run.rows_written
 
 
-def sync_player_stats(db: Session, seasons: list[str] | None = None, provider=None) -> int:
+def _upsert_stat(db: Session, model, key_filter: tuple, values: dict[str, Any], counts: Counter) -> None:
+    """Insert or update one season-stat row, counting whether the figures actually changed.
+
+    ``changed`` is how a historical *correction* shows: the same season, refetched, with
+    different numbers. The row is updated (the source is the authority) and the run says so.
+    """
+    stat = db.scalar(select(model).where(*key_filter))
+    if stat is None:
+        db.add(model(**values))
+        counts["added"] += 1
+        return
+    if (stat.stats or {}) != (values.get("stats") or {}):
+        counts["changed"] += 1
+    else:
+        counts["unchanged"] += 1
+    _apply(stat, values)
+
+
+def _run_seasons(run, job: str, seasons: list[str], season_type: SeasonType, one) -> None:
+    """Run ``one(season)`` for each season, keeping what succeeds and reporting what does not."""
+    done: list[str] = []
+    failed: dict[str, str] = {}
+    first_error: BaseException | None = None
+    for season in seasons:
+        try:
+            if one(season):
+                done.append(season)
+        except Exception as exc:  # noqa: BLE001 — recorded per season
+            failed[season] = f"{type(exc).__name__}: {exc}"[:300]
+            first_error = first_error or exc
+    if not failed:
+        return
+    if not done and first_error is not None:
+        # Nothing was written: the first error says everything (and keeps its class).
+        raise first_error
+    raise PartialRefreshError(
+        f"{job}: {len(done)} of {len(seasons)} seasons written ({', '.join(done) or 'none'}); "
+        f"failed: {failed}"
+    )
+
+
+def sync_player_stats(
+    db: Session,
+    seasons: list[str] | None = None,
+    provider=None,
+    *,
+    season_type: SeasonType = SeasonType.REGULAR,
+) -> int:
+    """Refresh player season statistics for ``seasons`` (default: the modelling window plus the
+    league season once its regular season has started) and one season type.
+
+    Preseason and regular-season rows are different populations and are stored under different
+    ``season_type`` keys; neither can overwrite the other. A season for which the provider has no
+    rows yet is not an error when the calendar says its games have not been played.
+    """
     settings = get_settings()
-    seasons = seasons or settings.history_season_list
+    if seasons is None:
+        seasons = (
+            settings.sync_season_list
+            if season_type is SeasonType.REGULAR
+            else [settings.season_context.league_season.label]
+        )
     provider = provider or get_provider()
+    kwargs: dict[str, Any] = {} if season_type is SeasonType.REGULAR else {"season_type": season_type}
     with sync_run(db, "sync_player_stats") as run:
         players = _player_map(db)
         teams = _team_map(db)
-        for season in seasons:
-            rows = asyncio.run(provider.fetch_player_stats(season))
-            _require_rows("sync_player_stats", season, rows)
-            try:
-                rows += asyncio.run(provider.fetch_player_estimated_metrics(season))
-            except Exception as exc:
-                # Estimated metrics are optional enrichment with a documented fallback;
-                # base+advanced remain authoritative.
-                logger.warning("estimated metrics unavailable for %s: %s", season, exc)
+        counts: Counter[str] = Counter()
+
+        def one(season: str) -> bool:
+            rows = _fetch_rows(
+                "player_stats",
+                lambda: provider.fetch_player_stats(season, **kwargs),
+                season=season,
+                season_type=season_type.value,
+            )
+            if not rows:
+                _handle_empty(run, "sync_player_stats", season, season_type)
+                return False
+            if season_type is SeasonType.REGULAR:
+                try:
+                    rows = rows + _fetch_rows(
+                        "player_estimated_metrics",
+                        lambda: provider.fetch_player_estimated_metrics(season),
+                        season=season,
+                    )
+                except Exception as exc:
+                    # Estimated metrics are optional enrichment with a documented fallback;
+                    # base+advanced remain authoritative.
+                    logger.warning("estimated metrics unavailable for %s: %s", season, exc)
             for row in rows:
                 player = players.get(row["nba_player_id"])
                 if player is None:
@@ -347,7 +517,7 @@ def sync_player_stats(db: Session, seasons: list[str] | None = None, provider=No
                     "player_id": player.id,
                     "team_id": team.id if team else None,
                     "season": season,
-                    "season_type": REGULAR,
+                    "season_type": season_type.value,
                     "stat_type": row["stat_type"],
                     "games_played": row.get("games_played"),
                     "minutes": row.get("minutes"),
@@ -356,32 +526,60 @@ def sync_player_stats(db: Session, seasons: list[str] | None = None, provider=No
                     "source_retrieved_at": row.get("source_retrieved_at"),
                     "ingestion_run_id": run.id,
                 }
-                stat = db.scalar(
-                    select(PlayerSeasonStats).where(
+                _upsert_stat(
+                    db,
+                    PlayerSeasonStats,
+                    (
                         PlayerSeasonStats.player_id == player.id,
                         PlayerSeasonStats.season == season,
-                        PlayerSeasonStats.season_type == REGULAR,
+                        PlayerSeasonStats.season_type == season_type.value,
                         PlayerSeasonStats.stat_type == row["stat_type"],
-                    )
+                    ),
+                    values,
+                    counts,
                 )
-                if stat is None:
-                    db.add(PlayerSeasonStats(**values))
-                else:
-                    _apply(stat, values)
                 run.rows_written += 1
             db.commit()
+            return True
+
+        try:
+            _run_seasons(run, "sync_player_stats", seasons, season_type, one)
+        finally:
+            if counts:
+                run.detail = {**(run.detail or {}), "rows": dict(counts)}
         return run.rows_written
 
 
-def sync_team_stats(db: Session, seasons: list[str] | None = None, provider=None) -> int:
+def sync_team_stats(
+    db: Session,
+    seasons: list[str] | None = None,
+    provider=None,
+    *,
+    season_type: SeasonType = SeasonType.REGULAR,
+) -> int:
     settings = get_settings()
-    seasons = seasons or settings.history_season_list
+    if seasons is None:
+        seasons = (
+            settings.sync_season_list
+            if season_type is SeasonType.REGULAR
+            else [settings.season_context.league_season.label]
+        )
     provider = provider or get_provider()
+    kwargs: dict[str, Any] = {} if season_type is SeasonType.REGULAR else {"season_type": season_type}
     with sync_run(db, "sync_team_stats") as run:
         teams = _team_map(db)
-        for season in seasons:
-            rows = asyncio.run(provider.fetch_team_stats(season))
-            _require_rows("sync_team_stats", season, rows)
+        counts: Counter[str] = Counter()
+
+        def one(season: str) -> bool:
+            rows = _fetch_rows(
+                "team_stats",
+                lambda: provider.fetch_team_stats(season, **kwargs),
+                season=season,
+                season_type=season_type.value,
+            )
+            if not rows:
+                _handle_empty(run, "sync_team_stats", season, season_type)
+                return False
             for row in rows:
                 team = teams.get(row["nba_team_id"])
                 if team is None:
@@ -389,27 +587,34 @@ def sync_team_stats(db: Session, seasons: list[str] | None = None, provider=None
                 values = {
                     "team_id": team.id,
                     "season": season,
-                    "season_type": REGULAR,
+                    "season_type": season_type.value,
                     "stat_type": row["stat_type"],
                     "stats": row.get("stats", {}),
                     "source_record_id": row.get("source_record_id"),
                     "source_retrieved_at": row.get("source_retrieved_at"),
                     "ingestion_run_id": run.id,
                 }
-                stat = db.scalar(
-                    select(TeamSeasonStats).where(
+                _upsert_stat(
+                    db,
+                    TeamSeasonStats,
+                    (
                         TeamSeasonStats.team_id == team.id,
                         TeamSeasonStats.season == season,
-                        TeamSeasonStats.season_type == REGULAR,
+                        TeamSeasonStats.season_type == season_type.value,
                         TeamSeasonStats.stat_type == row["stat_type"],
-                    )
+                    ),
+                    values,
+                    counts,
                 )
-                if stat is None:
-                    db.add(TeamSeasonStats(**values))
-                else:
-                    _apply(stat, values)
                 run.rows_written += 1
             db.commit()
+            return True
+
+        try:
+            _run_seasons(run, "sync_team_stats", seasons, season_type, one)
+        finally:
+            if counts:
+                run.detail = {**(run.detail or {}), "rows": dict(counts)}
         return run.rows_written
 
 
@@ -418,8 +623,11 @@ def sync_games(db: Session, season: str | None = None, provider=None) -> int:
     season = season or settings.current_season
     provider = provider or get_provider()
     with sync_run(db, "sync_games") as run:
-        rows = asyncio.run(provider.fetch_games(season))
-        _require_rows("sync_games", season, rows)
+        rows = _fetch_rows("games", lambda: provider.fetch_games(season), season=season)
+        if not rows:
+            _handle_empty(run, "sync_games", season)
+            db.commit()
+            return 0
         teams = _team_map(db)
         for row in rows:
             home = teams.get(row.get("home_nba_team_id") or -1)
@@ -464,8 +672,12 @@ def sync_season_calendar(db: Session, seasons: list[str] | None = None, provider
     provider = provider or get_provider()
     with sync_run(db, "sync_season_calendar") as run:
         for season in seasons:
-            rows = asyncio.run(provider.fetch_games(season))
+            rows = _fetch_rows(
+                "games", lambda season=season: provider.fetch_games(season), season=season
+            )
             dates = sorted(r["game_date"] for r in rows if r.get("game_date"))
+            if not dates and _empty_is_expected(season):
+                continue  # an unplayed season has no boundary to record, and that is not an issue
             if not dates:
                 # A season with no game log is not a season with no games; it is a
                 # provider answer this job cannot interpret, so nothing is written and
@@ -634,15 +846,33 @@ def sync_contracts(db: Session) -> int:
         return matched
 
 
+def prepare_league_season(db: Session, provider=None) -> int:
+    """Stage the league's own season before the tools move to it.
+
+    While the analysis season is still the previous one (the summer, preseason and the first two
+    weeks of the new season) the tools read last season's rosters. This keeps the *incoming*
+    season's rosters current under their own season key so the rollover finds them in place.
+    It runs under its own job name (``prepare_league_rosters``): a roster that NBA.com has not
+    published yet must not mark the dataset the tools are *reading* as failing.
+    """
+    context = get_settings().season_context
+    if not context.analysis_is_baseline:
+        return 0
+    return sync_rosters(
+        db, context.league_season.label, provider, job_name="prepare_league_rosters"
+    )
+
+
 def sync_all(db: Session) -> dict[str, Any]:
     """Full refresh in dependency order. Individual failures are recorded and do not
     abort later jobs — the last valid snapshot always survives."""
     results: dict[str, Any] = {}
-    history = get_settings().history_season_list
+    history = get_settings().sync_season_list
     steps = [
         ("sync_teams", lambda: sync_teams(db)),
         ("sync_players", lambda: sync_players(db)),
         ("sync_rosters", lambda: sync_rosters(db)),
+        ("prepare_league_season", lambda: prepare_league_season(db)),
         ("sync_standings", lambda: sum(sync_standings(db, season) for season in history)),
         ("sync_team_stats", lambda: sync_team_stats(db)),
         ("sync_player_stats", lambda: sync_player_stats(db)),

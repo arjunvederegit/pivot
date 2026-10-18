@@ -31,6 +31,7 @@ def job_map() -> dict[str, Callable[..., object]]:
 
     return {
         "sync_rosters": jobs.sync_rosters,
+        "prepare_league_season": jobs.prepare_league_season,
         "sync_standings": jobs.sync_standings,
         "sync_player_stats": jobs.sync_player_stats,
         "sync_team_stats": jobs.sync_team_stats,
@@ -71,6 +72,7 @@ def build_scheduler() -> BlockingScheduler:
     quality_hours = int(os.environ.get("VALIDATE_DATA_EVERY_HOURS", "24"))
 
     scheduler.add_job(run_job, "interval", hours=roster_hours, args=["sync_rosters"])
+    scheduler.add_job(run_job, "interval", hours=roster_hours, args=["prepare_league_season"])
     scheduler.add_job(run_job, "interval", hours=roster_hours, args=["sync_standings"])
     scheduler.add_job(run_job, "interval", hours=stats_hours, args=["sync_player_stats"])
     scheduler.add_job(run_job, "interval", hours=stats_hours, args=["sync_team_stats"])

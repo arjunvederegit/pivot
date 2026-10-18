@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from .exceptions import ProviderSchemaError
+from .exceptions import ProviderEmptyError, ProviderSchemaError
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,14 @@ CONTRACTS: dict[str, EndpointContract] = {
 }
 
 
-def validate_dataframe(endpoint: str, df: pd.DataFrame) -> pd.DataFrame:
+def validate_dataframe(
+    endpoint: str, df: pd.DataFrame, *, require_rows: bool = True
+) -> pd.DataFrame:
+    """Check the columns an endpoint's consumers depend on.
+
+    ``require_rows=False`` validates the *shape* only, so the caller can tell a malformed response
+    (retry it, count it against the endpoint) from a well-formed empty one (``ProviderEmptyError``).
+    """
     contract = CONTRACTS.get(endpoint)
     if contract is None:
         return df
@@ -65,6 +72,6 @@ def validate_dataframe(endpoint: str, df: pd.DataFrame) -> pd.DataFrame:
         raise ProviderSchemaError(
             endpoint, f"missing required columns {missing}; got {list(df.columns)[:20]}"
         )
-    if df.empty:
-        raise ProviderSchemaError(endpoint, "response contained zero rows")
+    if df.empty and require_rows:
+        raise ProviderEmptyError(endpoint, "response contained zero rows")
     return df

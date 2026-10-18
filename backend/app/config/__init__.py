@@ -38,14 +38,30 @@ class Settings(BaseSettings):
     #: A contract snapshot is a user-supplied file on its own cadence.
     stats_stale_after_seconds: int = 172_800
     contracts_stale_after_seconds: int = 2_592_000
+    #: Teams and players are identity records (the package's static tables plus roster-created
+    #: players); they do not age by the day, so they get their own, long window.
+    identity_stale_after_seconds: int = 2_592_000
+    #: Injury status changes by the hour around games; a day-old report is already wrong.
+    injuries_stale_after_seconds: int = 21_600
+    #: A finalized (completed-season) dataset is still re-verified now and then — upstream
+    #: corrections happen — so one not re-fetched for this long carries an advisory note.
+    #: It never turns a completed season "stale" by itself.
+    finalized_reverify_after_days: int = 365
     nba_api_user_agent: str = ""
     nba_api_http_proxy: str = ""
 
-    current_season: str = "2025-26"
+    #: An explicit override of the analysis season (`CURRENT_SEASON=2025-26`). Blank — the default —
+    #: means *derive it from the calendar* (`app.canonical.calendar`): the season the league is in
+    #: once its regular season has been under way `season_rollover_grace_days`, otherwise the last
+    #: completed one. A pinned value still wins, and `data-status` reports when it has fallen
+    #: behind the calendar; leaving it blank is what stops the season needing a hand edit each October.
+    pinned_season: str = Field(default="", validation_alias="CURRENT_SEASON")
+    season_rollover_grace_days: int = 14
     #: The MODELLING window. Every served estimate — player impact, skills, the rotation
     #: allocation, the R3 conversion coefficient — is fitted and served on exactly these
-    #: seasons, and R7 did not widen it.
-    history_seasons: str = "2023-24,2024-25,2025-26"
+    #: seasons, and R7 did not widen it. Blank (the default) = the three seasons ending at the
+    #: analysis season, which is `2023-24,2024-25,2025-26` today; an explicit value wins.
+    history_seasons: str = ""
     #: The seasons the historical-trade CORPUS may be described by. Deliberately a
     #: separate setting: `player_season_stats` is read by two consumers with different
     #: questions. `recency_weighted_features` collapses `history_seasons` into the window
@@ -57,9 +73,8 @@ class Settings(BaseSettings):
     #: byte-identical at 632 rows x 33 columns, and every R3 calibration figure reproduces
     #: to full float precision — 14.976967215546017, SE 1.5279397396294392,
     #: R2 0.6235734193376163 — on a season frame that grows from 1,714 rows to 5,483.
-    corpus_seasons: str = (
-        "2016-17,2017-18,2018-19,2019-20,2020-21,2021-22,2022-23,2023-24,2024-25,2025-26"
-    )
+    #: Blank = the ten seasons ending at the analysis season (`2016-17` … `2025-26` today).
+    corpus_seasons: str = ""
     # League year whose cap parameters govern trade legality (trades executed in July
     # 2026 fall under the 2026-27 cap even though the latest completed stats season
     # is 2025-26).
@@ -167,14 +182,60 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
+    def season_context(self):  # -> SeasonContext
+        """Today's place in the NBA calendar (``app.canonical.calendar``)."""
+        from app.canonical.calendar import season_context, today_in_league
+
+        return season_context(today_in_league(), grace_days=self.season_rollover_grace_days)
+
+    @property
+    def current_season(self) -> str:
+        """The season every tool reads: the pinned override, else the calendar's analysis season.
+
+        A property, not a field, so a long-running server or worker crosses the rollover date
+        without a restart. Always a validated ``"YYYY-YY"`` label.
+        """
+        from app.canonical.seasons import Season
+
+        if self.pinned_season.strip():
+            return Season.parse(self.pinned_season.strip()).label
+        return self.season_context.analysis_season.label
+
+    @property
     def history_season_list(self) -> list[str]:
-        return [s.strip() for s in self.history_seasons.split(",") if s.strip()]
+        explicit = [s.strip() for s in self.history_seasons.split(",") if s.strip()]
+        if explicit:
+            return explicit
+        from app.canonical.seasons import Season
+
+        end = Season.parse(self.current_season)
+        return [Season(end.start_year - back).label for back in (2, 1, 0)]
+
+    @property
+    def sync_season_list(self) -> list[str]:
+        """The seasons a routine statistics refresh covers.
+
+        The modelling window, plus the league's own season as soon as its regular season has
+        started — so the new season's figures are already stored when the tools roll over to it,
+        rather than appearing a day after.
+        """
+        seasons = self.history_season_list
+        context = self.season_context
+        league = context.league_season.label
+        if context.regular_season_stats_expected and league not in seasons:
+            seasons = [*seasons, league]
+        return seasons
 
     @property
     def corpus_season_list(self) -> list[str]:
         """Every season the corpus may be described by, modelling window included."""
-        seasons = {s.strip() for s in self.corpus_seasons.split(",") if s.strip()}
-        return sorted(seasons | set(self.history_season_list))
+        explicit = {s.strip() for s in self.corpus_seasons.split(",") if s.strip()}
+        if not explicit:
+            from app.canonical.seasons import Season
+
+            end = Season.parse(self.current_season)
+            explicit = {Season(end.start_year - back).label for back in range(9, -1, -1)}
+        return sorted(explicit | set(self.history_season_list))
 
 
 @lru_cache

@@ -68,9 +68,12 @@ Commands
                    Report ROSTER-side contract coverage without importing anything:
                    how many rostered players have a salary for the cap league year,
                    and how many teams therefore have a computable payroll.
+  season-status    Where the NBA calendar is (league season, phase, which season the tools read),
+                   what is stored for the league's own season, and whether the data needed to
+                   roll the tools over to it is in place (read-only).
   data-status      Report freshness, completeness and provider of every dataset the
                    intelligence tools read, plus the provider registry (read-only).
-  refresh <datasets>
+  refresh <datasets> [--season 2026-27] [--season-type regular|preseason]
                    Refresh selected datasets (comma-separated: rosters, standings,
                    player-stats, team-stats, games, season-calendar, contracts) and print
                    the resulting freshness. A snapshot a provider answers with but that
@@ -182,7 +185,18 @@ REFRESH_DATASETS = {
 
 def _refresh(args: list[str], single_jobs: dict[str, Callable[..., int]]) -> int:
     """Refresh the named datasets in the given order; report each result and the freshness."""
-    names = [n.strip() for a in args if not a.startswith("--") for n in a.split(",") if n.strip()]
+    def option(flag: str) -> str | None:
+        return args[args.index(flag) + 1] if flag in args and args.index(flag) + 1 < len(args) else None
+
+    season_arg, type_arg = option("--season"), option("--season-type")
+    values = {option_value for option_value in (season_arg, type_arg) if option_value}
+    names = [
+        n.strip()
+        for a in args
+        if not a.startswith("--") and a not in values
+        for n in a.split(",")
+        if n.strip()
+    ]
     unknown = [n for n in names if n not in REFRESH_DATASETS]
     if not names or unknown:
         print(
@@ -195,19 +209,39 @@ def _refresh(args: list[str], single_jobs: dict[str, Callable[..., int]]) -> int
             )
         )
         return 2
+    from app.canonical.seasons import InvalidSeasonError, Season, SeasonType
     from app.services.data_provenance import dataset_freshness
+
+    try:
+        season = Season.parse(season_arg).label if season_arg else None
+        season_type = SeasonType(type_arg) if type_arg else SeasonType.REGULAR
+    except (InvalidSeasonError, ValueError) as exc:
+        print(json.dumps({"error": f"bad --season/--season-type: {exc}"}, indent=2))
+        return 2
+
+    def call(job_name: str, job: Callable[..., int], db):
+        """Pass the optional scope only to the jobs that take it."""
+        if job_name in ("sync-player-stats", "sync-team-stats"):
+            seasons = [season] if season else None
+            return job(db, seasons, season_type=season_type)
+        if job_name in ("sync-rosters", "sync-standings", "sync-games") and season:
+            return job(db, season)
+        return job(db)
 
     results: dict[str, dict] = {}
     with SessionLocal() as db:
         for name in names:
             job = single_jobs[REFRESH_DATASETS[name]]
             try:
-                results[name] = {"status": "succeeded", "rows": job(db)}
+                results[name] = {
+                    "status": "succeeded",
+                    "rows": call(REFRESH_DATASETS[name], job, db),
+                }
             except Exception as exc:  # noqa: BLE001 - reported per dataset, never swallowed
                 results[name] = {"status": "failed", "error": f"{type(exc).__name__}: {exc}"}
         freshness = {
             n: m.model_dump(mode="json")
-            for n, m in dataset_freshness(db).items()
+            for n, m in dataset_freshness(db, season).items()
             if n in {d.replace("-", "_") for d in names} | {"player_stats", "team_stats"}
         }
     print(json.dumps({"results": results, "freshness": freshness}, indent=2, default=str))
@@ -356,6 +390,24 @@ def main() -> None:
                 default=str,
             )
         )
+    elif command == "season-status":
+        from app.services.data_provenance import dataset_freshness, rollover_readiness
+
+        with SessionLocal() as db:
+            readiness = rollover_readiness(db)
+            current = dataset_freshness(db)
+            league_label = get_settings().season_context.league_season.label
+            league = (
+                dataset_freshness(db, league_label)
+                if league_label != get_settings().current_season
+                else {}
+            )
+        summary = {
+            "readiness": readiness,
+            "tools_read": {n: m.freshness.value for n, m in current.items()},
+            "league_season": {n: m.freshness.value for n, m in league.items()},
+        }
+        print(json.dumps(summary, indent=2, default=str))
     elif command == "refresh":
         sys.exit(_refresh(sys.argv[2:], single_jobs))
     elif command == "link-balldontlie":

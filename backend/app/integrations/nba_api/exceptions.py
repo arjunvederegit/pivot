@@ -35,6 +35,19 @@ class ProviderSchemaError(NBAProviderError):
     classification = "schema_mismatch"
 
 
+class ProviderEmptyError(ProviderSchemaError):
+    """The provider answered correctly and the answer is "no rows".
+
+    A subclass of ``ProviderSchemaError`` so existing ``except`` clauses still catch it, but a
+    different *fact*: the response was well-formed. It is raised after the retry loop, so it is
+    never retried, never counts toward the circuit breaker and never marks the endpoint unhealthy.
+    Whether "no rows" is expected (2026-27 statistics before opening night) or a defect (2025-26
+    statistics) is the caller's judgement, made against the season calendar.
+    """
+
+    classification = "empty"
+
+
 class ProviderUnavailableError(NBAProviderError):
     """Circuit breaker open or upstream hard down."""
 

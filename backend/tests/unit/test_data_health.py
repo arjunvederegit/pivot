@@ -50,6 +50,19 @@ def stale_nba_data(db: Session) -> Team:
             source_retrieved_at=long_ago,
         )
     )
+    # R8.1: only data that *should* be moving can be stale. A completed season's standings are
+    # `finalized`, so the fixture's staleness comes from the live roster: membership describes
+    # the present and is stale after a day, whatever the season.
+    db.add(
+        RosterEntry(
+            team_id=team.id,
+            player_id="00000000-0000-0000-0000-000000000001",
+            season="2025-26",
+            is_current=True,
+            source_provider="nba_api",
+            source_retrieved_at=long_ago,
+        )
+    )
     db.add(
         DataSyncRun(
             job_name="sync_rosters",
@@ -110,17 +123,6 @@ def test_open_quality_issue_total_is_reportable(db: Session, stale_nba_data: Tea
 
 
 def test_rosters_row_count_is_reported(db: Session, stale_nba_data: Team) -> None:
-    db.add(
-        RosterEntry(
-            team_id=stale_nba_data.id,
-            player_id="00000000-0000-0000-0000-000000000000",
-            season="2025-26",
-            is_current=True,
-            source_provider="nba_api",
-            source_retrieved_at=datetime.now(UTC) - timedelta(days=6),
-        )
-    )
-    db.commit()
     assert data_health(db)["tables"]["rosters"]["rows"] == 1
 
 

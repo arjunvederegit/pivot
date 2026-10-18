@@ -8,6 +8,7 @@ from typing import Protocol
 
 import anyio
 
+from app.canonical.seasons import SeasonType
 from app.config import get_settings
 
 from . import endpoints as ep
@@ -23,9 +24,13 @@ class NBADataProvider(Protocol):
 
     async def fetch_standings(self, season: str) -> list[dict]: ...
 
-    async def fetch_player_stats(self, season: str) -> list[dict]: ...
+    async def fetch_player_stats(
+        self, season: str, season_type: SeasonType = SeasonType.REGULAR
+    ) -> list[dict]: ...
 
-    async def fetch_team_stats(self, season: str) -> list[dict]: ...
+    async def fetch_team_stats(
+        self, season: str, season_type: SeasonType = SeasonType.REGULAR
+    ) -> list[dict]: ...
 
     async def fetch_games(self, season: str) -> list[dict]: ...
 
@@ -62,10 +67,14 @@ class SwarNBAApiProvider:
             {**nz.normalize_standing_row(row, season), **provenance} for _, row in df.iterrows()
         ]
 
-    async def fetch_player_stats(self, season: str) -> list[dict]:
+    async def fetch_player_stats(
+        self, season: str, season_type: SeasonType = SeasonType.REGULAR
+    ) -> list[dict]:
         rows: list[dict] = []
         for measure, stat_type in (("Base", "base"), ("Advanced", "advanced")):
-            df, meta = await anyio.to_thread.run_sync(ep.fetch_player_stats, season, measure)
+            df, meta = await anyio.to_thread.run_sync(
+                ep.fetch_player_stats, season, measure, "PerGame", season_type
+            )
             provenance = nz.provenance_from_meta(meta)
             rows.extend(
                 {**nz.normalize_player_stat_row(row, season, stat_type), **provenance}
@@ -73,10 +82,14 @@ class SwarNBAApiProvider:
             )
         return rows
 
-    async def fetch_team_stats(self, season: str) -> list[dict]:
+    async def fetch_team_stats(
+        self, season: str, season_type: SeasonType = SeasonType.REGULAR
+    ) -> list[dict]:
         rows: list[dict] = []
         for measure, stat_type in (("Base", "base"), ("Advanced", "advanced")):
-            df, meta = await anyio.to_thread.run_sync(ep.fetch_team_stats, season, measure)
+            df, meta = await anyio.to_thread.run_sync(
+                ep.fetch_team_stats, season, measure, "PerGame", season_type
+            )
             provenance = nz.provenance_from_meta(meta)
             rows.extend(
                 {**nz.normalize_team_stat_row(row, season, stat_type), **provenance}

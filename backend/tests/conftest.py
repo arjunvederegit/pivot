@@ -18,6 +18,10 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 # reachable` runs every CLI command, and two of them fetch from a third party; this makes
 # them refuse instead.
 os.environ.setdefault("ROSTERLAB_OFFLINE", "1")
+# The suite's fixtures are 2025-26 data. Pin the season so tests do not change meaning when the
+# calendar crosses the 2026-27 rollover; the calendar-derived behaviour is tested explicitly with
+# injected dates (tests/unit/test_season_readiness.py).
+os.environ.setdefault("CURRENT_SEASON", "2025-26")
 
 from app.db.models import (  # noqa: E402
     Base,

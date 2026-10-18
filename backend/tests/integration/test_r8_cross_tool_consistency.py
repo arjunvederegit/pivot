@@ -8,7 +8,7 @@ the three consumers return the same identity, the same season, the same figures 
 provenance — and that the new transparency fields tell the truth about age and gaps.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -252,3 +252,96 @@ class TestIdentityIsOneThing:
         assert a["nba_player_id"] == 1630314 and a["current_team"]["id"] == team.id
         assert b["nba_player_id"] == 1585 and b["current_team"] is None
         assert client.get(f"/api/v1/players/{retired.id}").json()["membership_status"] == "unlisted"
+
+
+# ---------------------------------------------------------------------------- R8.1: the rollover
+
+
+class TestToolsStayConsistentAcrossTheSeasonRollover:
+    """The same checks, on both sides of the day the tools move from 2025-26 to 2026-27.
+
+    R8 showed the tools agreed on one snapshot. That says nothing about the day the season key
+    changes, which is when hand-copied definitions drift. A player is traded, a rookie arrives with
+    no history, and 2026-27 statistics do not exist yet; all three tools must still tell one story.
+    """
+
+    @pytest.fixture()
+    def rolled(self, db, league, monkeypatch):
+        from app.config import get_settings
+
+        team_a, team_b = league["team_a"], league["team_b"]
+        traded = league["roster_a"][0]
+        stayer = league["roster_a"][1]
+        rookie = make_player(db, 9001, "Rookie Arrival", team_a, season="2026-27")
+        db.add_all(
+            [
+                RosterEntry(team_id=team_b.id, player_id=traded.id, season="2026-27",
+                            is_current=True, source_retrieved_at=datetime.now(UTC)),
+                RosterEntry(team_id=team_a.id, player_id=stayer.id, season="2026-27",
+                            is_current=True, source_retrieved_at=datetime.now(UTC)),
+            ]
+        )
+        db.commit()
+        # Deterministic clock: this test is about 18 Oct 2026, whenever it runs.
+        monkeypatch.setattr("app.canonical.provenance.today_in_league", lambda now=None: date(2026, 10, 18))
+        monkeypatch.setenv("CURRENT_SEASON", "2026-27")
+        get_settings.cache_clear()
+        yield {"traded": traded, "stayer": stayer, "rookie": rookie, **league}
+        get_settings.cache_clear()
+
+    def test_after_the_flip_all_three_tools_list_the_new_season_roster(self, client, db, rolled):
+        for team_id in (rolled["team_a"].id, rolled["team_b"].id):
+            overview = client.get(f"/api/v1/teams/{team_id}/roster").json()
+            assert overview["season"] == "2026-27"
+            ids = {p["player_id"] for p in overview["roster"]}
+            directory = client.get(
+                "/api/v1/players", params={"team_id": team_id, "limit": 200, "active_only": False}
+            ).json()
+            assert ids == {p["id"] for p in directory["players"]}
+            assert ids == {c.player_id for c in EvaluationService(db)._roster_cards(team_id)}
+
+    def test_the_traded_player_is_on_one_team_everywhere_and_keeps_last_seasons_line(
+        self, client, rolled
+    ):
+        traded = rolled["traded"]
+        page = client.get(f"/api/v1/players/{traded.id}").json()
+        assert page["player"]["current_team"]["id"] == rolled["team_b"].id
+        assert page["membership_status"] == "member"
+        team_b_ids = {p["player_id"] for p in client.get(
+            f"/api/v1/teams/{rolled['team_b'].id}/roster").json()["roster"]}
+        team_a_ids = {p["player_id"] for p in client.get(
+            f"/api/v1/teams/{rolled['team_a'].id}/roster").json()["roster"]}
+        assert traded.id in team_b_ids and traded.id not in team_a_ids
+        history = client.get(f"/api/v1/players/{traded.id}/stats").json()
+        assert any(s["season"] == "2025-26" for s in history["seasons"]), "last season's record survives"
+
+    def test_nobody_gets_a_zero_for_a_season_that_has_not_been_played(self, client, rolled):
+        body = client.get(f"/api/v1/teams/{rolled['team_a'].id}/season-stats").json()
+        assert body["season"] == "2026-27"
+        assert body["stats"] == {}, "no 2026-27 rows exist; none are invented or carried over"
+        assert set(body["missing_player_ids"]) == {
+            p["player_id"] for p in client.get(
+                f"/api/v1/teams/{rolled['team_a'].id}/roster").json()["roster"]}
+        status = body["data_status"]["player_stats"]
+        assert status["freshness"] == "not_yet_available"
+        assert status["scope_state"] == "upcoming"
+        assert body["data_status"]["roster"]["freshness"] == "fresh", "the roster itself is current"
+
+    def test_the_rookie_is_a_member_with_no_history(self, client, rolled):
+        rookie = rolled["rookie"]
+        page = client.get(f"/api/v1/players/{rookie.id}").json()
+        assert page["membership_status"] == "member"
+        history = client.get(f"/api/v1/players/{rookie.id}/stats").json()
+        assert history["seasons"] == [] or all(s["season"] != "2026-27" for s in history["seasons"])
+
+    def test_before_the_flip_nothing_about_2026_27_leaks_into_the_tools(self, client, db, league, monkeypatch):
+        """The staged 2026-27 roster is invisible while the tools read 2025-26."""
+        from app.config import get_settings
+
+        db.add(RosterEntry(team_id=league["team_b"].id, player_id=league["roster_a"][0].id,
+                           season="2026-27", is_current=True, source_retrieved_at=datetime.now(UTC)))
+        db.commit()
+        get_settings.cache_clear()
+        overview = client.get(f"/api/v1/teams/{league['team_a'].id}/roster").json()
+        assert overview["season"] == "2025-26"
+        assert league["roster_a"][0].id in {p["player_id"] for p in overview["roster"]}

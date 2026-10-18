@@ -23,7 +23,7 @@ provider confirmed it; neither is the date a trade was made. Payloads say so
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import ColumnElement, and_, func, select
@@ -193,3 +193,55 @@ def current_team_of(
     if len({e.team_id for e in entries}) > 1:
         return TeamMembership("conflict", None, label, meta)
     return TeamMembership("member", entries[0].team, label, meta)
+
+
+def roster_as_of(
+    db: Session,
+    as_of: datetime,
+    team_id: str | None = None,
+    season: str | Season | None = None,
+) -> RosterSnapshot:
+    """Who was on the roster at ``as_of``, reconstructed from Pivot's own sightings.
+
+    A roster row is open from ``valid_from`` (first seen on that team) to ``valid_to`` (the refresh
+    that no longer listed him; null while he is still listed). Rows therefore answer "was he
+    there?" only from Pivot's first snapshot onward. Before that the honest answer is *unknown*,
+    not *empty*, and the returned ``meta`` says so rather than presenting zero players as a roster.
+    """
+    label = resolve_season(season)
+    moment = as_of if as_of.tzinfo else as_of.replace(tzinfo=UTC)
+    stmt = (
+        select(RosterEntry)
+        .options(joinedload(RosterEntry.player))
+        .where(RosterEntry.season == label)
+    )
+    if team_id is not None:
+        stmt = stmt.where(RosterEntry.team_id == team_id)
+    candidates = list(db.scalars(stmt).unique().all())
+    entries = [
+        e
+        for e in candidates
+        if (valid_from := _utc(e.valid_from)) is not None
+        and valid_from <= moment
+        and ((valid_to := _utc(e.valid_to)) is None or valid_to > moment)
+    ]
+    entries.sort(key=lambda e: e.player_id)
+    first_seen = min((v for e in candidates if (v := _utc(e.valid_from)) is not None), default=None)
+    notes = [
+        f"reconstructed as of {moment.date().isoformat()} from first-seen / last-listed times, "
+        "not from league transaction records"
+    ]
+    if first_seen is None or moment < first_seen:
+        notes.append(
+            "Pivot has no roster snapshot this early"
+            + (f" (its first is {first_seen.date().isoformat()})" if first_seen else "")
+            + "; membership at this date is unknown, not empty"
+        )
+    meta = build_source_meta("rosters", entries, season=label, notes=notes, now=moment)
+    return RosterSnapshot(label, team_id, entries, meta)
+
+
+def _utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
