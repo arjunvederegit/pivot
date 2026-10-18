@@ -9,7 +9,7 @@ Split by what is blocking. "Owner" = needs the owner's hands or a decision. Item
 | --- | --- | --- | --- |
 | A1 | **Refresh your own data**: `make refresh DATASETS=rosters` (and `games`, per R8.1 A2) against the real database | your database still holds only the 2025-26 roster; until then the tools show it **labelled as a fallback** | owner |
 | A2 | **Re-check the roster after opening night (20 Oct) and after the cut-down** | the 2026-27 snapshot is `provisional_preseason`: 16–20 per team, camp/two-way/Exhibit-10 not distinguishable | owner / worker |
-| A3 | **`make train && make score` for 2026-27 — correct procedure is in the runbook §5** | R8.1's "run it 2–3 Nov" was wrong: both commands follow `current_season`, which is 2025-26 until 3 Nov. A rehearsal also showed `train` drops 2023-24 from the window and retires all five active models, and `score` stops until 2026-27 team statistics exist. Until done, impact-based views say so | owner / engineering |
+| A3 | **`make train && make score` for 2026-27 — correct procedure is in the runbook §5** | R8.1's "run it 2–3 Nov" was wrong: both commands follow `current_season`, which is 2025-26 until 3 Nov. A rehearsal also showed `train` drops 2023-24 from the window and retires all five active models **and permanently deletes the previous model's impact estimates** (rollback = restore a backup), and `score` stops until 2026-27 team statistics exist. Until done, impact-based views say so | owner / engineering |
 | A4 | `.env`: blank `CURRENT_SEASON` (R8.1 A3). **No longer urgent for rosters** (a pin cannot hold them back), still needed for statistics to roll over | `pinned_behind_calendar` | owner |
 | A5 | Run the worker or cron (R8.1 A4) | nothing refreshes by itself | owner |
 

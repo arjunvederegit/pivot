@@ -6,8 +6,13 @@ Nothing here is run for you. `DATABASE_URL` selects the database — **point it 
 ## 1. Refresh the 2026-27 rosters
 
 ```bash
-make refresh DATASETS=rosters
+make refresh DATASETS=rosters ARGS=--roster-only   # memberships + brand-new identities only (recommended)
+make refresh DATASETS=rosters                     # also refreshes known players' position/height/weight/birth date/experience
 ```
+
+`--roster-only` exists because the full refresh rewrote the bio fields of 448 known players on your real data,
+and six newly filled birth dates alone moved the acquisition battery's headline numbers (teams answered 29 → 19).
+Refresh bio fields deliberately, together with re-validating the batteries — not as a side effect.
 
 * With no `--season` this now refreshes the **league year's** roster (2026-27 until 30 June 2027) — not the
   statistics season. `ARGS='--season 2025-26'` refreshes a historical one (history is not otherwise touched).
@@ -91,8 +96,10 @@ make season-status      # on the real DB: projection.estimates_for_input_season 
 ```
 
 Promote only after comparing the rehearsal's batteries (`make comparable-validation acquisition-validation
-adversarial-validation`) with the current ones. Reversing a `train`: set the previous `model_versions` rows
-`is_active` back (nothing is deleted). **R8.2 did not run train/score on any real database.**
+adversarial-validation`) with the current ones. **A `train` cannot be reversed by re-activating the old model versions:** `_gc_superseded_estimates` permanently
+deletes every impact estimate that belongs to an inactive version (the version rows stay; their estimates do not).
+The only rollback is restoring a pre-train backup, so take one first (see the activation checkpoint report).
+*(This corrects the first version of this section, which said nothing is deleted.)* **R8.2 did not run train/score on any real database.**
 
 ## 6. Troubleshooting
 
