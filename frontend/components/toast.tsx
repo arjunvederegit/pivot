@@ -24,10 +24,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setToasts((current) => current.filter((t) => t.id !== id)), 4200);
   }, []);
 
+  const glyph: Record<Toast["kind"], string> = { success: "✓", error: "✕", info: "•" };
+  const glyphColor: Record<Toast["kind"], string> = {
+    success: "text-legal",
+    error: "text-illegal",
+    info: "text-signal",
+  };
+
   const styles: Record<Toast["kind"], string> = {
-    success: "border-pass/50 bg-pass/15 text-pass",
-    error: "border-fail/50 bg-fail/15 text-fail",
-    info: "border-accent/50 bg-accent/15 text-accent",
+    success: "border-l-legal",
+    error: "border-l-illegal",
+    info: "border-l-signal",
   };
 
   return (
@@ -35,14 +42,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div
         aria-live="polite"
-        className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2"
+        className="scope-terminal pointer-events-none fixed bottom-24 right-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 lg:bottom-4"
       >
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto rounded-md border px-3 py-2 text-sm shadow-lg backdrop-blur ${styles[toast.kind]}`}
+            className={`pointer-events-auto flex items-start gap-2 rounded-lg border border-l-[3px] border-line bg-panel2 px-3 py-2.5 text-sm text-foreground shadow-[var(--shadow-pop)] ${styles[toast.kind]}`}
           >
-            {toast.message}
+            <span aria-hidden className={`text-[12px] leading-5 ${glyphColor[toast.kind]}`}>
+              {glyph[toast.kind]}
+            </span>
+            <span>{toast.message}</span>
           </div>
         ))}
       </div>

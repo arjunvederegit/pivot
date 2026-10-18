@@ -229,7 +229,8 @@ class IntelligenceService:
             round(card.tei, 4),
             method=(
                 "Pivot Estimated Impact (TEI): a transparent weighted z-score index over "
-                "recency-weighted three-season features, on a per-100 scale."
+                "recency-weighted three-season features. A unitless index, not points per "
+                "100 possessions."
             ),
             source="player_impact_estimates, from the registered player_impact model",
             confidence=Confidence.VALIDATED,

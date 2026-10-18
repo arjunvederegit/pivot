@@ -57,8 +57,15 @@ describe("the nav points only at routes that exist", () => {
     expect(new Set(nav).size).toBe(nav.length);
   });
 
-  it("leads with the Command Center", () => {
+  it("leads with the home dashboard", () => {
+    // `/` is the intelligence dashboard (it absorbed the Command Center). What is asserted is
+    // unchanged in spirit: the surface a returning user wants is the first thing in the nav.
     expect(hrefsIn("PRIMARY")[0]).toBe("/");
+  });
+
+  it("keeps the Command Center's old address serving the dashboard", () => {
+    // Error pages, shared links and older docs point at /command-center.
+    expect(existsSync(join(APP, "command-center", "page.tsx"))).toBe(true);
   });
 });
 
@@ -145,5 +152,67 @@ describe("the product is named consistently", () => {
   it("no longer renders the old wordmark in the shell", () => {
     expect(SHELL).not.toMatch(/ROSTER<span/);
     expect(BRAND).not.toMatch(/ROSTER<span/);
+  });
+});
+
+describe("the experimental Intelligence group is gated", () => {
+  /**
+   * Ask Pivot (/assistant) is experimental and answers from a FICTIONAL corpus. It must not
+   * appear in a build made without the flag, so the gate is pinned at the text level, the
+   * same way the arrays above are: a refactor that drops the condition fails here, not in
+   * front of a user who never switched the feature on.
+   */
+  const FEATURES = readFileSync(join(FRONTEND, "lib", "features.ts"), "utf8");
+  const PAGE = readFileSync(join(APP, "assistant", "page.tsx"), "utf8");
+
+  it("every LAB destination is a real App Router route", () => {
+    const lab = hrefsIn("LAB");
+    expect(lab).toEqual(["/assistant"]);
+    for (const href of lab) {
+      const segment = href.replace(/^\//, "").split("/")[0];
+      expect(routeSegments()).toContain(segment);
+      expect(existsSync(join(APP, segment, "page.tsx"))).toBe(true);
+    }
+  });
+
+  it("does not put the assistant in the always-on arrays", () => {
+    const always = [...hrefsIn("PRIMARY"), ...hrefsIn("GM_LAB"), ...hrefsIn("SECONDARY")];
+    expect(always).not.toContain("/assistant");
+  });
+
+  it("adds the group and its destinations only when ASSISTANT_ENABLED", () => {
+    expect(SHELL).toContain('import { ASSISTANT_ENABLED } from "@/lib/features"');
+    expect(SHELL).toMatch(/\.\.\.\(ASSISTANT_ENABLED \? \[\{ label: "Intelligence", items: LAB \}\] : \[\]\)/);
+    expect(SHELL).toMatch(/\.\.\.\(ASSISTANT_ENABLED \? LAB : \[\]\)/);
+    // LAB is referenced nowhere else unconditionally.
+    const unguarded = SHELL.split("\n").filter(
+      (line) => /\bLAB\b/.test(line) && !/ASSISTANT_ENABLED|const LAB: NavLink\[\]/.test(line),
+    );
+    expect(unguarded).toEqual([]);
+  });
+
+  it("labels it as an experiment", () => {
+    const block = SHELL.split("const LAB: NavLink[] = [")[1].split("];")[0];
+    expect(block).toContain('label: "Ask Pivot"');
+    expect(block).toContain('badge: "Lab"');
+    expect(block).toMatch(/fictional data/);
+  });
+
+  it("reads the flag from the build-time public env var, and only an exact \"true\" enables it", () => {
+    expect(FEATURES).toMatch(
+      /export const ASSISTANT_ENABLED = process\.env\.NEXT_PUBLIC_ASSISTANT_ENABLED === "true"/,
+    );
+  });
+
+  it("serves the app's not-found page at /assistant when the flag is off", () => {
+    expect(PAGE).toContain('import { notFound } from "next/navigation"');
+    expect(PAGE).toMatch(/if \(!ASSISTANT_ENABLED\) notFound\(\)/);
+    expect(PAGE).not.toMatch(/^"use client"/m);
+  });
+
+  it("does not name the feature in the 404's tab title when the flag is off", () => {
+    // Static `metadata` survives `notFound()`; only a flag-aware generateMetadata hides it.
+    expect(PAGE).not.toMatch(/export const metadata/);
+    expect(PAGE).toMatch(/ASSISTANT_ENABLED \? \{ title: "Ask Pivot" \} : \{\}/);
   });
 });

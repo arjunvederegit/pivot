@@ -74,13 +74,13 @@ export function SuggestedDeals({
                 </div>
                 <dl className="mt-2 space-y-1 text-[12px]">
                   <div className="flex gap-1.5">
-                    <dt className="eyebrow shrink-0 pt-0.5 text-[0.5rem] text-illegal">Out</dt>
+                    <dt className="eyebrow shrink-0 pt-0.5 text-[0.625rem] text-illegal">Out</dt>
                     <dd className="min-w-0 text-muted">
                       {candidate.outgoing.map((p) => p.name).join(", ") || "—"}
                     </dd>
                   </div>
                   <div className="flex gap-1.5">
-                    <dt className="eyebrow shrink-0 pt-0.5 text-[0.5rem] text-legal">In</dt>
+                    <dt className="eyebrow shrink-0 pt-0.5 text-[0.625rem] text-legal">In</dt>
                     <dd className="min-w-0 text-muted">
                       {candidate.incoming.map((p) => p.name).join(", ") || "—"}
                     </dd>

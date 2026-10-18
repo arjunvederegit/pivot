@@ -37,6 +37,28 @@ jobs:
           alembic upgrade head
           alembic check
 
+  assistant:
+    # Ask Pivot's LangChain path. The backend job installs only `.[dev]`, so every test that
+    # builds the real runnable chain (fake chat model + fake embeddings) skips there. This
+    # job adds the optional `assistant` extra and runs those tests plus the scorer
+    # self-test. No Ollama, no LangSmith, no network beyond pip.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install (with the assistant extra)
+        run: pip install -e ".[dev,assistant]"
+      - name: Ask Pivot tests (fakes only)
+        run: pytest -q tests/unit -k assistant
+      - name: Scorer self-test (every false answer must fail)
+        run: python -m scripts.eval_rag selftest
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

@@ -1,37 +1,51 @@
 "use client";
 
 /**
- * Team Outlook — one franchise, read the way a broadcast opens: banner, record,
- * then the roster and the model's read on what this team is good at, what it
- * needs, and where its money stands.
+ * Team Outlook — one franchise, read in the order a front office reads it:
+ *
+ *   1. who they are and where they stand — the masthead and the season line, which ends
+ *      with the server's own headline needs and strengths in one line;
+ *   2. the diagnosis — every team statistic on one league axis beside what the rotation's
+ *      skills already cover, on the same 0–100 scale;
+ *   3. the mandate (team strategy) every trade for them is scored against;
+ *   4. who answers the needs;
+ *   5. the roster itself: placed in the league, its composition, every player by position;
+ *   6. money and assets.
+ *
+ * Every number on the page is served. Strengths and needs are classified on the server;
+ * impact is placed in the league with the shared impact components; anything missing is
+ * shown as missing. Team colour is an accent only — the logo, a thin line along the top
+ * of the masthead and of each card.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { use, useState } from "react";
-import { api } from "@/lib/api";
-import { count, height, money, ordinal, payrollDisclosure, pct, tei } from "@/lib/format";
+import { api, ApiError } from "@/lib/api";
+import { count, money, payrollDisclosure } from "@/lib/format";
 import { teamProfileSchema } from "@/lib/schemas";
 import { teamIdentity, teamVars } from "@/lib/teamIdentity";
-import type {
-  PayrollResponse,
-  RosterPlayer,
-  RosterResponse,
-  Scenario,
-  Team,
-  TeamProfile,
-} from "@/lib/types";
+import type { PayrollResponse, RosterResponse, Scenario, Team, TeamProfile, Vocabulary } from "@/lib/types";
 import { AcquisitionTargetsPanel } from "@/components/acquisition";
-import { HalfCourt } from "@/components/court";
-import { PlayerPhoto, TeamCrest } from "@/components/media";
+import { IconArrowRight } from "@/components/icons";
+import { TeamLogo } from "@/components/media";
+import { CommandText } from "@/components/reference/format";
 import { useToast } from "@/components/toast";
+import { Composition } from "@/components/teams/composition";
+import { RosterDepth } from "@/components/teams/roster-depth";
+import { RosterOnLeague } from "@/components/teams/roster-league";
+import { SeasonLine, type TeamDetail } from "@/components/teams/season-line";
+import { SectionHead } from "@/components/teams/section-head";
+import { SkillCoveragePanel } from "@/components/teams/skill-coverage";
+import { StrengthsNeeds } from "@/components/teams/strengths-needs";
+import { TeamPanel } from "@/components/teams/team-panel";
 import {
   Badge,
   Button,
   ButtonLink,
   EmptyState,
   ErrorState,
-  MeterBar,
+  PageHeader,
   Panel,
   Skeleton,
   SkeletonRows,
@@ -39,22 +53,6 @@ import {
   StatBlock,
   UnavailableNotice,
 } from "@/components/ui";
-
-interface TeamDetail {
-  team: Team;
-  season: string;
-  standing: {
-    wins: number;
-    losses: number;
-    win_pct: number;
-    conference: string | null;
-    playoff_rank: number | null;
-    details: Record<string, unknown>;
-    source_retrieved_at: string | null;
-  } | null;
-  stats: Record<string, Record<string, number>>;
-  stats_retrieved_at: string | null;
-}
 
 const STRATEGIES = [
   ["contend", "Contend now", "Win this season; future flexibility is secondary."],
@@ -65,52 +63,29 @@ const STRATEGIES = [
   ["cap_relief", "Cut salary / tax", "Get under a line, accept on-court cost."],
 ] as const;
 
-const GROUPS = ["Guards", "Wings", "Bigs"] as const;
-type Group = (typeof GROUPS)[number];
-
-function positionGroup(position: string | null): Group {
-  // Official position strings (G, G-F, F, F-C, C, …) grouped for scanning; the
-  // exact designation stays visible on each row.
-  const p = (position ?? "").toUpperCase();
-  if (p.includes("C")) return "Bigs";
-  if (p.includes("G") && !p.includes("F")) return "Guards";
-  return "Wings";
-}
-
 function windowLabel(avgAge: number | null): {
   label: string;
   hint: string;
   status: string;
-  color: string;
 } {
   if (avgAge === null)
     return {
       label: "Unknown",
       hint: "Roster ages are unavailable, so the window can't be inferred.",
       status: "unavailable",
-      color: "var(--unknown)",
     };
   if (avgAge < 25.5)
-    return {
-      label: "Ascending",
-      hint: "Young rotation — the window is opening.",
-      status: "info",
-      color: "var(--signal)",
-    };
+    return { label: "Ascending", hint: "Young rotation — the window is opening.", status: "info" };
   if (avgAge < 28.5)
-    return {
-      label: "Open now",
-      hint: "Prime-age rotation — win-now moves fit.",
-      status: "pass",
-      color: "var(--legal)",
-    };
+    return { label: "Open now", hint: "Prime-age rotation — win-now moves fit.", status: "pass" };
   return {
     label: "Closing",
     hint: "Veteran rotation — weigh future flexibility carefully.",
     status: "warning",
-    color: "var(--conditional)",
   };
 }
+
+const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
 
 export default function TeamOutlookPage({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = use(params);
@@ -138,6 +113,13 @@ export default function TeamOutlookPage({ params }: { params: Promise<{ teamId: 
     queryKey: ["payroll", teamId],
     queryFn: () => api.get<PayrollResponse>(`/teams/${teamId}/payroll`),
   });
+  // The published thresholds and need sources, so the axis draws the server's lines
+  // rather than copies of them. Shared cache key with the home page.
+  const { data: vocabulary } = useQuery({
+    queryKey: ["intelligence-vocabulary"],
+    queryFn: () => api.get<Vocabulary>("/intelligence/vocabulary"),
+    staleTime: Infinity,
+  });
 
   const [strategy, setStrategy] = useState<string>("contend");
   const saveStrategy = useMutation({
@@ -154,425 +136,310 @@ export default function TeamOutlookPage({ params }: { params: Promise<{ teamId: 
     onError: (e) => toast("error", `Could not save strategy: ${String(e)}`),
   });
 
-  if (error) return <ErrorState message={`Could not load team: ${String(error)}`} />;
+  if (error) {
+    if (error instanceof ApiError && error.status === 404) return <TeamNotFound teamId={teamId} />;
+    return <ErrorState message={`Could not load team: ${String(error)}`} />;
+  }
   if (!detail) return <TeamSkeleton />;
 
-  const identity = teamIdentity(detail.team.abbreviation);
-  const advanced = detail.stats.advanced ?? {};
+  const team = detail.team;
+  const identity = teamIdentity(team.abbreviation);
   const rosterPlayers = roster?.roster ?? [];
-  const ages = rosterPlayers.map((p) => p.age).filter((a): a is number => a !== null);
-  const avgAge = ages.length ? ages.reduce((sum, a) => sum + a, 0) / ages.length : null;
-  const topRotation = [...rosterPlayers].sort((a, b) => (b.tei ?? -99) - (a.tei ?? -99)).slice(0, 8);
-  const rotationAges = topRotation.map((p) => p.age).filter((a): a is number => a !== null);
-  const avgRotationAge = rotationAges.length
-    ? rotationAges.reduce((sum, a) => sum + a, 0) / rotationAges.length
-    : null;
-  const competitiveWindow = windowLabel(avgRotationAge);
+  const nickname = team.nickname ?? identity.nickname;
 
-  const weaknesses = profile?.weaknesses ?? [];
-  const strengths = profile?.strengths ?? [];
-
-  const groups: Record<Group, RosterPlayer[]> = { Guards: [], Wings: [], Bigs: [] };
-  for (const player of rosterPlayers) groups[positionGroup(player.position)].push(player);
-  for (const group of GROUPS) groups[group].sort((a, b) => (b.tei ?? -99) - (a.tei ?? -99));
-
-  const teiValues = rosterPlayers.map((p) => p.tei).filter((t): t is number => t !== null);
-  const maxTei = teiValues.length ? Math.max(...teiValues, 1) : 1;
+  // Two different ages, labelled as two different things: the whole listed roster, and
+  // the eight highest-impact players, whose average sets the competitive window.
+  const rosterAge = mean(rosterPlayers.map((p) => p.age).filter((a): a is number => a !== null));
+  const topEight = [...rosterPlayers].sort((a, b) => (b.tei ?? -99) - (a.tei ?? -99)).slice(0, 8);
+  const topEightIds = new Set(topEight.map((p) => p.player_id));
+  const windowAge = mean(topEight.map((p) => p.age).filter((a): a is number => a !== null));
+  const competitiveWindow = windowLabel(windowAge);
 
   return (
-    <div className="space-y-6" style={teamVars(detail.team.abbreviation)}>
-      {/* ------------------------------------------------------ broadcast banner */}
-      <section className="panel relative overflow-hidden">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background: `linear-gradient(105deg, ${identity.primary}3d 0%, transparent 58%)`,
-          }}
-        />
-        <HalfCourt className="pointer-events-none absolute -bottom-6 right-2 hidden h-[125%] w-[26%] text-signal/15 md:block" />
-
-        <div className="relative flex flex-col gap-5 p-5 md:flex-row md:items-center md:gap-6 md:p-6">
-          <div className="flex min-w-0 flex-1 items-center gap-4 md:gap-6">
-            <TeamCrest
-              abbreviation={detail.team.abbreviation}
-              name={detail.team.full_name}
-              size={76}
-            />
-
-            <div className="min-w-0">
-              <div className="eyebrow flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                <span className="whitespace-nowrap" style={{ color: identity.bright }}>
-                  {detail.team.abbreviation}
-                </span>
-                <span aria-hidden className="text-faint">
-                  /
-                </span>
-                <span className="whitespace-nowrap">
-                  {detail.team.conference ?? "—"}
-                  {detail.team.division ? ` · ${detail.team.division}` : ""}
-                </span>
-                <span aria-hidden className="text-faint">
-                  /
-                </span>
-                <span className="whitespace-nowrap">{detail.season}</span>
+    <div className="space-y-12 lg:space-y-14" style={teamVars(team.abbreviation)}>
+      <div className="space-y-5">
+        {/* ------------------------------------------------------------ masthead */}
+        <header className="relative border-b border-hairline pb-6">
+          {/* the franchise's colour, once, as a thin rule above the name */}
+          <span
+            aria-hidden
+            className="absolute left-0 top-0 h-px w-full max-w-[28rem]"
+            style={{ background: `linear-gradient(90deg, ${identity.bright}, transparent)` }}
+          />
+          <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-5 pt-6">
+            <div className="flex min-w-0 items-center gap-4 sm:gap-5">
+              <TeamLogo abbreviation={team.abbreviation} name={team.full_name} size={68} />
+              <div className="min-w-0">
+                <div className="eyebrow flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span
+                    aria-hidden
+                    className="h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={{ background: identity.bright }}
+                  />
+                  <span className="text-foreground">{team.abbreviation}</span>
+                  <span aria-hidden className="text-faint">
+                    ·
+                  </span>
+                  <span>
+                    {team.conference ?? "—"}
+                    {team.division ? ` · ${team.division}` : ""}
+                  </span>
+                  <span aria-hidden className="text-faint">
+                    ·
+                  </span>
+                  <span>{detail.season}</span>
+                </div>
+                <h1 className="title-xl mt-2 text-balance text-foreground">{team.full_name}</h1>
               </div>
-              <h1 className="title-xl mt-2 text-foreground">{detail.team.full_name}</h1>
-              <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                <Badge status={competitiveWindow.status}>window: {competitiveWindow.label}</Badge>
-                <span className="text-[12px] text-muted">{competitiveWindow.hint}</span>
+            </div>
+            <div>
+              {/* The team being viewed — not necessarily the selected organisation. */}
+              <p className="eyebrow mb-1.5 sm:text-right">Actions for {team.abbreviation}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <ButtonLink href={`/trade-evaluator?team=${teamId}`} variant="primary">
+                  Start a trade
+                </ButtonLink>
+                <ButtonLink href={`/player-explorer?team=${teamId}`}>Compare players</ButtonLink>
+                <ButtonLink href={`/salary-cap-center?team=${teamId}`}>Salary-Cap Center</ButtonLink>
               </div>
             </div>
           </div>
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <Badge status={competitiveWindow.status}>window: {competitiveWindow.label}</Badge>
+            <span className="text-[14px] text-muted">{competitiveWindow.hint}</span>
+          </div>
+        </header>
 
-          {detail.standing ? (
-            <div className="shrink-0 border-t border-hairline pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">
-              <div className="eyebrow text-[0.5625rem]">Record · {detail.season}</div>
-              <div
-                className="numeral mt-1 whitespace-nowrap text-[3.25rem] leading-none"
-                style={{ color: identity.bright }}
-              >
-                {detail.standing.wins}–{detail.standing.losses}
-              </div>
-              <div className="mt-1 whitespace-nowrap text-[12px] text-muted">
-                {pct(detail.standing.win_pct, 1)} · #{detail.standing.playoff_rank ?? "—"} in the{" "}
-                {detail.standing.conference ?? "conference"}
-              </div>
-            </div>
-          ) : (
-            <div className="shrink-0 border-t border-hairline pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">
-              <div className="eyebrow text-[0.5625rem]">Record</div>
-              <div className="numeral mt-1 text-[2.5rem] leading-none text-unavail">—</div>
-              <div className="mt-1 text-[12px] text-muted">no standings row ingested</div>
-            </div>
-          )}
-        </div>
-
-        <div className="relative flex flex-wrap items-center gap-2 border-t border-hairline px-5 py-3 md:px-6">
-          <ButtonLink href={`/trade-evaluator?team=${teamId}`} variant="primary" size="sm">
-            Start a trade
-          </ButtonLink>
-          <ButtonLink href={`/player-explorer?team=${teamId}`} size="sm">
-            Compare players
-          </ButtonLink>
-          <ButtonLink href={`/salary-cap-center?team=${teamId}`} size="sm">
-            Salary-Cap Center
-          </ButtonLink>
-          <SourceRail
-            className="ml-auto mt-0 w-full border-t-0 pt-0 lg:w-auto"
-            source={detail.team.provenance?.upstream ?? "unknown source"}
-            retrievedAt={detail.standing?.source_retrieved_at ?? detail.stats_retrieved_at}
-          />
-        </div>
-      </section>
-
-      {/* ------------------------------------------------------------- team line */}
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <TeamStat
-          label="Offense"
-          value={advanced.OFF_RATING}
-          note="points scored per 100 possessions"
-          accent="var(--signal)"
+        {/* --------------------------------------------------------- season line */}
+        <SeasonLine
+          detail={detail}
+          rosterCount={roster ? rosterPlayers.length : null}
+          rosterAge={rosterAge}
+          windowAge={windowAge}
+          windowLabelText={competitiveWindow.label}
+          profile={profile}
+          profileError={profileError}
+          vocabulary={vocabulary}
         />
-        <TeamStat
-          label="Defense"
-          value={advanced.DEF_RATING}
-          note="points allowed per 100 · lower is better"
-          accent="var(--signal)"
-        />
-        <TeamStat
-          label="Net rating"
-          value={advanced.NET_RATING}
-          note="scoring margin per 100 possessions"
-          accent={
-            (advanced.NET_RATING ?? 0) >= 0 ? "var(--legal)" : "var(--illegal)"
+      </div>
+
+      {/* ----------------------------------------------------------- diagnosis */}
+      <section id="diagnosis" aria-labelledby="diagnosis-heading" className="scroll-mt-24">
+        <SectionHead
+          id="diagnosis-heading"
+          eyebrow={`Diagnosis · ${detail.season}`}
+          title={`Where the ${nickname} stand`}
+          aside={
+            <>
+              Team statistics and the rotation&apos;s skills on the same{" "}
+              <span className="whitespace-nowrap">0–100</span> league scale — right is better, the
+              median at 50.
+            </>
           }
-          signed
         />
-        <TeamStat
-          label="Average age"
-          value={avgAge ?? undefined}
-          note={`${count(rosterPlayers.length, "player")} on the roster`}
-          accent={identity.bright}
-        />
-      </section>
-
-      {/* ------------------------------------------------------- roster + panels */}
-      <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,340px)] xl:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
-        <Panel
-          className="min-w-0"
-          accent={identity.bright}
-          title={`Roster · ${rosterPlayers.length}`}
-          subtitle="Grouped by position, sorted by estimated impact within each group"
-          actions={
-            <Link href="/methodology#tei" className="eyebrow whitespace-nowrap text-signal">
-              What is impact? →
-            </Link>
-          }
-        >
-          {rosterError ? (
-            <ErrorState message={`Could not load the roster: ${String(rosterError)}`} />
-          ) : !roster ? (
-            <SkeletonRows rows={10} height="h-12" />
-          ) : rosterPlayers.length === 0 ? (
-            <EmptyState
-              title="No roster rows for this team"
-              hint="Run `make sync-data` on the backend to pull the current roster from NBA.com."
-              action={<ButtonLink href="/data-health" size="sm">Open Data Health</ButtonLink>}
-            />
-          ) : (
-            <div className="space-y-5">
-              {GROUPS.filter((group) => groups[group].length > 0).map((group) => (
-                <div key={group}>
-                  <div className="flex items-baseline justify-between gap-3 border-b border-hairline pb-1.5">
-                    <h3 className="eyebrow" style={{ color: identity.bright }}>
-                      {group}
-                    </h3>
-                    <span className="eyebrow text-[0.5rem]">{groups[group].length}</span>
-                  </div>
-                  <ul className="divide-y divide-hairline">
-                    {groups[group].map((player) => (
-                      <li key={player.player_id}>
-                        <Link
-                          href={`/players/${player.player_id}`}
-                          className="group flex items-center gap-3 rounded-md px-1 py-2 transition-colors hover:bg-panel2"
-                        >
-                          <PlayerPhoto
-                            nbaPlayerId={player.nba_player_id}
-                            name={player.name}
-                            size={36}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm text-foreground transition-colors group-hover:text-signal">
-                              {player.name}
-                            </span>
-                            <span className="eyebrow mt-0.5 block truncate text-[0.5rem]">
-                              {player.position ?? "—"} · age {player.age?.toFixed(0) ?? "—"} ·{" "}
-                              {height(player.height_inches)}
-                            </span>
-                          </span>
-                          {player.archetype && (
-                            <span className="hidden shrink-0 whitespace-nowrap text-[11px] text-faint xl:inline">
-                              {player.archetype}
-                            </span>
-                          )}
-                          <span className="w-20 shrink-0 text-right">
-                            <span
-                              className="numeral block text-[19px] leading-none"
-                              style={{
-                                color:
-                                  player.tei === null
-                                    ? "var(--unknown)"
-                                    : player.tei >= 0
-                                      ? identity.bright
-                                      : "var(--chalk-dim)",
-                              }}
-                              title="Estimated player impact (per-100 index) — see Methodology"
-                            >
-                              {tei(player.tei)}
-                            </span>
-                            {player.tei !== null && player.tei > 0 && (
-                              <MeterBar
-                                value={player.tei}
-                                max={maxTei}
-                                color={identity.bright}
-                                className="ml-auto mt-1 !h-1 w-16"
-                                label={`impact ${tei(player.tei)}, top rotation impact is ${tei(maxTei)}`}
-                              />
-                            )}
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-              <SourceRail
-                source={roster.source}
-                retrievedAt={roster.source_retrieved_at}
-                extra={<span>· impact estimated by Pivot, not a provider metric</span>}
-              />
-            </div>
-          )}
-        </Panel>
-
-        <div className="space-y-3">
-          {/* ------------------------------------------------ strengths & needs */}
-          <Panel
+        {/* Stacked below xl: side by side, a narrow column leaves each league track too
+            short to read. From xl both cards stretch to the row and end together — but only
+            when the axis has rows; a one-line notice is not stretched into an empty card. */}
+        <div className={`grid gap-4 xl:grid-cols-12 ${profile?.needs_available ? "" : "xl:items-start"}`}>
+          <TeamPanel
+            className="flex flex-col xl:col-span-7"
+            bodyClassName="flex flex-1 flex-col"
             title="Strengths & needs"
-            subtitle="Percentile rules over real league stats — no scouting opinions"
+            subtitle="Each measured team statistic on one league axis. Tags are the server's percentile rules, not scouting opinions."
           >
             {profileError ? (
               <ErrorState message={`Could not load the roster profile: ${String(profileError)}`} />
             ) : !profile ? (
-              <SkeletonRows rows={5} height="h-8" />
+              <SkeletonRows rows={7} height="h-8" />
             ) : !profile.needs_available ? (
-              <UnavailableNotice reason={profile.needs_unavailable_reason} />
+              <UnavailableNotice reason={<ServedSentence text={profile.needs_unavailable_reason} />} />
             ) : (
-              <div className="space-y-4">
-                {strengths.length > 0 && (
-                  <div>
-                    <h4 className="eyebrow text-legal">Strengths</h4>
-                    <ul className="mt-2 space-y-2">
-                      {strengths.map((need) => (
-                        <li key={need.key} title={need.explanation}>
-                          <div className="flex items-baseline justify-between gap-3 text-[13px]">
-                            <span className="min-w-0 truncate text-foreground">{need.label}</span>
-                            <span className="data shrink-0 text-[11px] text-muted">
-                              {ordinal(need.percentile)}
-                            </span>
-                          </div>
-                          <MeterBar
-                            value={need.percentile ?? 0}
-                            max={100}
-                            color="var(--legal)"
-                            className="mt-1"
-                            label={`${need.label} at the ${ordinal(need.percentile)} percentile`}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div>
-                  <h4 className="eyebrow text-illegal">Needs</h4>
-                  {/* The old fallback rendered the first four rows by severity order
-                      regardless of severity, so Atlanta showed "Defensive rebounding
-                      67th" under Strengths *and* under Needs, with a zero-length bar
-                      beneath the caption "longer bar = larger shortfall". The server
-                      does not reproduce that fallback either, and leaving ATL and CLE
-                      with an empty <ul> under a bare heading would be its own defect,
-                      so the empty case gets a real state. */}
-                  {weaknesses.length === 0 ? (
-                    <p className="mt-2 rounded-lg border border-hairline bg-panel2 px-3 py-2.5 text-[13px] leading-relaxed text-muted">
-                      No pressing needs. Every measured category sits at or above the
-                      league median for this team, so nothing here reads as a shortfall.
-                    </p>
-                  ) : (
-                    <ul className="mt-2 space-y-2">
-                      {weaknesses.map((need) => (
-                        <li key={need.key} title={need.explanation}>
-                          <div className="flex items-baseline justify-between gap-3 text-[13px]">
-                            <span className="min-w-0 truncate text-foreground">{need.label}</span>
-                            <span className="data shrink-0 text-[11px] text-muted">
-                              {ordinal(need.percentile)}
-                            </span>
-                          </div>
-                          <MeterBar
-                            value={need.severity}
-                            color={need.severity > 0.5 ? "var(--illegal)" : "var(--conditional)"}
-                            className="mt-1"
-                            label={`${need.label} severity ${(need.severity * 100).toFixed(0)} percent`}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
-                {/* The rule itself, in words, next to what it produced — so a reader can
-                    see why a category is on one list and not the other. */}
-                <p className="border-t border-hairline pt-3 text-[11px] leading-relaxed text-muted">
-                  {profile.classification_note}
-                </p>
-
-                <p className="text-[11px] leading-relaxed text-faint">
-                  {weaknesses.length > 0 ? "Longer bar under Needs = larger shortfall. " : ""}
-                  <Link href="/methodology#needs" className="text-signal underline">
-                    How this is calculated
-                  </Link>
-                </p>
-              </div>
+              <StrengthsNeeds profile={profile} vocabulary={vocabulary} />
             )}
-          </Panel>
+          </TeamPanel>
 
-          {/* ------------------------------------------------------- strategy */}
-          <Panel
-            title="Team strategy"
-            subtitle="Drives how every trade is scored for this franchise"
-          >
-            <fieldset className="space-y-1.5">
-              <legend className="sr-only">Choose a strategy for {detail.team.full_name}</legend>
-              {STRATEGIES.map(([value, label, hint]) => {
-                const checked = strategy === value;
-                return (
-                  <label
-                    key={value}
-                    className={`flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2 transition-colors ${
-                      checked
-                        ? "border-signal/50 bg-signal/8"
-                        : "border-transparent hover:bg-panel2"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="strategy"
-                      value={value}
-                      checked={checked}
-                      onChange={() => setStrategy(value)}
-                      className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--signal)]"
-                    />
-                    <span className="min-w-0">
-                      <span
-                        className={`block whitespace-nowrap text-[13px] font-semibold ${
-                          checked ? "text-signal" : "text-foreground"
-                        }`}
-                      >
-                        {label}
-                      </span>
-                      <span className="block text-[11px] leading-snug text-muted">{hint}</span>
+          <SkillCoveragePanel profile={profile} error={profileError} className="xl:col-span-5" />
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------ mandate */}
+      <section aria-labelledby="strategy-heading">
+        <SectionHead
+          id="strategy-heading"
+          eyebrow="The mandate"
+          title="Team strategy"
+          aside="Drives how every trade is scored for this franchise. Save it, then start a trade."
+        />
+        <div className="panel p-4 sm:p-5">
+          <fieldset className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <legend className="sr-only">Choose a strategy for {team.full_name}</legend>
+            {STRATEGIES.map(([value, label, hint]) => {
+              const checked = strategy === value;
+              return (
+                <label
+                  key={value}
+                  className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-signal ${
+                    checked
+                      ? "border-signal/60 bg-signal/8"
+                      : "border-hairline bg-panel2/40 hover:border-line hover:bg-panel2"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="strategy"
+                    value={value}
+                    checked={checked}
+                    onChange={() => setStrategy(value)}
+                    className="mt-[3px] h-3.5 w-3.5 shrink-0 accent-[var(--signal)] focus-visible:outline-none"
+                  />
+                  <span className="min-w-0">
+                    <span
+                      className={`block text-[14px] font-semibold leading-tight ${
+                        checked ? "text-signal" : "text-foreground"
+                      }`}
+                    >
+                      {label}
                     </span>
-                  </label>
-                );
-              })}
-            </fieldset>
+                    <span className="mt-1 block text-[12.5px] leading-snug text-muted">{hint}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </fieldset>
+          <div className="mt-4 flex flex-col-reverse gap-3 border-t border-hairline pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[12px] leading-relaxed text-faint">
+              Fine-grained weights and untouchable players live in the Trade Evaluator.{" "}
+              <Link href="/methodology#weights" className="text-signal underline underline-offset-2">
+                How weights work
+              </Link>
+            </p>
             <Button
               variant="primary"
-              className="mt-3 w-full"
+              className="w-full shrink-0 sm:w-auto sm:min-w-44"
               disabled={saveStrategy.isPending}
               onClick={() => saveStrategy.mutate()}
             >
               {saveStrategy.isPending ? "Saving…" : "Save strategy"}
             </Button>
-            <p className="mt-2 text-[11px] leading-relaxed text-faint">
-              Fine-grained weights and untouchable players live in the Trade Evaluator.{" "}
-              <Link href="/methodology#weights" className="text-signal underline">
-                How weights work
-              </Link>
-            </p>
-          </Panel>
-
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* ------------------------------------------------------ roster profile */}
-      <div className="grid items-start gap-3 lg:grid-cols-2">
-        <SkillCoveragePanel profile={profile} error={profileError} accent={identity.bright} />
-        <ArchetypePanel profile={profile} error={profileError} accent={identity.bright} />
-      </div>
+      {/* ---------------------------------------------------- answers to needs */}
+      <AcquisitionTargetsPanel teamId={team.id} teamAbbr={team.abbreviation} />
 
-      {/* ------------------------------------------- need-driven discovery */}
-      <AcquisitionTargetsPanel teamId={detail.team.id} />
+      {/* ------------------------------------------------------------- roster */}
+      <section aria-labelledby="roster-heading">
+        <SectionHead
+          id="roster-heading"
+          eyebrow={roster ? `Personnel · ${count(rosterPlayers.length, "player")}` : "Personnel"}
+          title="The roster"
+          aside="Every player's impact estimate placed in the league, the roster's shape on the floor, then each player by listed position."
+        />
+        {/* Full width: the figure names every flag only when it has room for them, and a
+            narrow column would fall back to initials on a desktop screen. */}
+        <div className="space-y-4">
+          <TeamPanel
+            title="Roster on the league"
+            subtitle="Every player's impact estimate, planted on the distribution of every player Pivot scored"
+            actions={
+              <Link
+                href="/methodology#tei"
+                className="inline-flex items-center gap-1.5 whitespace-nowrap text-[12.5px] font-medium text-signal hover:text-foreground"
+              >
+                What is impact?
+                <IconArrowRight size={14} />
+              </Link>
+            }
+          >
+            {rosterError ? (
+              <ErrorState message={`Could not load the roster: ${String(rosterError)}`} />
+            ) : !roster ? (
+              <Skeleton className="h-[230px]" />
+            ) : rosterPlayers.length === 0 ? (
+              <UnavailableNotice reason="No roster rows for this team, so nobody can be placed." />
+            ) : (
+              <RosterOnLeague roster={rosterPlayers} teamAbbr={team.abbreviation} />
+            )}
+          </TeamPanel>
 
-      {/* --------------------------------------------------- money & assets */}
-      <div className="grid items-start gap-3 lg:grid-cols-2">
-        {/* ---------------------------------------------------------- payroll */}
-        <Panel title="Payroll & cap status" className="min-w-0">
+          <TeamPanel title="Composition" subtitle="Listed position against functional role">
+            {rosterError ? (
+              <ErrorState message={`Could not load the roster: ${String(rosterError)}`} />
+            ) : !roster ? (
+              <SkeletonRows rows={6} height="h-8" />
+            ) : (
+              <Composition roster={rosterPlayers} profile={profile} profileError={profileError} />
+            )}
+          </TeamPanel>
+
+          <TeamPanel
+            padded={false}
+            title={roster ? `Roster by position · ${rosterPlayers.length}` : "Roster by position"}
+            subtitle="Grouped by listed position, sorted by impact within each group"
+          >
+            {rosterError ? (
+              <div className="p-5">
+                <ErrorState message={`Could not load the roster: ${String(rosterError)}`} />
+              </div>
+            ) : !roster ? (
+              <div className="p-5">
+                <SkeletonRows rows={8} height="h-14" />
+              </div>
+            ) : rosterPlayers.length === 0 ? (
+              <div className="p-5">
+                <EmptyState
+                  title="No roster rows for this team"
+                  hint={
+                    <>
+                      Run <code className={CODE_CHIP}>make sync-data</code> on the backend to pull
+                      the current roster from NBA.com.
+                    </>
+                  }
+                  action={
+                    <ButtonLink href="/data-health" size="sm">
+                      Open Data Health
+                    </ButtonLink>
+                  }
+                />
+              </div>
+            ) : (
+              <RosterDepth
+                players={rosterPlayers}
+                topEightIds={topEightIds}
+                profile={profile}
+                source={roster.source}
+                retrievedAt={roster.source_retrieved_at}
+              />
+            )}
+          </TeamPanel>
+        </div>
+      </section>
+
+      {/* ----------------------------------------------------- money & assets */}
+      <section aria-labelledby="money-heading">
+        <SectionHead
+          id="money-heading"
+          eyebrow="Money & assets"
+          title="Payroll and draft capital"
+          aside="Shown only from imported contracts and verified pick ownership — never estimated."
+        />
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          <TeamPanel title="Payroll & cap status">
             {payrollError ? (
               <ErrorState message={`Could not load payroll: ${String(payrollError)}`} />
             ) : !payroll ? (
               <SkeletonRows rows={3} height="h-8" />
             ) : payroll.payroll_available ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <StatBlock
                   label={`Committed payroll · ${payroll.league_year}`}
                   value={money(payroll.payroll)}
                   note={`${payroll.players_with_salary} of ${payroll.roster_size} players with a salary on file`}
-                  accent="var(--leather)"
+                  size="lg"
                 />
                 {payroll.cap_context && (
-                  <dl className="space-y-1.5 border-t border-hairline pt-3">
+                  <dl className="space-y-2 border-t border-hairline pt-3">
                     <MoneyRow label="Luxury-tax line" value={money(payroll.cap_context.luxury_tax)} />
                     <MoneyRow label="Room below tax" value={money(payroll.cap_context.room_below_tax)} />
                     <MoneyRow label="First apron" value={money(payroll.cap_context.first_apron)} />
@@ -590,196 +457,64 @@ export default function TeamOutlookPage({ params }: { params: Promise<{ teamId: 
             ) : (
               <UnavailableNotice
                 reason={
-                  payroll.unavailable_reason ??
-                  "Contract data hasn't been imported, so payroll can't be computed."
+                  <ServedSentence
+                    text={
+                      payroll.unavailable_reason ??
+                      "Contract data hasn't been imported, so payroll can't be computed."
+                    }
+                  />
                 }
                 steps={
-                  <p className="text-[12px] leading-relaxed text-muted">
-                    Salary-matching rules will keep reporting <em>unavailable</em> until a contract
-                    provider is configured.{" "}
-                    <Link href="/data-health" className="text-signal underline">
-                      See the exact next step
-                    </Link>
-                  </p>
+                  <div className="space-y-2.5">
+                    <p className="text-[12.5px] leading-relaxed text-muted">
+                      Salary-matching rules will keep reporting <em>unavailable</em> until a
+                      contract provider is configured. The import takes three steps, laid out in
+                      the Salary-Cap Center.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <ButtonLink href={`/salary-cap-center?team=${teamId}`} size="sm">
+                        Contract import steps
+                      </ButtonLink>
+                      <ButtonLink href="/data-health" size="sm">
+                        Open Data Health
+                      </ButtonLink>
+                    </div>
+                  </div>
                 }
               />
             )}
-          </Panel>
+          </TeamPanel>
 
-        {/* ---------------------------------------------------- draft capital */}
-        <Panel title="Draft capital" className="min-w-0">
-          <UnavailableNotice reason="Verified draft-pick ownership isn't configured, and Pivot won't guess it. Hypothetical picks can still be added inside a trade, clearly labeled as hypothetical." />
-        </Panel>
-      </div>
+          <TeamPanel title="Draft capital">
+            <UnavailableNotice reason="Verified draft-pick ownership isn't configured, and Pivot won't guess it. Hypothetical picks can still be added inside a trade, clearly labeled as hypothetical." />
+          </TeamPanel>
+        </div>
+      </section>
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ pieces */
 
-function TeamStat({
-  label,
-  value,
-  note,
-  accent,
-  signed = false,
-}: {
-  label: string;
-  value: number | undefined | null;
-  note: string;
-  accent: string;
-  signed?: boolean;
-}) {
-  const shown =
-    value === undefined || value === null
-      ? "—"
-      : signed
-        ? `${value >= 0 ? "+" : ""}${Number(value).toFixed(1)}`
-        : Number(value).toFixed(1);
-  return (
-    <Panel padded={false} className="px-4 py-3.5">
-      <StatBlock
-        label={label}
-        value={shown}
-        note={note}
-        accent={value === undefined || value === null ? "var(--unknown)" : accent}
-      />
-    </Panel>
-  );
-}
+/** A shell command or env setting set inside a sentence: mono, on a faint chip, no backticks. */
+const CODE_CHIP = "rounded bg-foreground/8 px-1 py-px font-mono text-[0.92em] text-foreground";
 
 /**
- * What the rotation is strong at, skill by skill.
+ * A sentence written by the backend for whoever operates it, as it should read on a page.
  *
- * Each entry is a Measurement, and an unmeasured skill says so with its reason. It is
- * deliberately not drawn as a midpoint bar: a roster whose skill cannot be seen is not a
- * roster that is average at it, and a bar at 50 would claim the second thing.
+ * Two presentation changes, nothing else: `backtick` spans become code chips, and a
+ * pointer into the repository ("See data/contracts/README.md to enable one.") is dropped,
+ * because a file path is not something a reader can open from here. Every caller puts a
+ * link to the page that shows those steps next to the sentence instead.
  */
-function SkillCoveragePanel({
-  profile,
-  error,
-  accent,
-}: {
-  profile: TeamProfile | undefined;
-  error: unknown;
-  accent: string;
-}) {
-  const coverage = profile?.skill_coverage ?? [];
-  const measured = coverage.filter((skill) => skill.available);
-  return (
-    <Panel
-      className="min-w-0"
-      title="Skill coverage"
-      subtitle="Where the rotation stands in each measured skill — the third-best value among the rotation, the same statistic the evaluator prices redundancy against"
-    >
-      {error ? (
-        <ErrorState message={`Could not load skill coverage: ${String(error)}`} />
-      ) : !profile ? (
-        <SkeletonRows rows={8} height="h-8" />
-      ) : coverage.length === 0 ? (
-        <UnavailableNotice reason="No skill dimensions were returned for this roster." />
-      ) : (
-        <>
-          <ul className="space-y-2.5">
-            {coverage.map((skill) => (
-              <li key={skill.key} title={skill.available ? skill.method : skill.reason}>
-                <div className="flex items-baseline justify-between gap-3 text-[13px]">
-                  <span className="min-w-0 truncate text-foreground">{skill.label}</span>
-                  {skill.available ? (
-                    <span className="data shrink-0 text-[11px] text-muted">
-                      {ordinal((skill.value ?? 0) * 100)} ·{" "}
-                      {count(skill.rotation_players_measured, "player")}
-                    </span>
-                  ) : (
-                    <Badge status="unavailable">not measured</Badge>
-                  )}
-                </div>
-                {skill.available ? (
-                  <MeterBar
-                    value={skill.value ?? 0}
-                    max={1}
-                    color={accent}
-                    className="mt-1"
-                    label={`${skill.label}: the rotation's third-best value sits at the ${ordinal(
-                      (skill.value ?? 0) * 100,
-                    )} percentile`}
-                  />
-                ) : (
-                  <p className="mt-1 text-[11px] leading-relaxed text-muted">{skill.reason}</p>
-                )}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-[11px] leading-relaxed text-faint">
-            {measured.length} of {coverage.length} declared skills are measured for this
-            rotation. The rest are listed with the reason rather than dropped.
-          </p>
-          <SourceRail source={measured[0]?.source} />
-        </>
-      )}
-    </Panel>
-  );
-}
+const REPO_POINTER = /\s*See\s+`?[\w./-]+\.(?:md|txt|rst)`?(?:\s[^.]*)?\.?/gi;
 
-/** Which functional archetypes the roster actually holds, and how many of each. */
-function ArchetypePanel({
-  profile,
-  error,
-  accent,
-}: {
-  profile: TeamProfile | undefined;
-  error: unknown;
-  accent: string;
-}) {
-  const rows = profile?.archetype_distribution ?? [];
-  const labeled = rows.reduce((sum, row) => sum + row.count, 0);
-  const most = rows.reduce((max, row) => Math.max(max, row.count), 1);
-  const unlabeled = Math.max((profile?.roster_size ?? labeled) - labeled, 0);
+function ServedSentence({ text }: { text: string }) {
+  const shown = text.replace(REPO_POINTER, "").trim() || text;
   return (
-    <Panel
-      className="min-w-0"
-      title="Roster archetypes"
-      subtitle="What this roster contains, by functional role rather than by listed position"
-    >
-      {error ? (
-        <ErrorState message={`Could not load the archetype distribution: ${String(error)}`} />
-      ) : !profile ? (
-        <SkeletonRows rows={6} height="h-8" />
-      ) : rows.length === 0 ? (
-        <UnavailableNotice reason="No player on this roster carries an archetype label for this season, so its functional composition is unknown." />
-      ) : (
-        <>
-          <ul className="space-y-2.5">
-            {rows.map((row) => (
-              <li key={row.key}>
-                <div className="flex items-baseline justify-between gap-3 text-[13px]">
-                  <span className="min-w-0 truncate text-foreground">{row.label}</span>
-                  <span className="flex shrink-0 items-baseline gap-2">
-                    {row.family && <span className="eyebrow text-[0.5rem]">{row.family}</span>}
-                    <span className="numeral text-[15px] leading-none" style={{ color: accent }}>
-                      {row.count}
-                    </span>
-                  </span>
-                </div>
-                <MeterBar
-                  value={row.count}
-                  max={most}
-                  color={accent}
-                  className="mt-1"
-                  label={`${count(row.count, "player")} labelled ${row.label}`}
-                />
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-[11px] leading-relaxed text-faint">
-            {count(labeled, "player")} of {profile.roster_size} labelled
-            {unlabeled > 0
-              ? `; ${count(unlabeled, "player")} carry no archetype for this season and are not counted above.`
-              : "."}
-          </p>
-        </>
-      )}
-    </Panel>
+    <span className="[overflow-wrap:anywhere]">
+      <CommandText text={shown} codeClassName={CODE_CHIP} />
+    </span>
   );
 }
 
@@ -801,12 +536,12 @@ function PartialPayroll({ payroll, teamId }: { payroll: PayrollResponse; teamId:
   const cleared = payroll.cap_context_partial?.thresholds_already_cleared ?? [];
   const shown = payrollDisclosure(payroll.payroll, payroll.payroll_known, coverage);
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <StatBlock
         label={`Committed payroll · ${payroll.league_year}`}
         value={shown.value}
         note={shown.note}
-        accent="var(--leather)"
+        size="lg"
       />
       <div className="flex flex-wrap gap-1.5">
         <Badge status="unavailable">lower bound — {coverage.players_unknown} salaries missing</Badge>
@@ -816,16 +551,18 @@ function PartialPayroll({ payroll, teamId }: { payroll: PayrollResponse; teamId:
           </Badge>
         )}
       </div>
-      <p className="text-[12px] leading-relaxed text-muted">{payroll.payroll_coverage_note}</p>
+      <p className="text-[12.5px] leading-relaxed text-muted">
+        <ServedSentence text={payroll.payroll_coverage_note} />
+      </p>
       {payroll.cap_context_partial && (
-        <dl className="space-y-1.5 border-t border-hairline pt-3">
+        <dl className="space-y-2 border-t border-hairline pt-3">
           <MoneyRow label="Luxury-tax line" value={money(payroll.cap_context_partial.luxury_tax)} />
           <MoneyRow label="First apron" value={money(payroll.cap_context_partial.first_apron)} />
           <MoneyRow label="Room below tax" value="not computable" />
         </dl>
       )}
       {payroll.players_missing_salary.length > 0 && (
-        <details className="text-[12px] text-muted">
+        <details className="text-[12.5px] text-muted">
           <summary className="cursor-pointer text-signal">
             {count(payroll.players_missing_salary.length, "player")} with no salary on file
           </summary>
@@ -852,34 +589,111 @@ function MoneyRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <dt className="text-[13px] text-muted">{label}</dt>
-      <dd className="data shrink-0 text-[13px] text-foreground">{value}</dd>
+      <dd className="numeral shrink-0 text-[13.5px] text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * A team id that matches nothing is an answer, designed as one — not a red error box. It
+ * keeps the page's own frame (header, then cards) so it reads as Team Outlook answering
+ * "no such team", and it offers the franchises that do exist, so the page is a way
+ * forward rather than a blank canvas.
+ *
+ * Rendered only after the team request has failed on the client, so reading the shared
+ * `["teams"]` cache here cannot disturb hydration.
+ */
+function TeamNotFound({ teamId }: { teamId: string }) {
+  const { data: teams } = useQuery({
+    queryKey: ["teams"],
+    queryFn: () => api.get<Team[]>("/teams"),
+    staleTime: 300_000,
+  });
+  const franchises = [...(teams ?? [])].sort((a, b) => a.full_name.localeCompare(b.full_name));
+  return (
+    <div>
+      <PageHeader
+        eyebrow="Team Outlook"
+        title="No team with this id"
+        lede="The address may be mistyped, or point at a team that is not in the imported data. Pivot does not guess which franchise was meant."
+      />
+      <div className="space-y-6">
+        <EmptyState
+          title="Unknown team id"
+          hint={
+            <>
+              Pivot has no franchise with the id{" "}
+              <code className="break-words rounded bg-foreground/8 px-1 py-px font-mono text-[12px] text-foreground">
+                {teamId}
+              </code>
+              . Open the league board to pick one, or check which teams were imported.
+            </>
+          }
+          action={
+            <>
+              <ButtonLink href="/team-outlook" variant="primary">
+                Back to the league board
+              </ButtonLink>
+              <ButtonLink href="/data-health">Check what data is loaded</ButtonLink>
+            </>
+          }
+        />
+
+        {franchises.length > 0 && (
+          <Panel
+            title="Open a franchise instead"
+            subtitle={`${count(franchises.length, "franchise")} in the imported data, by name`}
+          >
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+              {franchises.map((franchise) => (
+                <li key={franchise.id} className="min-w-0">
+                  <Link
+                    href={`/team-outlook/${franchise.id}`}
+                    className="group flex min-w-0 items-center gap-2.5 rounded-lg border border-hairline bg-panel2/45 py-2 pl-2 pr-3 transition-colors hover:border-line hover:bg-panel2"
+                  >
+                    <TeamLogo
+                      abbreviation={franchise.abbreviation}
+                      name={franchise.full_name}
+                      size={28}
+                      decorative
+                    />
+                    <span className="min-w-0 flex-1 truncate font-serif text-[1.15rem] leading-tight text-foreground group-hover:text-signal">
+                      {franchise.nickname ?? franchise.full_name}
+                    </span>
+                    <span className="hidden shrink-0 text-[11px] font-medium tracking-[0.04em] text-faint sm:inline">
+                      {franchise.abbreviation}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )}
+      </div>
     </div>
   );
 }
 
 function TeamSkeleton() {
   return (
-    <div className="space-y-6" role="status" aria-label="Loading team">
-      <div className="panel flex flex-wrap items-center gap-6 p-6">
-        <Skeleton className="h-20 w-20 rounded-full" />
-        <div className="min-w-0 flex-1 space-y-3">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-10 w-80 max-w-full" />
-          <Skeleton className="h-6 w-64" />
+    <div className="space-y-5" role="status" aria-label="Loading team">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-hairline pb-6 pt-6">
+        <div className="flex min-w-0 flex-1 items-center gap-5">
+          <Skeleton className="h-[68px] w-[68px]" />
+          <div className="min-w-0 flex-1 space-y-3">
+            <Skeleton className="h-3 w-48" />
+            <Skeleton className="h-12 w-96 max-w-full" />
+          </div>
         </div>
-        <Skeleton className="h-16 w-40" />
+        <Skeleton className="h-10 w-80 max-w-full" />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-24" />
-        ))}
-      </div>
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,340px)]">
-        <Skeleton className="h-[520px]" />
-        <div className="space-y-3">
-          <Skeleton className="h-56" />
-          <Skeleton className="h-64" />
-          <Skeleton className="h-40" />
+      <Skeleton className="h-[230px]" />
+      <div className="space-y-4 pt-8">
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="h-9 w-80 max-w-full" />
+        <div className="grid gap-4 xl:grid-cols-12">
+          <Skeleton className="h-[520px] xl:col-span-7" />
+          <Skeleton className="h-[520px] xl:col-span-5" />
         </div>
       </div>
     </div>

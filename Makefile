@@ -13,7 +13,9 @@ E2E_DB ?= $(CURDIR)/backend/rosterlab-e2e.db
         purge-fixtures import-contracts contract-coverage \
         import-draft-picks pick-ownership fetch-transactions import-transactions \
         transaction-coverage comparable-validation acquisition-validation lineup-availability \
-        adversarial-validation
+        adversarial-validation \
+        assistant-setup assistant-models assistant-dev assistant-test assistant-eval \
+        assistant-eval-selftest assistant-eval-retrieval assistant-eval-conversations
 
 # `[a-z-]+` missed targets containing a digit or ending the alternation early, so
 # `e2e` never appeared. Match the full target token instead.
@@ -85,7 +87,7 @@ e2e: seed-demo ## Playwright end-to-end tests against the dedicated demo databas
 	@# suite against it and writing fixture trades into it, while every test passed.
 	@# Its own error for a busy port suggests setting `reuseExistingServer: true`, which
 	@# is the defect. Say so before it gets the chance.
-	@if lsof -ti:8000 >/dev/null 2>&1 || lsof -ti:3000 >/dev/null 2>&1; then 		echo ""; 		echo "  Port 8000 or 3000 is in use — probably \`make dev\`."; 		echo ""; 		echo "  This suite writes fixture trades into whatever backend it reaches, so it"; 		echo "  starts its own against \$$E2E_DB rather than reusing yours. Stop the dev"; 		echo "  servers and re-run."; 		echo ""; 		echo "  Do NOT set reuseExistingServer — attaching to a dev server is how the suite"; 		echo "  came to be testing the wrong database. If you really do have a demo-seeded"; 		echo "  backend up, use E2E_NO_SERVER=1."; 		echo ""; 		exit 1; 	fi
+	@if lsof -ti:8000 -sTCP:LISTEN >/dev/null 2>&1 || lsof -ti:3000 -sTCP:LISTEN >/dev/null 2>&1; then 		echo ""; 		echo "  Port 8000 or 3000 is in use — probably \`make dev\`."; 		echo ""; 		echo "  This suite writes fixture trades into whatever backend it reaches, so it"; 		echo "  starts its own against \$$E2E_DB rather than reusing yours. Stop the dev"; 		echo "  servers and re-run."; 		echo ""; 		echo "  Do NOT set reuseExistingServer — attaching to a dev server is how the suite"; 		echo "  came to be testing the wrong database. If you really do have a demo-seeded"; 		echo "  backend up, use E2E_NO_SERVER=1."; 		echo ""; 		exit 1; 	fi
 	cd $(FRONTEND) && DATABASE_URL="sqlite:///$(E2E_DB)" npx playwright test
 
 visual-qa: ## Screenshot every route at every supported viewport; fails on problems
@@ -148,3 +150,36 @@ acquisition-validation: ## Run the need-driven acquisition battery over the leag
 
 lineup-availability: ## Re-measure whether lineup data could support a fit model (network)
 	cd $(BACKEND) && .venv/bin/python -m app.cli lineup-availability $(SEASON)
+
+# --- Ask Pivot / Pivot Intelligence (EXPERIMENTAL; fictional corpus; local only) ---------
+# Nothing below runs in CI or touches the NBA database. See docs/pivot/assistant-v2-runbook.md.
+
+assistant-setup: ## Install the optional Ask Pivot packages (LangChain, Ollama client, LangSmith)
+	$(PIP) install -e "$(BACKEND)[dev,assistant]"
+
+assistant-models: ## Pull the two local Ollama models Ask Pivot uses (requires Ollama)
+	ollama pull qwen3.5:2b
+	ollama pull nomic-embed-text
+
+# The frontend binds to loopback: Next's rewrite proxy forwards no client address, so a
+# dev server on 0.0.0.0 would let any LAN machine reach the unauthenticated /ask route.
+assistant-dev: ## Run backend + frontend with Ask Pivot enabled (local development only)
+	@trap 'kill 0' EXIT; \
+	(cd $(BACKEND) && ASSISTANT_ENABLED=true .venv/bin/uvicorn app.main:app --reload --port 8000) & \
+	(cd $(FRONTEND) && NEXT_PUBLIC_ASSISTANT_ENABLED=true npm run dev -- --hostname 127.0.0.1) & \
+	wait
+
+assistant-test: ## Ask Pivot unit tests only (no Ollama needed)
+	cd $(BACKEND) && .venv/bin/pytest -q tests/unit -k assistant
+
+assistant-eval-selftest: ## Prove every evaluator fails its adversarial false answers (no Ollama)
+	cd $(BACKEND) && .venv/bin/python -m scripts.eval_rag selftest
+
+assistant-eval-retrieval: ## Recall@k for dense / lexical / hybrid retrieval (needs Ollama embeddings)
+	cd $(BACKEND) && .venv/bin/python -m scripts.eval_rag retrieval
+
+assistant-eval: ## Local benchmark, basic vs grounded prompts (needs Ollama; ~20-40 min)
+	cd $(BACKEND) && .venv/bin/python -m scripts.eval_rag local --variants basic:hybrid,grounded:hybrid
+
+assistant-eval-conversations: ## Scripted multi-turn GM conversations, scored turn by turn (needs Ollama; ~4 min)
+	cd $(BACKEND) && .venv/bin/python -m scripts.eval_rag conversations

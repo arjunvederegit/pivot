@@ -3,32 +3,51 @@
 /**
  * Last-resort boundary.
  *
- * This renders only when the root layout itself failed, which means the fonts,
- * the design tokens in globals.css, the query client and the nav are all
- * unavailable. So it renders its own document and carries its own styling
- * inline — including the palette, since `var(--chalk)` would resolve to nothing
- * here. Everything it needs is in this file; it imports no component and no
- * stylesheet, because anything it imported could be the thing that broke.
+ * This renders only when the root layout itself failed, which means the fonts, the design
+ * tokens in globals.css, the query client and the navigation are all unavailable. So it
+ * renders its own document and carries its own styling inline — including the palette,
+ * since `var(--signal)` would resolve to nothing here. Everything it needs is in this file;
+ * it imports no component and no stylesheet, because anything it imported could be the
+ * thing that broke.
  *
- * The colors below are the literal values of the "arena at night" tokens
- * (--court-black, --arena, --hairline-soft, --chalk, --chalk-dim, --chalk-faint,
- * --illegal, --leather), duplicated here on purpose.
+ * The colours below are the literal values of the editorial tokens — the near-black
+ * ground (#070707), the charcoal card (#0E0E0F), its hairlines (#232326 / #2C2C2F), warm
+ * chalk text (#F4F4F5), muted (#A1A1A6) and faint (#86868C) text, the mint accent
+ * (#F4F4F5) and the understated coral for failure (#F0524F) — duplicated here on purpose.
+ * The headline uses Georgia, the system serif closest to the product's editorial face,
+ * which cannot be loaded from here.
+ *
+ * Links are full document loads to `/`: the router and root layout this boundary replaced
+ * are the things that failed, so a client-side transition would restore the broken state.
  */
+
+const GROUND = "#070707";
+const CARD = "#0E0E0F";
+const RAISED = "#151516";
+const HAIRLINE_SOFT = "#232326";
+const HAIRLINE = "#2C2C2F";
+const CHALK = "#F4F4F5";
+const MUTED = "#A1A1A6";
+const FAINT = "#86868C";
+const SIGNAL = "#F4F4F5";
+const CORAL = "#F0524F";
+const SANS = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif";
+const SERIF = "Georgia, 'Times New Roman', serif";
+const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
 const CSS = `
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
-  .ge-btn {
-    cursor: pointer;
-    transition: filter 150ms ease, border-color 150ms ease;
-  }
-  .ge-btn:hover { filter: brightness(1.1); }
-  .ge-btn:focus-visible, .ge-link:focus-visible {
-    outline: 2px solid #22d3ee;
+  .ge-btn { cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease; }
+  .ge-primary:hover { background: #ffffff; }
+  .ge-secondary:hover { background: #1e1e20; border-color: #4a4a50; }
+  .ge-btn:focus-visible {
+    outline: 2px solid ${SIGNAL};
     outline-offset: 2px;
-    border-radius: 3px;
   }
-  .ge-link:hover { color: #e9f0fb; }
+  @media (prefers-reduced-motion: reduce) {
+    .ge-btn { transition: none; }
+  }
 `;
 
 const page: React.CSSProperties = {
@@ -37,60 +56,84 @@ const page: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "2rem 1.25rem",
-  background: "#060a12",
-  backgroundImage:
-    "radial-gradient(1200px 520px at 50% -10%, rgba(34,211,238,0.07), transparent 70%)",
-  color: "#e9f0fb",
-  fontFamily:
-    "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif",
+  padding: "2rem 1rem",
+  background: GROUND,
+  color: CHALK,
+  fontFamily: SANS,
   fontSize: "15px",
   lineHeight: 1.55,
+  colorScheme: "dark",
 };
 
 const card: React.CSSProperties = {
+  position: "relative",
   width: "100%",
-  maxWidth: "34rem",
-  background: "linear-gradient(180deg, #131c30 0%, #0c1322 42%)",
-  border: "1px solid #162036",
+  maxWidth: "36rem",
+  background: CARD,
+  color: CHALK,
+  border: `1px solid ${HAIRLINE_SOFT}`,
   borderRadius: "12px",
-  boxShadow: "0 8px 24px -12px rgba(0,0,0,0.8)",
-  padding: "1.75rem 1.5rem",
+  boxShadow: "0 24px 64px -24px rgba(0,0,0,0.8)",
+  overflow: "hidden",
 };
+
+const edge: React.CSSProperties = {
+  position: "absolute",
+  top: 0,
+  left: "14px",
+  right: "14px",
+  height: "1px",
+  background: `linear-gradient(90deg, transparent, ${CORAL}, transparent)`,
+};
+
+const section: React.CSSProperties = { padding: "1.75rem 1.5rem 1.5rem" };
 
 const eyebrow: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.5rem",
-  fontSize: "0.6875rem",
-  fontWeight: 600,
-  letterSpacing: "0.18em",
+  margin: 0,
+  fontSize: "11px",
+  fontWeight: 500,
+  letterSpacing: "0.09em",
   textTransform: "uppercase",
-  color: "#fb7185",
+  color: CORAL,
 };
 
 const heading: React.CSSProperties = {
-  margin: "0.625rem 0 0",
-  fontSize: "1.75rem",
-  fontWeight: 700,
-  lineHeight: 1.05,
-  letterSpacing: "0.005em",
+  margin: "0.875rem 0 0",
+  fontFamily: SERIF,
+  fontSize: "2.1rem",
+  fontWeight: 400,
+  lineHeight: 1.08,
+  letterSpacing: "-0.01em",
+  color: CHALK,
 };
 
 const body: React.CSSProperties = {
   margin: "0.875rem 0 0",
-  color: "#93a6c4",
-  fontSize: "0.875rem",
+  color: MUTED,
+  fontSize: "0.9375rem",
+};
+
+const detailLabel: React.CSSProperties = {
+  margin: "1.25rem 0 0.5rem",
+  fontSize: "12.5px",
+  fontWeight: 600,
+  color: CHALK,
 };
 
 const detailBox: React.CSSProperties = {
-  margin: "1rem 0 0",
-  padding: "0.75rem 0.875rem",
-  border: "1px solid rgba(251,113,133,0.35)",
+  margin: 0,
+  padding: "0.75rem 1rem",
+  border: `1px solid ${HAIRLINE}`,
   borderRadius: "8px",
-  background: "rgba(251,113,133,0.08)",
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-  fontSize: "12px",
+  background: GROUND,
+  fontFamily: MONO,
+  fontSize: "12.5px",
+  lineHeight: 1.6,
+  color: CHALK,
+  whiteSpace: "pre-wrap",
   wordBreak: "break-word",
 };
 
@@ -98,40 +141,41 @@ const actions: React.CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
   alignItems: "center",
-  gap: "0.625rem",
-  marginTop: "1.25rem",
+  gap: "0.5rem",
+  padding: "1rem 1.5rem",
+  borderTop: `1px solid ${HAIRLINE_SOFT}`,
 };
 
 const primaryButton: React.CSSProperties = {
   appearance: "none",
-  border: "1px solid transparent",
+  border: `1px solid ${SIGNAL}`,
   borderRadius: "8px",
-  background: "#f97316",
-  color: "#060a12",
+  background: SIGNAL,
+  color: GROUND,
   font: "inherit",
-  fontWeight: 600,
+  fontWeight: 500,
   fontSize: "0.875rem",
-  padding: "0.5rem 1rem",
+  padding: "0.5625rem 1rem",
 };
 
 const secondaryLink: React.CSSProperties = {
-  border: "1px solid #1f2c46",
+  border: `1px solid ${HAIRLINE}`,
   borderRadius: "8px",
-  background: "#131c30",
-  color: "#e9f0fb",
+  background: RAISED,
+  color: CHALK,
   textDecoration: "none",
-  fontWeight: 500,
   fontSize: "0.875rem",
-  padding: "0.5rem 1rem",
+  padding: "0.5625rem 1rem",
   display: "inline-block",
 };
 
 const footnote: React.CSSProperties = {
-  margin: "1rem 0 0",
-  paddingTop: "0.75rem",
-  borderTop: "1px solid #162036",
-  color: "#6a7c9c",
-  fontSize: "11px",
+  margin: 0,
+  padding: "0.875rem 1.5rem",
+  borderTop: `1px solid ${HAIRLINE_SOFT}`,
+  color: FAINT,
+  fontSize: "12.5px",
+  lineHeight: 1.6,
 };
 
 export default function GlobalError({
@@ -148,53 +192,44 @@ export default function GlobalError({
       <body style={page}>
         <style>{CSS}</style>
         <main style={card}>
-          <div style={eyebrow}>
-            {/* The ball glyph, inlined — this file imports nothing. */}
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <circle cx="12" cy="12" r="10.5" stroke="currentColor" strokeWidth="1.6" />
-              <path d="M12 1.5v21M1.5 12h21" stroke="currentColor" strokeWidth="1.2" opacity="0.75" />
-              <path
-                d="M4.5 4.5c4 3.2 4 12 0 15M19.5 4.5c-4 3.2-4 12 0 15"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                opacity="0.75"
+          <span aria-hidden="true" style={edge} />
+          <div style={section}>
+            <p style={eyebrow}>
+              <span
+                aria-hidden="true"
+                style={{ width: 6, height: 6, borderRadius: "50%", background: CORAL, display: "inline-block" }}
               />
-            </svg>
-            Application error
+              Application error
+              <span style={{ marginLeft: "auto", color: FAINT, letterSpacing: "0.02em", textTransform: "none" }}>
+                Pivot
+              </span>
+            </p>
+
+            <h1 style={heading}>Pivot could not start this page</h1>
+
+            <p style={body}>
+              The failure happened outside any single view, so the interface around it — navigation,
+              fonts, saved state — is not available either. This screen is what is left, and it is
+              deliberately plain. No data was changed.
+            </p>
+
+            {detail && (
+              <>
+                <p style={detailLabel}>What failed</p>
+                <pre style={detailBox}>{detail}</pre>
+              </>
+            )}
           </div>
 
-          <h1 style={heading}>Pivot could not start this page</h1>
-
-          <p style={body}>
-            The failure happened outside any single view, so the interface around it —
-            navigation, fonts, saved state — is not available either. This screen is what is
-            left, and it is deliberately plain. No data was changed.
-          </p>
-
-          {detail && (
-            <div style={detailBox}>
-              <div
-                style={{
-                  fontFamily: "inherit",
-                  fontSize: "10px",
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  color: "#fb7185",
-                  marginBottom: "0.375rem",
-                }}
-              >
-                What failed
-              </div>
-              {detail}
-            </div>
-          )}
-
           <div style={actions}>
-            <button type="button" className="ge-btn" style={primaryButton} onClick={() => reset()}>
+            <button type="button" className="ge-btn ge-primary" style={primaryButton} onClick={() => reset()}>
               Try again
             </button>
-            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full document load is the point here: the router and root layout this boundary replaced are the things that failed, so a client-side transition would restore the broken state. */}
-            <a href="/" className="ge-btn ge-link" style={secondaryLink}>
+            {/* A plain anchor, not <Link>: a full document load is the point here — the
+                router and root layout this boundary replaced are the things that failed, so
+                a client-side transition would restore the broken state. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- see above: a full document load is deliberate. */}
+            <a href="/" className="ge-btn ge-secondary" style={secondaryLink}>
               Reload Command Center
             </a>
           </div>
@@ -202,15 +237,15 @@ export default function GlobalError({
           <p style={footnote}>
             {error.digest ? (
               <>
-                <span style={{ letterSpacing: "0.1em", textTransform: "uppercase" }}>digest</span>{" "}
-                <span style={{ color: "#93a6c4" }}>{error.digest}</span> · quote this when
-                reporting the failure. If reloading does not clear it, the frontend build or the
-                API it depends on is the place to look.
+                <span style={{ fontWeight: 600, color: MUTED }}>Digest</span>{" "}
+                <code style={{ fontFamily: MONO, color: CHALK }}>{error.digest}</code> · quote this when
+                reporting the failure. If reloading does not clear it, the frontend build or the API it
+                depends on is the place to look.
               </>
             ) : (
               <>
-                If reloading does not clear this, the frontend build or the API it depends on is
-                the place to look.
+                If reloading does not clear this, the frontend build or the API it depends on is the
+                place to look.
               </>
             )}
           </p>

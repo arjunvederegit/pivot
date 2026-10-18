@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -72,6 +73,42 @@ class Settings(BaseSettings):
     asset_player_images_dir: str = ""  # default: <repo>/nbaplayerimages
     # --- Kaggle historical dataset cache (kagglehub) ---
     kaggle_data_dir: str = ""  # default: kagglehub's own cache; override for CI/servers
+
+    # --- Ask Pivot / Pivot Intelligence (experimental; FICTIONAL corpus only) ---
+    #: Master switch for the synthetic research assistant. Off by default everywhere: with
+    #: it off, `POST /assistant/ask` is a 404 and `GET /assistant/status` reports only
+    #: `enabled: false`. It never reads or writes the NBA database either way.
+    assistant_enabled: bool = False
+    #: The inference route is unauthenticated and expensive, so the assistant's routes
+    #: answer loopback requests only (peer, forwarded-for, Host and forwarded-host). Setting
+    #: this lets a non-loopback client in (a docker bridge, a LAN demo); it is not a
+    #: substitute for real auth, and nothing public should ever set it.
+    assistant_allow_remote: bool = False
+    #: Accept the dev-only `options` block on the ask route (prompt/retrieval variants, k).
+    assistant_dev_options: bool = False
+    ollama_base_url: str = "http://localhost:11434"
+    assistant_chat_model: str = "qwen3.5:2b"
+    assistant_embedding_model: str = "nomic-embed-text"
+    #: Wall-clock budget for one answer, end to end. A 2-3B local model on a laptop takes
+    #: tens of seconds on a cold start; past this the request is cancelled and is a 504.
+    assistant_request_timeout_seconds: float = 150.0
+    #: Concurrent answers allowed at once. Local Ollama serialises generation anyway; a
+    #: second request beyond this is a 503 `assistant_busy`, not a silent queue.
+    assistant_max_in_flight: int = 1
+    assistant_num_ctx: int = 8192
+    assistant_max_output_tokens: int = 900
+    # --- LangSmith tracing for Ask Pivot (opt-in; traces LEAVE this machine) ---
+    #: The switch and the project are read from Pivot-specific variables, NOT the SDK's own
+    #: `LANGSMITH_TRACING` / `LANGSMITH_PROJECT`: a developer who exports those for another
+    #: project (the usual LangSmith setup) must not have Ask Pivot questions uploaded, or
+    #: filed under that other project. A `validation_alias` replaces the field name as the
+    #: environment / `.env` key, so `LANGSMITH_TRACING` is simply not read. Tracing runs only
+    #: with `ASSISTANT_TRACING=true` *and* a key (`tracing.tracing_active`).
+    langsmith_tracing: bool = Field(default=False, validation_alias="ASSISTANT_TRACING")
+    #: The key and endpoint keep the SDK's names: neither can switch tracing on by itself.
+    langsmith_api_key: str = ""
+    langsmith_project: str = Field(default="pivot-intelligence-v2", validation_alias="ASSISTANT_LANGSMITH_PROJECT")
+    langsmith_endpoint: str = ""  # default: the SDK's own (api.smith.langchain.com)
 
     @property
     def logos_dir(self) -> Path:

@@ -33,6 +33,27 @@ from app.db.models import (  # noqa: E402
     TeamNeed,
 )
 
+#: LangChain's own environment switches. Ask Pivot ignores them in the app (its tracing needs
+#: ASSISTANT_TRACING), but tests that invoke the chain directly run outside its tracing scope,
+#: where an exported LANGSMITH_TRACING=true plus a key would upload test runs.
+_LANGCHAIN_TRACING_ENV = (
+    "LANGSMITH_TRACING",
+    "LANGSMITH_TRACING_V2",
+    "LANGCHAIN_TRACING",
+    "LANGCHAIN_TRACING_V2",
+    "LANGSMITH_API_KEY",
+    "LANGCHAIN_API_KEY",
+    "LANGSMITH_PROJECT",
+    "LANGCHAIN_PROJECT",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_langchain_tracing_in_assistant_tests(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    if "assistant" in request.node.nodeid:
+        for name in _LANGCHAIN_TRACING_ENV:
+            monkeypatch.delenv(name, raising=False)
+
 
 @pytest.fixture()
 def db() -> Session:

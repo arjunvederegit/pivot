@@ -488,3 +488,71 @@ model would otherwise produce.
 **Consequences:** no LLM exists and none is implied. The six unbuilt tools are the concrete
 R8 work list, because each is blocked by a real structural problem (most importantly: the
 evaluation composite has no single entry point, being duplicated across four API handlers).
+
+## ADR-29 · An editorial dark system, and a league percentile beside the impact index
+
+**Context:** the "court terminal" system (light graph-paper canvas, volt green, expanded
+display face, mono labels) read as an instrument panel rather than a basketball product,
+and the scroll-driven homepage put a narrative between a returning user and their work.
+Separately, the impact index (TEI) was shown as a bare signed number that users read as
+points per 100 possessions, which it is not.
+
+**Decision:** one dark editorial system (`docs/design-system.md`): near-black ground,
+charcoal cards, warm white text, a single subdued mint accent, Instrument Serif for titles
+and headline statistics, Geist for everything operational, and a persistent left sidebar.
+The homepage is an intelligence dashboard behind one static illustrated arena; it shows only
+served data and says what is missing. Impact is placed as a league percentile and rank
+among every scored player, from a new read-only endpoint (`GET /players/impact-distribution`)
+that serves the scored population, with the raw index kept at 2 dp beside it.
+
+**Alternatives:** keep the two-scope paper/terminal system and only restyle the home page
+(rejected: the product would carry two visual languages); a photographic arena hero
+(rejected: no licensed image in the repository, and a downloaded asset is a dependency the
+brief did not ask for); a 0–100 "overall" player rating (rejected: arbitrary, and it would
+merge on-court impact, team fit and projected wins, which the product keeps separate).
+
+**Consequences:** token names from the old system are kept and re-valued, so no page needed
+a rename to restyle. The scroll-home experiment is preserved on `feat/pivot-scroll-home`;
+this branch removes its components. `/command-center` keeps serving the dashboard so old
+links still land. The percentile is mid-rank with ties shared, clamped to 1–99 on display,
+and is never applied to a precedent's `tei`, which is a different quantity.
+
+## ADR-30 · Ask Pivot is a fictional research sandbox, not the Copilot
+
+**Context:** the user asked for an evidence-grounded, conversational research partner —
+"Ask Pivot", workspace title "Pivot Intelligence" — to learn LangChain retrieval and
+LangSmith evaluation inside the product. ADR-28 says no LLM exists behind the R14 tools
+registry, and the contributing rules forbid synthetic NBA data in production paths. A V1
+integration kit existed but was never installed; its evaluator awarded full marks to a
+fabricated free-throw percentage and to a sentence contradicting its own cited source.
+
+**Decision:** build it as an isolated, read-only module (`backend/app/assistant_rag/`)
+over a *fictional* league — invented teams, players, analysts and statistics, labelled
+`synthetic_demo` / FICTIONAL DATA on every source, response and screen — rather than over
+Pivot's NBA data. It is gated twice and off by default: `ASSISTANT_ENABLED` on the API (every
+assistant route answers loopback requests only — peer, forwarded-for, Host and forwarded-host —
+and the dev frontend binds to 127.0.0.1) and `NEXT_PUBLIC_ASSISTANT_ENABLED` on the frontend
+(the route renders the not-found page and the nav item is absent when off). Its dependencies are an
+optional extra (`.[assistant]`), imported lazily, so the standard install, CI and the Docker
+image are unchanged. A machine-readable manifest is the canonical source for every bounded
+fact; the language model explains documents but is never the calculator, and answers are
+checked after generation against that manifest (citations against what was retrieved,
+numbers against structured gold). Contract, cap and legality questions — and fit-score or
+real-NBA questions that name no fictional player — are refused deterministically, because no
+tool here can compute them; mixed questions reach the model with a mandatory decline note, and
+a post-generation guard removes any legality verdict or numeric fit score that still appears.
+
+**Alternatives:** wire the assistant to the R14 registry now (rejected: four of ten tools
+exist, the evaluation composite has no single entry point, and an LLM that can reach real
+data before its grounding is measured is the failure mode ADR-28 exists to prevent); ground
+it on Pivot's real NBA tables (rejected: mixes a learning experiment into decision data, and
+real contracts are absent anyway); install the V1 kit (rejected: its evaluator, failure
+handling and gating were known-defective).
+
+**Consequences:** "no LLM is implied" (ADR-28) still holds for the Copilot boundary — the
+sandbox shares no table, id or name with NBA data, and `services/tools.py` is untouched.
+The fictional corpus ships inside `app/` as a clearly marked, feature-gated fixture — a
+deliberate, scoped exception to the "fixtures live only in test directories" rule, guarded
+by tests that fail if a fictional name collides with a real NBA player or team. A future V3
+adapter would call the existing read-only tools and keep `document_evidence` and
+`calculated_result` as separate provenance channels.

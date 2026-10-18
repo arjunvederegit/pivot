@@ -63,3 +63,6 @@ data/imports/transactions/*
 
 # Visual-QA working artifacts (regenerate with scripts/visual_qa.mjs)
 docs/qa/
+
+# Ask Pivot evaluation runs (regenerate with `cd backend && .venv/bin/python -m scripts.eval_rag ...`)
+backend/.assistant_eval/

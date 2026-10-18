@@ -6,28 +6,42 @@ import { expect, test } from "@playwright/test";
  * `make import-stats-csv` for full coverage). No NBA.com calls happen here.
  */
 
-test("overview presents the platform with honest data status", async ({ page }) => {
-  // The Pivot restructure rewrote this page's copy — headline, calls to action, and the
-  // tool launcher, which became the four-step decision workflow. The assertions below
-  // are the same six intents against the strings that actually ship.
+test("the home workspace orients the user and opens the core tools", async ({ page }) => {
+  // `/` is the workspace: a plain page title, the user's team context, and the implemented
+  // decision workflows as entry points. No slogan, no promotional hero.
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Pivot — home" })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Know what your roster is. Then change it." }),
-  ).toBeVisible();
-  // primary and secondary calls to action
-  await expect(page.getByRole("link", { name: "Start with your roster" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open the Trade Evaluator" })).toBeVisible();
-  // the launcher reaches every active module in one click
-  await expect(page.getByRole("heading", { name: "The decision workflow" })).toBeVisible();
-  // roadmap items are described, never presented as usable
-  await expect(page.getByText("Not built yet")).toBeVisible();
-  await expect(page.getByText("Scenario Engine")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Workspace" })).toBeVisible();
+  const decisions = page.getByRole("region", { name: "Decisions" });
+  for (const name of ["Evaluate a trade", "Explore team needs", "Compare players", "Compare saved deals", "Review cap position"]) {
+    await expect(decisions.getByRole("link", { name: new RegExp(name) })).toBeVisible();
+  }
+
+  // Every core tool is one click away in the sidebar.
+  const nav = page.getByRole("navigation", { name: "Primary" });
+  for (const name of ["Scouting", "Teams", "Trade Evaluator", "Strategy Lab", "Cap Center"]) {
+    await expect(nav.getByRole("link", { name })).toBeVisible();
+  }
+
+  // Scrolling is native: nothing pins the window at the top.
+  const moved = await page.evaluate(async () => {
+    window.scrollTo(0, 800);
+    await new Promise((r) => setTimeout(r, 250));
+    return window.scrollY;
+  });
+  expect(moved).toBeGreaterThan(100);
+});
+
+test("the workspace is also served at its former address", async ({ page }) => {
+  // `/command-center` is the workspace's former address and still serves it.
+  await page.goto("/command-center");
+  await expect(page.getByRole("heading", { level: 1, name: "Workspace" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Decisions" })).toBeVisible();
 });
 
 test("renamed modules keep old links working", async ({ page }) => {
   for (const [oldPath, heading] of [
-    ["/trade-machine", "Trade Evaluator"],
+    ["/trade-machine", "Trade Analysis"],
     ["/compare", "Decision board"],
     ["/player-lab", "Player Explorer"],
   ] as const) {
@@ -96,7 +110,7 @@ test("full flow: team outlook → strategy → trade evaluator → rules → eva
   // 3. Trade Evaluator, carrying the team through (exact name: "Trade Evaluator"
   //    in the nav also matches a loose /Trade/ pattern)
   await page.getByRole("link", { name: "Start a trade", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Trade Evaluator", level: 1 })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Trade Analysis", level: 1 })).toBeVisible({
     timeout: 20_000,
   });
 

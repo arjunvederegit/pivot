@@ -1,19 +1,23 @@
 "use client";
 
 /**
- * Trade Evaluator — the war room.
+ * Trade Evaluator — the deal desk.
  *
- * Two or three team workspaces sit side by side with a transaction lane running
- * between them, so the page reads as assets moving rather than a form being
- * filled in. Everything underneath is backend-authoritative: legality comes from
- * POST /trades/validate, impact from POST /trades/evaluate, and anything the
- * backend cannot compute is shown as missing rather than guessed.
+ * Two or three team workspaces sit side by side with a transaction lane running between
+ * them, so the page reads as assets moving rather than a form being filled in. Under the
+ * builder, the live rules check and the controls that run the deal. Once evaluated, the
+ * result leads with what matters most: every team BEFORE the deal, the PROPOSED MOVE, and
+ * AFTER — the verdict, the projected wins change with its band on one shared axis, the
+ * roster after, legality and fit — then one team's full analysis at a time.
+ *
+ * Everything is backend-authoritative: legality comes from POST /trades/validate, impact
+ * from POST /trades/evaluate, and anything the backend cannot compute is shown as missing
+ * rather than guessed.
  */
 
-import { DndContext, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/core";
+import { DndContext, DragOverlay } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
@@ -25,120 +29,54 @@ import {
 } from "react";
 import { api } from "@/lib/api";
 import { useHydrated } from "@/lib/hydrated";
-import { sectionOf } from "@/lib/evaluationDetail";
 import { tradeDetailSchema } from "@/lib/schemas";
 import { decodeShareState, encodeShareState } from "@/lib/shareState";
-import {
-  COMPONENT_LABEL,
-  LEGALITY_EXPLAIN,
-  LEGALITY_LABEL,
-  LEGALITY_SHORT,
-  VERDICT_LABEL,
-  fanVerdict,
-  money,
-  payrollDisclosure,
-  tei,
-} from "@/lib/format";
+import { LEGALITY_LABEL, LEGALITY_SHORT, formatDate } from "@/lib/format";
 import { getFavoriteTeam } from "@/lib/favoriteTeam";
 import { teamIdentity } from "@/lib/teamIdentity";
 import type {
-  PerformanceDetail,
+  EvaluatedPlayer,
   LegalityResponse,
   PickMove,
   PlayerMove,
   RosterPlayer,
   RosterResponse,
-  RuleResult,
   Scenario,
   Team,
   TeamEvaluation,
   TradeDetail,
 } from "@/lib/types";
-import {
-  UncertaintyStrip,
-} from "@/components/charts";
-import { HalfCourt, KeyFrame, TransactionLane } from "@/components/court";
-import {
-  CapTab,
-  FitTab,
-  ImpactTab,
-  PrecedentTab,
-  RiskTab,
-  TimelineTab,
-} from "@/components/evaluation-tabs";
-import { PlayerPhoto, TeamCrest, TeamLogo } from "@/components/media";
+import { PrecedentTab } from "@/components/evaluation-tabs";
+import { IconBookmark, IconMore } from "@/components/icons";
+import { TeamGrid } from "@/components/team-card";
 import { useToast } from "@/components/toast";
+import { DealLedger, RulesCheck, RunIt } from "@/components/trade/desk";
+import { PlayerDrawer } from "@/components/trade/drawer";
+import { Insights, PlayerComparison, ProjectedImpact, TeamComparison } from "@/components/trade/overview";
+import { TeamPerspective } from "@/components/trade/perspective";
+import { SectionHead } from "@/components/trade/section-head";
+import { ConsequenceSheet, type SheetAsset, type SheetSide } from "@/components/trade/sheet";
+import { LEGALITY_VISUAL } from "@/components/trade/verdict";
 import {
-  Badge,
-  Button,
-  ButtonLink,
-  EmptyState,
-  PageHeader,
-  Panel,
-  Skeleton,
-  SkeletonRows,
-  SourceRail,
-  StatBlock,
-  Tabs,
-  UnavailableNotice,
-} from "@/components/ui";
+  AddPartnerSlot,
+  HowItWorks,
+  LaneCell,
+  StartHere,
+  TeamWorkspaceCell,
+} from "@/components/trade/workspace";
+import { Badge, Button, PageHeader, Skeleton, SourceRail, Tabs } from "@/components/ui";
 
-/* ---------------------------------------------------------------- constants */
+const LEDE =
+  "Build a two- or three-team deal, check it against the rules, and see what it does to every side — before, the move, and after.";
 
-/** Four visually distinct states — glyph and word, never color alone. */
-const LEGALITY_VISUAL: Record<string, { glyph: string; color: string; text: string }> = {
-  verified_legal: { glyph: "✓", color: "var(--legal)", text: "text-legal" },
-  verified_illegal: { glyph: "✕", color: "var(--illegal)", text: "text-illegal" },
-  conditionally_valid: { glyph: "~", color: "var(--conditional)", text: "text-conditional" },
-  not_evaluated: { glyph: "—", color: "var(--unknown)", text: "text-unavail" },
-};
-
-const RULE_STATUS_WORD: Record<string, string> = {
-  pass: "passes",
-  fail: "fails",
-  warning: "warning",
-  unavailable: "not run",
-};
-
-const CONTRACT_TOOLTIP =
-  "Contract data isn't imported, so salaries and contract years can't be shown. Pivot never estimates a salary.";
-
-const HOW_IT_WORKS: { step: string; title: string; body: string }[] = [
-  {
-    step: "01",
-    title: "Pick two teams",
-    body: "Choose the sides of the deal — your team is preselected if you set one.",
-  },
-  {
-    step: "02",
-    title: "Move the assets",
-    body: "Drag a player across the lane, or use the send button on any roster card.",
-  },
-  {
-    step: "03",
-    title: "Read the verdict",
-    body: "The rules check runs live, then Evaluate returns projected impact with its uncertainty.",
-  },
-];
-
-/* -------------------------------------------------------------- local types */
-
-interface TeamDetailResponse {
-  team: Team;
-  season: string;
-  standing: {
-    wins: number;
-    losses: number;
-    win_pct: number | null;
-    conference: string | null;
-    playoff_rank: number | null;
-  } | null;
-}
-
-interface Destination {
-  id: string;
-  abbr: string;
-  name: string;
+/** After an evaluation lands, bring its first line into view (instantly under reduced motion). */
+function revealResults() {
+  window.setTimeout(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document
+      .getElementById("deal-evaluation")
+      ?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  }, 80);
 }
 
 /* --------------------------------------------------------------------- page */
@@ -154,17 +92,11 @@ export default function TradeEvaluatorPage() {
 function BuilderSkeleton() {
   return (
     <div role="status" aria-label="Loading the Trade Evaluator">
-      <PageHeader
-        eyebrow="Trade Evaluator"
-        title="Trade Evaluator"
-        lede="Build a two- or three-team deal, watch the rules check run live on the backend, then evaluate the projected impact for every side."
-      />
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-        <Skeleton className="h-[420px]" />
-        <div className="flex items-center justify-center py-1 lg:min-h-[27rem] lg:px-1">
-          <TransactionLane className="h-11 w-24" />
-        </div>
-        <Skeleton className="h-[420px]" />
+      <PageHeader eyebrow="Trade Evaluator" title="Trade Analysis" lede={LEDE} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)]">
+        <Skeleton className="h-[420px] rounded-md" />
+        <div aria-hidden />
+        <Skeleton className="h-[420px] rounded-md" />
       </div>
     </div>
   );
@@ -407,6 +339,13 @@ function TradeEvaluator() {
     setEvaluation(null);
   }
 
+  // A pick changes the deal, so an evaluation of the deal without it no longer describes
+  // what is on the sheet — clear it, exactly as moving a player does.
+  function updatePicks(next: React.SetStateAction<PickMove[]>) {
+    setEvaluation(null);
+    setPicks(next);
+  }
+
   function movePlayer(playerId: string, toTeamId: string) {
     setEvaluation(null);
     setMoves((m) => {
@@ -460,22 +399,39 @@ function TradeEvaluator() {
     <div className="pb-24 lg:pb-0">
       <PageHeader
         eyebrow="Trade Evaluator"
-        title="Trade Evaluator"
-        lede="Build a two- or three-team deal, watch the rules check run live on the backend, then evaluate the projected impact for every side."
+        title="Trade Analysis"
+        lede={LEDE}
         actions={
-          <TeamPicker
-            teams={loaded}
-            selected={teamIds}
-            onAdd={addTeam}
-            open={pickerOpen}
-            setOpen={setPickerOpen}
-          />
+          <>
+            <TeamPicker
+              teams={loaded}
+              selected={teamIds}
+              onAdd={addTeam}
+              open={pickerOpen}
+              setOpen={setPickerOpen}
+            />
+            <Button
+              variant="secondary"
+              disabled={!hasMoves || saveTrade.isPending}
+              title={hasMoves ? "Save this deal as a scenario" : "Move a player to save a scenario"}
+              onClick={() => saveTrade.mutate()}
+            >
+              <IconBookmark size={16} />
+              {saveTrade.isPending ? "Saving…" : "Save Scenario"}
+            </Button>
+            <DealMenu
+              disabled={teamIds.length < 2 || !hasMoves}
+              onCopy={copyShareLink}
+              onMemo={() => memo.mutate()}
+              memoPending={memo.isPending}
+            />
+          </>
         }
         meta={
           <>
             {validation && <Badge status="info">Cap year {validation.league_year}</Badge>}
             {validating && (
-              <span className="eyebrow flex items-center gap-1.5 text-signal">
+              <span className="flex items-center gap-1.5 text-[12px] font-medium text-signal">
                 <span className="pulse-live h-1.5 w-1.5 rounded-full bg-signal" aria-hidden />
                 Checking rules
               </span>
@@ -486,15 +442,16 @@ function TradeEvaluator() {
             {scenario && (
               <Badge status="info">Strategy: {scenario.strategy.replaceAll("_", " ")}</Badge>
             )}
-            <span className="text-[11px] text-faint">
+            <span className="text-[12px] text-faint">
               {teamIds.length}/3 teams · {playerMoves.length} player
               {playerMoves.length === 1 ? "" : "s"} moving
+              {picks.length > 0 ? ` · ${picks.length} pick${picks.length === 1 ? "" : "s"}` : ""}
             </span>
           </>
         }
       />
 
-      <div className="space-y-6">
+      <div className="space-y-12">
         {teamIds.length === 0 ? (
           <StartHere teams={loaded} onAdd={addTeam} onPick={() => setPickerOpen(true)} />
         ) : (
@@ -502,10 +459,10 @@ function TradeEvaluator() {
             <div
               className={
                 threeWay
-                  ? "grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]"
+                  ? "grid grid-cols-[minmax(0,1fr)] items-start gap-4 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] xl:gap-3"
                   : teamIds.length === 1
-                    ? "grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
-                    : "grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
+                    ? "grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-3"
+                    : "grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-3"
               }
             >
               {teamIds.map((tid, index) => (
@@ -522,7 +479,7 @@ function TradeEvaluator() {
                   originOf={originOf}
                   validation={validation}
                   picks={picks}
-                  setPicks={setPicks}
+                  setPicks={updatePicks}
                   onRemove={() => removeTeam(tid)}
                   onMove={movePlayer}
                   onInspect={(p) => setDrawerPlayer({ id: p.player_id, name: p.name })}
@@ -537,7 +494,7 @@ function TradeEvaluator() {
             </div>
             <DragOverlay dropAnimation={null}>
               {activeDrag && (
-                <div className="flex items-center gap-2 rounded-md border border-signal bg-panel2 px-2.5 py-1.5 text-sm shadow-[var(--shadow-pop)]">
+                <div className="flex items-center gap-2 rounded-lg border border-signal/60 bg-panel2 px-3 py-2 text-[14px] font-medium text-foreground shadow-[var(--shadow-pop)]">
                   <span aria-hidden className="text-signal">
                     →
                   </span>
@@ -551,37 +508,46 @@ function TradeEvaluator() {
         {teamIds.length < 2 && <HowItWorks />}
 
         {teamIds.length >= 2 && (
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
-            <RulesCheck
-              className="self-start"
-              validation={validation}
-              validating={validating}
-              hasMoves={hasMoves}
+          <section aria-labelledby="desk-heading">
+            <SectionHead
+              id="desk-heading"
+              eyebrow="Rules and actions"
+              title="Can this deal happen?"
+              aside="The rules engine re-checks the deal every time an asset moves. When it is settled, evaluate it for every side."
             />
-            <div>
-              <div className="space-y-3 lg:sticky lg:top-20">
-                <SaveShare
-                  tradeName={tradeName}
-                  setTradeName={setTradeName}
-                  canAct={hasMoves}
-                  evaluating={evaluate.isPending}
-                  saving={saveTrade.isPending}
-                  onEvaluate={() => evaluate.mutate()}
-                  onSave={() => saveTrade.mutate()}
-                  onCopy={copyShareLink}
-                  onMemo={() => memo.mutate()}
-                  memoPending={memo.isPending}
-                />
-                <DealLedger
-                  teams={loaded}
-                  playerMoves={playerMoves}
-                  picks={picks}
-                  playerIndex={playerIndex}
-                />
-                <HowItWorks variant="rail" />
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+              <RulesCheck
+                className="self-start"
+                validation={validation}
+                validating={validating}
+                hasMoves={hasMoves}
+              />
+              <div>
+                <div className="space-y-4 lg:sticky lg:top-6">
+                  <RunIt
+                    tradeName={tradeName}
+                    setTradeName={setTradeName}
+                    canAct={hasMoves}
+                    evaluating={evaluate.isPending}
+                    saving={saveTrade.isPending}
+                    onEvaluate={() => evaluate.mutate(undefined, { onSuccess: revealResults })}
+                    onSave={() => saveTrade.mutate()}
+                    onCopy={copyShareLink}
+                    onMemo={() => memo.mutate()}
+                    memoPending={memo.isPending}
+                    evaluated={Boolean(evaluation)}
+                  />
+                  <DealLedger
+                    teams={loaded}
+                    playerMoves={playerMoves}
+                    picks={picks}
+                    playerIndex={playerIndex}
+                  />
+                  <HowItWorks variant="rail" />
+                </div>
               </div>
             </div>
-          </div>
+          </section>
         )}
 
         {evaluation && teams && (
@@ -591,33 +557,59 @@ function TradeEvaluator() {
             teamIds={teamIds}
             playerMoves={playerMoves}
             pickMoves={picks}
+            playerIndex={playerIndex}
+            originOf={originOf}
+            inputs={{
+              season: Object.values(rosters.data ?? {})[0]?.season,
+              rosterAsOf: Object.values(rosters.data ?? {})
+                .map((r) => r.source_retrieved_at)
+                .filter((d): d is string => Boolean(d))
+                .sort()[0],
+            }}
           />
         )}
       </div>
 
-      {/* Mobile action rail — the verdict and the primary action stay reachable. */}
+      {/* Mobile action rail — the rules state and the primary action stay reachable. */}
       {teamIds.length >= 2 && hasMoves && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-arena/95 px-4 py-2.5 backdrop-blur lg:hidden">
+        <div
+          data-bottom-bar
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-arena px-4 py-3 shadow-[0_-16px_32px_-24px_rgb(0_0_0/0.9)] lg:hidden"
+        >
           <div className="flex items-center gap-3">
             <span className="min-w-0 flex-1">
               {validating ? (
-                <span className="eyebrow text-signal">Checking rules…</span>
+                <span className="flex items-center gap-1.5 text-[13px] font-medium text-signal">
+                  <span className="pulse-live h-1.5 w-1.5 rounded-full bg-signal" aria-hidden />
+                  Checking rules…
+                </span>
               ) : overall ? (
-                <span className={`flex items-center gap-1.5 ${LEGALITY_VISUAL[overall].text}`}>
-                  <span aria-hidden className="data text-sm">
+                <span className={`flex min-w-0 items-center gap-2 ${LEGALITY_VISUAL[overall].text}`}>
+                  <span aria-hidden className="stat-serif text-[1.35rem] leading-none">
                     {LEGALITY_VISUAL[overall].glyph}
                   </span>
-                  <span className="title-md truncate">{LEGALITY_SHORT[overall]}</span>
+                  <span className="truncate text-[14px] font-semibold">{LEGALITY_SHORT[overall]}</span>
+                  <span className="hidden truncate text-[12px] font-normal text-muted sm:inline">
+                    rules check
+                  </span>
                 </span>
               ) : (
-                <span className="eyebrow">No check yet</span>
+                <span className="text-[13px] text-muted">No check yet</span>
               )}
             </span>
+            {evaluation && (
+              <a
+                href="#deal-evaluation"
+                className="shrink-0 rounded-lg px-2 py-1.5 text-[13px] font-medium text-signal"
+              >
+                Results <span aria-hidden>↓</span>
+              </a>
+            )}
             <Button
               variant="primary"
               size="sm"
               disabled={evaluate.isPending}
-              onClick={() => evaluate.mutate()}
+              onClick={() => evaluate.mutate(undefined, { onSuccess: revealResults })}
             >
               {evaluate.isPending ? "Evaluating…" : "Evaluate"}
             </Button>
@@ -625,7 +617,97 @@ function TradeEvaluator() {
         </div>
       )}
 
-      {drawerPlayer && <PlayerDrawer player={drawerPlayer} onClose={() => setDrawerPlayer(null)} />}
+      {drawerPlayer && (
+        <PlayerDrawer
+          player={drawerPlayer}
+          rosterRow={playerIndex[drawerPlayer.id]}
+          fitTeams={teamIds
+            .filter((t) => t !== originOf[drawerPlayer.id])
+            .map((t) => {
+              const other = loaded.find((x) => x.id === t);
+              return { id: t, abbr: other?.abbreviation ?? "?", name: other?.full_name ?? "team" };
+            })}
+          onClose={() => setDrawerPlayer(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- deal menu */
+
+/** The ⋯ menu beside Save Scenario: the two ways a deal leaves the page. */
+function DealMenu({
+  disabled,
+  onCopy,
+  onMemo,
+  memoPending,
+}: {
+  disabled: boolean;
+  onCopy: () => void;
+  onMemo: () => void;
+  memoPending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(event: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <div ref={boxRef} className="relative">
+      <Button
+        variant="secondary"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="More actions"
+        disabled={disabled}
+        className="px-3"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <IconMore size={18} />
+      </Button>
+      {open && (
+        <div
+          role="menu"
+          className="fade-in absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-md border border-line bg-arena py-1 shadow-[var(--shadow-pop)]"
+        >
+          <button
+            role="menuitem"
+            type="button"
+            className="block w-full px-3.5 py-2 text-left text-[13px] text-foreground transition-colors hover:bg-panel3"
+            onClick={() => {
+              setOpen(false);
+              onCopy();
+            }}
+          >
+            Copy share link
+          </button>
+          <button
+            role="menuitem"
+            type="button"
+            disabled={memoPending}
+            className="block w-full px-3.5 py-2 text-left text-[13px] text-foreground transition-colors hover:bg-panel3 disabled:opacity-50"
+            onClick={() => {
+              setOpen(false);
+              onMemo();
+            }}
+          >
+            {memoPending ? "Building memo…" : "Open memo"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -648,6 +730,7 @@ function TeamPicker({
   const [query, setQuery] = useState("");
   const boxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const full = selected.length >= 3;
 
   useEffect(() => {
@@ -659,6 +742,7 @@ function TeamPicker({
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpen(false);
+        triggerRef.current?.focus();
       }
     }
     document.addEventListener("mousedown", onPointer);
@@ -681,6 +765,7 @@ function TeamPicker({
   return (
     <div ref={boxRef} className="relative">
       <Button
+        ref={triggerRef}
         type="button"
         variant="secondary"
         aria-haspopup="dialog"
@@ -689,7 +774,7 @@ function TeamPicker({
         title={full ? "A trade can involve at most three teams" : "Add a team to the trade"}
         onClick={() => setOpen(!open)}
       >
-        <span aria-hidden className="text-signal">
+        <span aria-hidden className="text-[16px] leading-none">
           +
         </span>
         {full ? "Max 3 teams" : "Add team"}
@@ -699,9 +784,9 @@ function TeamPicker({
         <div
           role="dialog"
           aria-label="Add a team to the trade"
-          className="absolute right-0 top-full z-50 mt-2 w-[min(88vw,26rem)] overflow-hidden rounded-lg border border-line bg-panel shadow-[var(--shadow-pop)]"
+          className="fade-in absolute left-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),27rem)] overflow-hidden rounded-xl border border-line bg-arena shadow-[var(--shadow-pop)] sm:left-auto sm:right-0"
         >
-          <div className="border-b border-hairline p-3">
+          <div className="border-b border-hairline p-4">
             <label htmlFor="team-picker-filter" className="eyebrow">
               Add a team
             </label>
@@ -712,1190 +797,41 @@ function TeamPicker({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Filter by city, name or abbreviation…"
-              className="mt-1.5 w-full rounded-md border border-line bg-panel2 px-2.5 py-1.5 text-sm placeholder:text-faint focus:border-signal/60"
+              className="mt-2 w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[14px] text-foreground placeholder:text-faint focus:border-signal/60"
             />
           </div>
-          <div className="scroll-thin max-h-[20rem] overflow-y-auto p-2">
+          <div className="scroll-thin max-h-[20rem] overflow-y-auto p-3">
             {options.length === 0 ? (
-              <p className="px-2 py-6 text-center text-sm text-muted">
+              <p className="px-2 py-6 text-center text-[13.5px] text-muted">
                 No team matches “{query}”.
               </p>
             ) : (
-              <ul className="grid grid-cols-4 gap-1.5 sm:grid-cols-5">
-                {options.map((team) => {
-                  const taken = selected.includes(team.id);
-                  const identity = teamIdentity(team.abbreviation);
-                  return (
-                    <li key={team.id}>
-                      <button
-                        type="button"
-                        disabled={taken}
-                        aria-label={
-                          taken
-                            ? `${team.full_name} is already in this trade`
-                            : `Add ${team.full_name} to the trade`
-                        }
-                        title={team.full_name}
-                        onClick={() => {
-                          onAdd(team.id);
-                          setOpen(false);
-                          setQuery("");
-                        }}
-                        className="flex w-full flex-col items-center gap-1 rounded-md border border-hairline bg-panel2 px-1 py-2 transition-colors hover:border-signal/50 hover:bg-panel3 disabled:opacity-35"
-                      >
-                        <TeamLogo abbreviation={team.abbreviation} size={26} decorative />
-                        <span
-                          className="numeral text-[12px] leading-none"
-                          style={{ color: taken ? undefined : identity.bright }}
-                        >
-                          {team.abbreviation}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              <TeamGrid
+                teams={options}
+                grouped={false}
+                columns="grid-cols-4 sm:grid-cols-5"
+                size="sm"
+                selectedIds={selected}
+                disabledIds={selected}
+                onSelect={(team) => {
+                  onAdd(team.id);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                ariaLabelFor={(team, { disabled }) =>
+                  disabled
+                    ? `${team.full_name} is already in this trade`
+                    : `Add ${team.full_name} to the trade`
+                }
+              />
             )}
           </div>
-          <p className="border-t border-hairline px-3 py-2 text-[11px] text-faint">
+          <p className="border-t border-hairline px-4 py-2.5 text-[12px] text-faint">
             {selected.length}/3 selected · press Escape to close
           </p>
         </div>
       )}
     </div>
-  );
-}
-
-/* ---------------------------------------------------------- workspace + lane */
-
-function TeamWorkspaceCell(props: {
-  index: number;
-  threeWay: boolean;
-  teamIds: string[];
-  teams: Team[];
-  roster?: RosterResponse;
-  rosterLoading: boolean;
-  playerIndex: Record<string, RosterPlayer>;
-  moves: Record<string, string>;
-  originOf: Record<string, string>;
-  validation: LegalityResponse | null;
-  picks: PickMove[];
-  setPicks: React.Dispatch<React.SetStateAction<PickMove[]>>;
-  onRemove: () => void;
-  onMove: (playerId: string, toTeamId: string) => void;
-  onInspect: (player: RosterPlayer) => void;
-}) {
-  const { index, threeWay, teamIds, teams, moves, originOf } = props;
-  const teamId = teamIds[index];
-  const previousId = index > 0 ? teamIds[index - 1] : null;
-  const laneActive = previousId
-    ? Object.entries(moves).some(
-        ([pid, to]) =>
-          (originOf[pid] === previousId && to === teamId) ||
-          (originOf[pid] === teamId && to === previousId),
-      )
-    : false;
-
-  return (
-    <>
-      {previousId && (
-        <LaneCell
-          threeWay={threeWay}
-          active={laneActive}
-          left={teamIdentity(teams.find((t) => t.id === previousId)?.abbreviation).bright}
-          right={teamIdentity(teams.find((t) => t.id === teamId)?.abbreviation).bright}
-        />
-      )}
-      <TeamWorkspace {...props} teamId={teamId} />
-    </>
-  );
-}
-
-function LaneCell({
-  threeWay,
-  active,
-  left,
-  right,
-}: {
-  threeWay: boolean;
-  active: boolean;
-  left: string;
-  right: string;
-}) {
-  return (
-    <div
-      className={
-        threeWay
-          ? "flex items-center justify-center gap-2 py-1 xl:min-h-[27rem] xl:flex-col xl:px-1 xl:py-0"
-          : "flex items-center justify-center gap-2 py-1 lg:min-h-[27rem] lg:flex-col lg:px-1 lg:py-0"
-      }
-    >
-      <TransactionLane
-        orientation="vertical"
-        active={active}
-        leftColor={left}
-        rightColor={right}
-        className={threeWay ? "h-16 w-9 xl:hidden" : "h-16 w-9 lg:hidden"}
-      />
-      <TransactionLane
-        orientation="horizontal"
-        active={active}
-        leftColor={left}
-        rightColor={right}
-        className={threeWay ? "hidden h-11 w-24 xl:block" : "hidden h-11 w-24 lg:block"}
-      />
-      <span className="eyebrow whitespace-nowrap text-[0.5625rem] text-faint">
-        {active ? "assets moving" : "no assets yet"}
-      </span>
-    </div>
-  );
-}
-
-function TeamWorkspace({
-  teamId,
-  teamIds,
-  teams,
-  roster,
-  rosterLoading,
-  playerIndex,
-  moves,
-  originOf,
-  validation,
-  picks,
-  setPicks,
-  onRemove,
-  onMove,
-  onInspect,
-}: {
-  teamId: string;
-  teamIds: string[];
-  teams: Team[];
-  roster?: RosterResponse;
-  rosterLoading: boolean;
-  playerIndex: Record<string, RosterPlayer>;
-  moves: Record<string, string>;
-  originOf: Record<string, string>;
-  validation: LegalityResponse | null;
-  picks: PickMove[];
-  setPicks: React.Dispatch<React.SetStateAction<PickMove[]>>;
-  onRemove: () => void;
-  onMove: (playerId: string, toTeamId: string) => void;
-  onInspect: (player: RosterPlayer) => void;
-}) {
-  const team = teams.find((t) => t.id === teamId);
-  const identity = teamIdentity(team?.abbreviation);
-  const { setNodeRef, isOver } = useDroppable({ id: teamId });
-  const legality = validation?.teams[teamId];
-
-  const { data: detail } = useQuery({
-    queryKey: ["team-detail", teamId],
-    queryFn: () => api.get<TeamDetailResponse>(`/teams/${teamId}`),
-    staleTime: 300_000,
-  });
-
-  const [query, setQuery] = useState("");
-  const [positionFilter, setPositionFilter] = useState("");
-  const [sort, setSort] = useState<"tei" | "age" | "name">("tei");
-  const [pickYear, setPickYear] = useState(2027);
-  const [pickTo, setPickTo] = useState("");
-
-  const destinations: Destination[] = teamIds
-    .filter((t) => t !== teamId)
-    .map((t) => {
-      const other = teams.find((x) => x.id === t);
-      return { id: t, abbr: other?.abbreviation ?? "?", name: other?.full_name ?? "the other team" };
-    });
-
-  const all = roster?.roster ?? [];
-  const staying = all
-    .filter((p) => (moves[p.player_id] ?? teamId) === teamId)
-    .filter((p) => !query || p.name.toLowerCase().includes(query.toLowerCase()))
-    .filter((p) => !positionFilter || (p.position ?? "").toUpperCase().includes(positionFilter))
-    .sort((a, b) =>
-      sort === "tei"
-        ? (b.tei ?? -99) - (a.tei ?? -99)
-        : sort === "age"
-          ? (a.age ?? 99) - (b.age ?? 99)
-          : a.name.localeCompare(b.name),
-    );
-  const stayingTotal = all.filter((p) => (moves[p.player_id] ?? teamId) === teamId).length;
-  const incoming = Object.entries(moves)
-    .filter(([pid, to]) => to === teamId && originOf[pid] && originOf[pid] !== teamId)
-    .map(([pid]) => playerIndex[pid])
-    .filter((p): p is RosterPlayer => Boolean(p));
-  const outgoing = all.filter((p) => moves[p.player_id] && moves[p.player_id] !== teamId);
-
-  const standing = detail?.standing;
-  // R2c: with partial contract coverage the verified payroll is withheld but a lower
-  // bound is publishable. `≥` and the coverage count travel with the number so the
-  // reader can never mistake a floor for the payroll.
-  const payrollShown = payrollDisclosure(
-    legality?.payroll_after,
-    legality?.payroll_known_after,
-    legality?.payroll_coverage_after,
-  );
-
-  return (
-    <Panel
-      as="section"
-      accent={identity.bright}
-      padded={false}
-      className={`transition-colors ${isOver ? "ring-1 ring-signal" : ""}`}
-    >
-      <div ref={setNodeRef}>
-        {/* ---------------------------------------------------------- header */}
-        <header
-          className="flex items-start justify-between gap-3 border-b border-hairline px-4 py-3"
-          style={{ background: `linear-gradient(100deg, ${identity.primary}2e, transparent 70%)` }}
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <TeamCrest abbreviation={team?.abbreviation} name={team?.full_name} size={44} />
-            <div className="min-w-0">
-              <div className="flex items-baseline gap-2">
-                <span className="numeral text-2xl leading-none" style={{ color: identity.bright }}>
-                  {team?.abbreviation ?? "—"}
-                </span>
-                {legality && (
-                  <Badge status={legality.status}>{LEGALITY_SHORT[legality.status]}</Badge>
-                )}
-              </div>
-              <h2 className="title-md mt-1 truncate text-foreground">
-                {team?.full_name ?? "Loading…"}
-              </h2>
-              <p className="mt-0.5 truncate text-[11px] text-muted">
-                {standing ? (
-                  <>
-                    <span className="data">
-                      {standing.wins}-{standing.losses}
-                    </span>
-                    {standing.playoff_rank
-                      ? ` · #${standing.playoff_rank} ${standing.conference ?? ""}`
-                      : ""}
-                    {detail?.season ? ` · ${detail.season}` : ""}
-                  </>
-                ) : (
-                  <span className="text-faint">record not available</span>
-                )}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label={`Remove ${team?.full_name ?? "team"} from the trade`}
-            className="shrink-0 rounded-md border border-transparent px-2 py-1 text-muted transition-colors hover:border-illegal/40 hover:text-illegal"
-          >
-            <span aria-hidden>✕</span>
-          </button>
-        </header>
-
-        {/* ------------------------------------------------------ ledger row */}
-        <div className="grid grid-cols-2 gap-x-3 gap-y-3 border-b border-hairline px-4 py-3 sm:grid-cols-4">
-          <StatBlock
-            size="sm"
-            label="Roster"
-            value={
-              legality ? (
-                <span>
-                  {legality.roster_before}
-                  <span aria-hidden className="mx-1 text-faint">
-                    →
-                  </span>
-                  {legality.roster_after}
-                </span>
-              ) : (
-                all.length || "—"
-              )
-            }
-            note={legality ? "before → after" : "players listed"}
-          />
-          <StatBlock
-            size="sm"
-            label="Out"
-            value={legality?.outgoing_salary != null ? money(legality.outgoing_salary) : "—"}
-            note={legality?.outgoing_salary != null ? "salary" : "no salaries"}
-            title={legality?.outgoing_salary != null ? undefined : CONTRACT_TOOLTIP}
-          />
-          <StatBlock
-            size="sm"
-            label="In"
-            value={legality?.incoming_salary != null ? money(legality.incoming_salary) : "—"}
-            note={legality?.incoming_salary != null ? "salary" : "no salaries"}
-            title={legality?.incoming_salary != null ? undefined : CONTRACT_TOOLTIP}
-          />
-          <StatBlock
-            size="sm"
-            label="Payroll"
-            value={payrollShown.value}
-            note={
-              payrollShown.kind === "verified"
-                ? `from ${money(legality?.payroll_before)}`
-                : payrollShown.note
-            }
-            title={
-              payrollShown.kind === "verified"
-                ? undefined
-                : payrollShown.kind === "floor"
-                  ? (legality?.payroll_coverage_note ?? CONTRACT_TOOLTIP)
-                  : CONTRACT_TOOLTIP
-            }
-          />
-        </div>
-
-        {/* --------------------------------------------------- moving assets */}
-        {(incoming.length > 0 || outgoing.length > 0) && (
-          <div className="space-y-2.5 border-b border-hairline bg-court/40 px-4 py-3">
-            {incoming.length > 0 && (
-              <AssetGroup
-                direction="in"
-                players={incoming}
-                onUndo={(pid) => onMove(pid, originOf[pid])}
-                counterpartOf={(pid) =>
-                  teams.find((t) => t.id === originOf[pid])?.abbreviation ?? "?"
-                }
-              />
-            )}
-            {outgoing.length > 0 && (
-              <AssetGroup
-                direction="out"
-                players={outgoing}
-                onUndo={(pid) => onMove(pid, teamId)}
-                counterpartOf={(pid) =>
-                  teams.find((t) => t.id === moves[pid])?.abbreviation ?? "?"
-                }
-              />
-            )}
-          </div>
-        )}
-
-        {/* --------------------------------------------------- roster filters */}
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-hairline px-3 py-2">
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter roster…"
-            aria-label={`Filter the ${team?.full_name ?? "team"} roster by name`}
-            className="min-w-0 flex-1 rounded-md border border-line bg-panel2 px-2 py-1 text-[13px] placeholder:text-faint focus:border-signal/60"
-          />
-          <select
-            value={positionFilter}
-            onChange={(e) => setPositionFilter(e.target.value)}
-            aria-label={`Filter the ${team?.abbreviation ?? "team"} roster by position`}
-            className="rounded-md border border-line bg-panel2 px-1.5 py-1 text-[13px]"
-          >
-            <option value="">All</option>
-            <option value="G">Guards</option>
-            <option value="F">Forwards</option>
-            <option value="C">Centers</option>
-          </select>
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as "tei" | "age" | "name")}
-            aria-label={`Sort the ${team?.abbreviation ?? "team"} roster`}
-            className="rounded-md border border-line bg-panel2 px-1.5 py-1 text-[13px]"
-          >
-            <option value="tei">Impact</option>
-            <option value="age">Age</option>
-            <option value="name">Name</option>
-          </select>
-        </div>
-
-        {/* ------------------------------------------------------ roster list */}
-        <div className="scroll-thin max-h-[26rem] space-y-1.5 overflow-y-auto p-2">
-          {!roster && rosterLoading ? (
-            <SkeletonRows rows={6} height="h-[3.25rem]" />
-          ) : staying.length === 0 ? (
-            <div className="px-3 py-8 text-center">
-              <p className="title-md text-foreground">
-                {stayingTotal === 0 ? "Everyone is on the move" : "No player matches"}
-              </p>
-              <p className="mx-auto mt-1 max-w-xs text-[13px] leading-relaxed text-muted">
-                {stayingTotal === 0
-                  ? "Every listed player has been sent out. Undo one above to bring them back."
-                  : "Clear the filter or choose a different position to see the rest of the roster."}
-              </p>
-              {stayingTotal > 0 && (
-                <Button
-                  size="sm"
-                  className="mt-3"
-                  onClick={() => {
-                    setQuery("");
-                    setPositionFilter("");
-                  }}
-                >
-                  Clear filters
-                </Button>
-              )}
-            </div>
-          ) : (
-            staying.map((player) => (
-              <RosterCard
-                key={player.player_id}
-                player={player}
-                destinations={destinations}
-                onMove={onMove}
-                onInspect={() => onInspect(player)}
-              />
-            ))
-          )}
-        </div>
-
-        {/* ------------------------------------------------------------ picks */}
-        <div className="border-t border-hairline px-4 py-2.5">
-          <details className="group">
-            <summary className="eyebrow cursor-pointer list-none text-muted transition-colors hover:text-foreground">
-              <span aria-hidden className="mr-1.5 inline-block transition-transform group-open:rotate-90">
-                ›
-              </span>
-              Draft picks · ownership unverified
-            </summary>
-            <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[13px]">
-              <label className="sr-only" htmlFor={`pick-year-${teamId}`}>
-                Draft year to send from {team?.abbreviation}
-              </label>
-              <select
-                id={`pick-year-${teamId}`}
-                value={pickYear}
-                onChange={(e) => setPickYear(Number(e.target.value))}
-                className="rounded-md border border-line bg-panel2 px-1.5 py-1"
-              >
-                {[2027, 2028, 2029, 2030, 2031].map((y) => (
-                  <option key={y}>{y}</option>
-                ))}
-              </select>
-              <span className="whitespace-nowrap text-muted">1st round →</span>
-              <label className="sr-only" htmlFor={`pick-to-${teamId}`}>
-                Team receiving the pick
-              </label>
-              <select
-                id={`pick-to-${teamId}`}
-                value={pickTo}
-                onChange={(e) => setPickTo(e.target.value)}
-                className="rounded-md border border-line bg-panel2 px-1.5 py-1"
-              >
-                <option value="">to…</option>
-                {destinations.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.abbr}
-                  </option>
-                ))}
-              </select>
-              <Button
-                size="sm"
-                disabled={!pickTo}
-                onClick={() =>
-                  setPicks((prev) => [
-                    ...prev,
-                    {
-                      from_team_id: teamId,
-                      to_team_id: pickTo,
-                      draft_year: pickYear,
-                      round_number: 1,
-                      is_hypothetical: true,
-                    },
-                  ])
-                }
-              >
-                Add pick
-              </Button>
-            </div>
-            <p className="mt-2 text-[11px] leading-snug text-faint">
-              Pick ownership isn&apos;t imported, so every pick added here is labeled hypothetical
-              and never counted as verified capital.
-            </p>
-            <ul className="mt-1.5 space-y-1">
-              {picks
-                .filter((p) => p.from_team_id === teamId)
-                .map((p, i) => (
-                  <li
-                    key={`${p.draft_year}-${p.to_team_id}-${i}`}
-                    className="flex items-center justify-between gap-2 text-[12px]"
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="data whitespace-nowrap">
-                        {p.draft_year} R{p.round_number}
-                      </span>
-                      <span aria-hidden className="text-faint">
-                        →
-                      </span>
-                      <span className="numeral">
-                        {teams.find((x) => x.id === p.to_team_id)?.abbreviation}
-                      </span>
-                      <Badge status="unavailable">hypothetical</Badge>
-                    </span>
-                    <button
-                      type="button"
-                      className="shrink-0 text-[11px] text-muted underline transition-colors hover:text-illegal"
-                      aria-label={`Remove the ${p.draft_year} first-round pick from this trade`}
-                      onClick={() => setPicks((prev) => prev.filter((x) => x !== p))}
-                    >
-                      remove
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          </details>
-        </div>
-
-        <div className="px-4 pb-3">
-          <SourceRail
-            source={roster?.source ?? "unknown source"}
-            retrievedAt={roster?.source_retrieved_at ?? null}
-          />
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-function AssetGroup({
-  direction,
-  players,
-  onUndo,
-  counterpartOf,
-}: {
-  direction: "in" | "out";
-  players: RosterPlayer[];
-  onUndo: (playerId: string) => void;
-  counterpartOf: (playerId: string) => string;
-}) {
-  const isIn = direction === "in";
-  return (
-    <div>
-      <div className="flex items-center gap-2">
-        <span
-          className={`eyebrow flex items-center gap-1.5 ${isIn ? "text-legal" : "text-illegal"}`}
-        >
-          <span aria-hidden className="data text-xs">
-            {isIn ? "←" : "→"}
-          </span>
-          {isIn ? "In" : "Out"}
-        </span>
-        <span className="text-[11px] text-faint">
-          {players.length} player{players.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      <ul className="mt-1.5 space-y-1">
-        {players.map((p) => (
-          <li
-            key={p.player_id}
-            className="lane-in flex items-center gap-2 rounded-md border px-2 py-1.5"
-            style={{
-              // Arriving assets travel in from the lane; departing assets lean out.
-              ["--lane-from" as string]: isIn ? "-14px" : "14px",
-              borderColor: isIn ? "rgb(52 211 153 / 0.35)" : "rgb(251 113 133 / 0.35)",
-              background: isIn ? "rgb(52 211 153 / 0.07)" : "rgb(251 113 133 / 0.07)",
-            }}
-          >
-            <PlayerPhoto nbaPlayerId={p.nba_player_id} name={p.name} size={26} />
-            <span className="min-w-0 flex-1 truncate text-[13px]">{p.name}</span>
-            <span className="numeral whitespace-nowrap text-[12px] text-muted">
-              {isIn ? "from" : "to"} {counterpartOf(p.player_id)}
-            </span>
-            <button
-              type="button"
-              onClick={() => onUndo(p.player_id)}
-              aria-label={`Undo moving ${p.name}`}
-              className="shrink-0 rounded px-1 text-[11px] text-signal underline"
-            >
-              undo
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function RosterCard({
-  player,
-  destinations,
-  onMove,
-  onInspect,
-}: {
-  player: RosterPlayer;
-  destinations: Destination[];
-  onMove: (playerId: string, toTeamId: string) => void;
-  onInspect: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: player.player_id,
-    data: { name: player.name },
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-lg border border-hairline bg-panel2/60 p-2 transition-colors hover:border-signal/40 ${
-        isDragging ? "opacity-30" : ""
-      }`}
-    >
-      <button
-        type="button"
-        {...listeners}
-        {...attributes}
-        aria-label={`Drag ${player.name} to another team`}
-        className="shrink-0 cursor-grab touch-none px-0.5 text-faint transition-colors hover:text-foreground"
-      >
-        <span aria-hidden>⠿</span>
-      </button>
-      <button
-        type="button"
-        onClick={onInspect}
-        className="flex min-w-0 flex-[1_1_8rem] items-center gap-2.5 text-left"
-        aria-label={`Open details for ${player.name}`}
-      >
-        <PlayerPhoto nbaPlayerId={player.nba_player_id} name={player.name} size={38} square />
-        <span className="min-w-0">
-          <span
-            className="block truncate text-[13px] font-semibold leading-tight text-foreground"
-            title={player.name}
-          >
-            {player.name}
-          </span>
-          <span className="mt-0.5 block truncate text-[11px] leading-tight text-muted">
-            {player.position ?? "—"} · {player.age ? `${player.age.toFixed(0)}y` : "age —"}
-            {player.archetype ? ` · ${player.archetype}` : ""}
-          </span>
-          {/* Real contract data. This line was two hardcoded em-dashes until R2b, so a
-              contracts import changed nothing here and the defect became invisible the
-              moment the import was marked done. */}
-          <span
-            className="mt-0.5 block text-[10px] leading-tight text-faint"
-            title={player.salary === null ? CONTRACT_TOOLTIP : undefined}
-          >
-            salary <span className="data">{player.salary === null ? "—" : money(player.salary)}</span> ·
-            years{" "}
-            <span className="data">
-              {player.contract_years_remaining === null ? "—" : player.contract_years_remaining}
-            </span>
-            {player.contract_type && ` · ${player.contract_type}`}
-          </span>
-        </span>
-      </button>
-      <span className="shrink-0 text-right" title="Estimated player impact (TEI) — see Methodology">
-        <span className="eyebrow block text-[0.5rem]">Impact</span>
-        <span
-          className={`numeral text-lg leading-none ${
-            (player.tei ?? 0) >= 0 ? "text-foreground" : "text-muted"
-          }`}
-        >
-          {tei(player.tei)}
-        </span>
-      </span>
-      <span className="ml-auto flex shrink-0 gap-1">
-        {destinations.map((d) => (
-          <button
-            key={d.id}
-            type="button"
-            onClick={() => onMove(player.player_id, d.id)}
-            aria-label={`Send ${player.name} to ${d.abbr}`}
-            title={`Send ${player.name} to the ${d.name}`}
-            className="numeral flex items-center gap-0.5 whitespace-nowrap rounded-md border border-line px-1.5 py-1 text-[12px] text-muted transition-colors hover:border-signal hover:text-signal"
-          >
-            <span aria-hidden>→</span>
-            {d.abbr}
-          </button>
-        ))}
-      </span>
-    </div>
-  );
-}
-
-/* --------------------------------------------------------------- empty flow */
-
-/** The 30-franchise board — the fastest way into a deal, reused by both empty states. */
-function TeamBoard({
-  teams,
-  selected,
-  onAdd,
-  columns = "grid-cols-5 sm:grid-cols-8 lg:grid-cols-10",
-}: {
-  teams: Team[];
-  selected: string[];
-  onAdd: (id: string) => void;
-  columns?: string;
-}) {
-  if (teams.length === 0) {
-    return (
-      <div className={`grid gap-1.5 ${columns}`}>
-        {Array.from({ length: 30 }).map((_, i) => (
-          <Skeleton key={i} className="h-[58px]" />
-        ))}
-      </div>
-    );
-  }
-  return (
-    <ul className={`grid gap-1.5 ${columns}`}>
-      {teams.map((team) => {
-        const taken = selected.includes(team.id);
-        const identity = teamIdentity(team.abbreviation);
-        return (
-          <li key={team.id}>
-            <button
-              type="button"
-              disabled={taken}
-              aria-label={
-                taken ? `${team.full_name} is already in this trade` : `Add ${team.full_name} to the trade`
-              }
-              title={team.full_name}
-              onClick={() => onAdd(team.id)}
-              className="flex w-full flex-col items-center gap-1 rounded-lg border border-hairline bg-panel2/70 px-1 py-2 transition-colors hover:border-signal/50 hover:bg-panel3 disabled:opacity-30"
-            >
-              <TeamLogo abbreviation={team.abbreviation} size={28} decorative />
-              <span
-                className="numeral text-[12px] leading-none"
-                style={{ color: taken ? undefined : identity.bright }}
-              >
-                {team.abbreviation}
-              </span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function StartHere({
-  teams,
-  onAdd,
-  onPick,
-}: {
-  teams: Team[];
-  onAdd: (id: string) => void;
-  onPick: () => void;
-}) {
-  return (
-    <Panel padded={false} className="relative overflow-hidden">
-      <HalfCourt className="pointer-events-none absolute -bottom-20 right-[-8%] h-[150%] w-[52%] text-signal/15 sm:w-[38%]" />
-      <div className="relative p-4 sm:p-6">
-        <EmptyState
-          title="Put two teams on the board"
-          hint="A deal needs both sides. Pick the franchises you want to trade between — the rules check starts running the moment an asset crosses the lane."
-          action={
-            <>
-              <Button variant="primary" onClick={onPick}>
-                Search for a team
-              </Button>
-              <ButtonLink href="/team-outlook" variant="secondary">
-                Browse team outlooks
-              </ButtonLink>
-            </>
-          }
-        />
-        <div className="mt-5 border-t border-hairline pt-4">
-          <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <span className="eyebrow">Or start from a franchise</span>
-            <span className="text-[11px] text-faint">One click puts them on the board</span>
-          </div>
-          <TeamBoard teams={teams} selected={[]} onAdd={onAdd} />
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-function AddPartnerSlot({
-  teams,
-  selected,
-  onAdd,
-}: {
-  teams: Team[];
-  selected: string[];
-  onAdd: (id: string) => void;
-}) {
-  return (
-    <div className="panel relative flex min-h-[260px] flex-col justify-center overflow-hidden border-dashed p-5">
-      {/* The court grid is a backdrop; masking it on the container would fade the tiles. */}
-      <span aria-hidden className="court-grid pointer-events-none absolute inset-0" />
-      <div className="relative text-center">
-        <TransactionLane className="mx-auto h-11 w-28" />
-        <p className="title-md mt-2 text-foreground">Add a trade partner</p>
-        <p className="mx-auto mt-1 max-w-xs text-[13px] leading-relaxed text-muted">
-          One side is set. Choose who&apos;s on the other end of the call and the live rules check
-          turns on.
-        </p>
-      </div>
-      <div className="relative mt-4">
-        <TeamBoard
-          teams={teams}
-          selected={selected}
-          onAdd={onAdd}
-          columns="grid-cols-5 sm:grid-cols-6"
-        />
-      </div>
-    </div>
-  );
-}
-
-/** The transaction receipt: every asset that changes hands, in plain language. */
-function DealLedger({
-  teams,
-  playerMoves,
-  picks,
-  playerIndex,
-}: {
-  teams: Team[];
-  playerMoves: PlayerMove[];
-  picks: PickMove[];
-  playerIndex: Record<string, RosterPlayer>;
-}) {
-  const abbr = (id: string) => teams.find((t) => t.id === id)?.abbreviation ?? "—";
-  if (playerMoves.length === 0 && picks.length === 0) {
-    return (
-      <Panel title="Deal ledger" subtitle="Nothing is moving yet.">
-        <p className="text-[13px] leading-relaxed text-muted">
-          Send a player across the lane and every asset in the deal is listed here, with the team it
-          leaves and the team it joins.
-        </p>
-      </Panel>
-    );
-  }
-  return (
-    <Panel
-      title="Deal ledger"
-      subtitle={`${playerMoves.length} player${playerMoves.length === 1 ? "" : "s"}${
-        picks.length > 0 ? ` · ${picks.length} pick${picks.length === 1 ? "" : "s"}` : ""
-      } changing hands`}
-    >
-      <ul className="space-y-2">
-        {playerMoves.map((move) => {
-          const player = playerIndex[move.player_id];
-          return (
-            <li key={move.player_id} className="flex items-center gap-2">
-              <PlayerPhoto
-                nbaPlayerId={player?.nba_player_id}
-                name={player?.name ?? "Player"}
-                size={24}
-              />
-              <span className="min-w-0 flex-1 truncate text-[13px]">
-                {player?.name ?? "Player"}
-              </span>
-              <span className="numeral flex shrink-0 items-center gap-1 whitespace-nowrap text-[12px] text-muted">
-                {abbr(move.from_team_id)}
-                <span aria-hidden className="text-signal">
-                  →
-                </span>
-                {abbr(move.to_team_id)}
-              </span>
-            </li>
-          );
-        })}
-        {picks.map((pick, i) => (
-          <li key={`pick-${i}`} className="flex items-center gap-2">
-            <span
-              aria-hidden
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-panel3 text-[10px] text-muted"
-            >
-              R{pick.round_number}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[13px]">
-              {pick.draft_year} round {pick.round_number}{" "}
-              <Badge status="unavailable">hypothetical</Badge>
-            </span>
-            <span className="numeral flex shrink-0 items-center gap-1 whitespace-nowrap text-[12px] text-muted">
-              {abbr(pick.from_team_id)}
-              <span aria-hidden className="text-signal">
-                →
-              </span>
-              {abbr(pick.to_team_id)}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </Panel>
-  );
-}
-
-function HowItWorks({ variant = "strip" }: { variant?: "strip" | "rail" }) {
-  const rail = variant === "rail";
-  return (
-    <section
-      className={
-        rail
-          ? "rounded-xl border border-hairline px-4 py-3.5"
-          : "hardwood rounded-xl border border-hairline px-4 py-4"
-      }
-    >
-      <div className="eyebrow mb-3">How the evaluator works</div>
-      <ol className={rail ? "space-y-3" : "grid gap-x-6 gap-y-3 sm:grid-cols-3"}>
-        {HOW_IT_WORKS.map((item) => (
-          <li key={item.step} className="flex gap-3">
-            <span className="numeral shrink-0 text-xl leading-none text-signal">{item.step}</span>
-            <span className="min-w-0">
-              <span className="block whitespace-nowrap text-sm font-semibold text-foreground">
-                {item.title}
-              </span>
-              <span className="mt-0.5 block text-[12px] leading-snug text-muted">{item.body}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-/* -------------------------------------------------------------- rules check */
-
-function RulesCheck({
-  validation,
-  validating,
-  hasMoves,
-  className,
-}: {
-  validation: LegalityResponse | null;
-  validating: boolean;
-  hasMoves: boolean;
-  className?: string;
-}) {
-  const status = validation?.overall_status;
-  const visual = status ? LEGALITY_VISUAL[status] : null;
-  const blocked = validation?.rule_results.filter((r) => r.status === "unavailable") ?? [];
-
-  return (
-    <Panel
-      className={className}
-      title="Live rules check"
-      subtitle={
-        validation
-          ? `Cap year ${validation.league_year} · every result below comes from the backend rules engine, not the browser.`
-          : "The check runs automatically the moment a player crosses the lane."
-      }
-      accent={visual?.color ?? "var(--signal)"}
-      actions={
-        validating ? (
-          <span className="eyebrow flex items-center gap-1.5 text-signal">
-            <span className="pulse-live h-1.5 w-1.5 rounded-full bg-signal" aria-hidden />
-            Checking
-          </span>
-        ) : null
-      }
-    >
-      {!validation ? (
-        validating || hasMoves ? (
-          <div className="space-y-3">
-            <Skeleton className="h-24" />
-            <SkeletonRows rows={3} height="h-9" />
-          </div>
-        ) : (
-          <EmptyState
-            title="No check to run yet"
-            hint="Move at least one player between the teams and Pivot validates the deal against the 2023 CBA rules it can verify."
-          />
-        )
-      ) : (
-        <div className="space-y-4">
-          {/* --------------------------------------------- headline verdict */}
-          <KeyFrame accent={visual?.color} className="rounded-lg border border-hairline bg-court/50 px-4 pb-4 pt-5">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <span
-                aria-hidden
-                className={`numeral text-3xl leading-none ${visual?.text ?? ""}`}
-                style={{ color: visual?.color }}
-              >
-                {visual?.glyph}
-              </span>
-              <h3 className={`title-lg text-balance ${visual?.text ?? "text-foreground"}`}>
-                {LEGALITY_LABEL[status ?? "not_evaluated"]}
-              </h3>
-            </div>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
-              {LEGALITY_EXPLAIN[status ?? "not_evaluated"]}
-            </p>
-            {status !== "verified_legal" && (
-              <p className="mt-2 text-[12px] leading-relaxed text-faint">
-                Pivot never reports a deal as legal while a required check is missing — an
-                incomplete check stays incomplete.
-              </p>
-            )}
-          </KeyFrame>
-
-          {/* ------------------------------------- what could not be checked */}
-          {!validation.contract_provider_configured && (
-            <UnavailableNotice
-              reason={
-                <>
-                  Contract data isn&apos;t imported, so{" "}
-                  {blocked.length > 0 ? (
-                    <>
-                      {blocked.length} check{blocked.length === 1 ? "" : "s"} could not run:{" "}
-                      <span className="data text-[12px] text-foreground">
-                        {[...new Set(blocked.map((r) => r.rule_code))].join(", ")}
-                      </span>
-                      .
-                    </>
-                  ) : (
-                    "salary-matching checks could not run."
-                  )}{" "}
-                  Everything that depends on salary — matching bands, aprons and payroll — stays
-                  unavailable rather than estimated.
-                </>
-              }
-              steps={
-                <ButtonLink href="/salary-cap-center" size="sm" variant="secondary">
-                  Open the Salary-Cap Center
-                </ButtonLink>
-              }
-            />
-          )}
-
-          {/* -------------------------------------------------- rule details */}
-          <div>
-            <div className="eyebrow mb-2">Rule by rule</div>
-            <ul className="scroll-thin max-h-[22rem] space-y-1.5 overflow-y-auto pr-1">
-              {validation.rule_results.map((rule, i) => (
-                <RuleRow
-                  key={`${rule.rule_code}-${i}`}
-                  rule={rule}
-                  teamAbbr={rule.team_id ? validation.teams[rule.team_id]?.abbreviation : undefined}
-                />
-              ))}
-            </ul>
-          </div>
-
-          <SourceRail
-            source={`Rules engine · 2023 CBA · cap parameters from ${validation.cap_parameters_source}`}
-          />
-        </div>
-      )}
-    </Panel>
-  );
-}
-
-function RuleRow({ rule, teamAbbr }: { rule: RuleResult; teamAbbr?: string }) {
-  const entries = Object.entries(rule.calculation ?? {});
-  return (
-    <li className="rounded-md border border-hairline bg-panel2/50">
-      <details className="group">
-        <summary className="flex cursor-pointer list-none items-start gap-2 px-2.5 py-2">
-          <Badge status={rule.status} className="mt-0.5 shrink-0">
-            {RULE_STATUS_WORD[rule.status] ?? rule.status}
-          </Badge>
-          {teamAbbr && (
-            <span
-              className="numeral mt-0.5 shrink-0 whitespace-nowrap rounded border border-line px-1.5 text-[12px] leading-5 text-muted"
-              style={{ color: teamIdentity(teamAbbr).bright }}
-            >
-              {teamAbbr}
-            </span>
-          )}
-          <span className="min-w-0 flex-1 text-[13px] leading-snug">{rule.message}</span>
-          <span
-            aria-hidden
-            className="mt-0.5 shrink-0 text-faint transition-transform group-open:rotate-90"
-          >
-            ›
-          </span>
-        </summary>
-        <div className="space-y-2 border-t border-hairline px-2.5 py-2 text-[12px]">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="data text-[11px] text-signal">{rule.rule_code}</span>
-            <span className="text-faint">confidence: {rule.confidence}</span>
-          </div>
-          {entries.length > 0 && (
-            <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
-              {entries.map(([key, value]) => (
-                <div key={key} className="flex justify-between gap-2 border-b border-hairline/60 pb-1">
-                  <dt className="truncate text-muted">{key.replaceAll("_", " ")}</dt>
-                  <dd className="data shrink-0 text-right text-foreground">
-                    {typeof value === "number"
-                      ? Math.abs(value) >= 100_000
-                        ? money(value)
-                        : String(value)
-                      : Array.isArray(value)
-                        ? value.join(", ") || "—"
-                        : String(value)}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          )}
-          <p className="text-[11px] leading-snug text-faint">Reference: {rule.source_reference}</p>
-        </div>
-      </details>
-    </li>
-  );
-}
-
-/* ------------------------------------------------------------- save & share */
-
-function SaveShare({
-  tradeName,
-  setTradeName,
-  canAct,
-  evaluating,
-  saving,
-  onEvaluate,
-  onSave,
-  onCopy,
-  onMemo,
-  memoPending,
-}: {
-  tradeName: string;
-  setTradeName: (value: string) => void;
-  canAct: boolean;
-  evaluating: boolean;
-  saving: boolean;
-  onEvaluate: () => void;
-  onSave: () => void;
-  onCopy: () => void;
-  onMemo: () => void;
-  memoPending: boolean;
-}) {
-  return (
-    <Panel title="Run it" subtitle="Evaluate now, then keep the deal for comparison." accent="var(--leather)">
-      <div className="space-y-3">
-        <div>
-          <label htmlFor="deal-name" className="eyebrow">
-            Deal name
-          </label>
-          <input
-            id="deal-name"
-            value={tradeName}
-            onChange={(e) => setTradeName(e.target.value)}
-            placeholder="Name this deal…"
-            className="mt-1.5 w-full rounded-md border border-line bg-panel2 px-2.5 py-1.5 text-sm placeholder:text-faint focus:border-signal/60"
-          />
-        </div>
-        <Button
-          variant="primary"
-          className="w-full"
-          disabled={!canAct || evaluating}
-          onClick={onEvaluate}
-        >
-          {evaluating ? "Evaluating…" : "Evaluate this deal"}
-        </Button>
-        <div className="flex gap-2">
-          <Button className="flex-1" disabled={!canAct || saving} onClick={onSave}>
-            {saving ? "Saving…" : "Save deal"}
-          </Button>
-          <Button className="flex-1" disabled={!canAct} onClick={onCopy}>
-            Copy share link
-          </Button>
-        </div>
-        <Button className="w-full" disabled={!canAct || memoPending} onClick={onMemo}>
-          {memoPending ? "Building memo…" : "Open decision memo"}
-        </Button>
-        <p className="text-[11px] leading-snug text-faint">
-          The memo is one page: the recommendation, what changes on the floor, fit, cost, the
-          rules, comparable completed trades, and everything the analysis could not establish.
-        </p>
-        {!canAct && (
-          <p className="text-[11px] leading-snug text-faint">
-            Move at least one player between teams to enable these actions.
-          </p>
-        )}
-        <p className="text-[11px] leading-snug text-faint">
-          Saved deals line up in{" "}
-          <Link href="/strategy-lab" className="text-signal underline">
-            Strategy Lab
-          </Link>{" "}
-          so you can rank them under your own priorities.
-        </p>
-      </div>
-    </Panel>
   );
 }
 
@@ -1907,12 +843,19 @@ function EvaluationSection({
   teamIds,
   playerMoves,
   pickMoves,
+  playerIndex,
+  originOf,
+  inputs,
 }: {
   evaluation: { legality: LegalityResponse; evaluations: Record<string, TeamEvaluation> };
   teams: Team[];
   teamIds: string[];
   playerMoves: PlayerMove[];
   pickMoves: PickMove[];
+  playerIndex: Record<string, RosterPlayer>;
+  originOf: Record<string, string>;
+  /** Where the evaluation's INPUT data came from — distinct from when the evaluation ran. */
+  inputs: { season?: string; rosterAsOf?: string };
 }) {
   const [activeTeam, setActiveTeam] = useState(teamIds[0]);
   const resolvedTeam = evaluation.evaluations[activeTeam] ? activeTeam : teamIds[0];
@@ -1921,429 +864,158 @@ function EvaluationSection({
   const identity = teamIdentity(team?.abbreviation);
   if (!teamEval) return null;
 
-  return (
-    <Panel
-      title="Deal evaluation"
-      subtitle="One team's point of view at a time — headline verdict first, the full analysis underneath."
-      accent={identity.bright}
-      actions={
-        <Tabs
-          ariaLabel="Team perspective"
-          active={resolvedTeam}
-          onChange={setActiveTeam}
-          tabs={teamIds
-            .filter((tid) => evaluation.evaluations[tid])
-            .map((tid) => ({
-              id: tid,
-              label: teams.find((t) => t.id === tid)?.abbreviation ?? "—",
-            }))}
-        />
-      }
-    >
-      <TeamEvaluationView
-        key={resolvedTeam}
-        teamEval={teamEval}
-        identity={identity}
-        teamAbbreviations={Object.fromEntries(
-          Object.entries(evaluation.legality.teams).map(([id, t]) => [id, t.abbreviation]),
-        )}
-        precedent={
-          <PrecedentTab
-            focalTeamId={resolvedTeam}
-            teamIds={teamIds}
-            playerMoves={playerMoves}
-            pickMoves={pickMoves}
-          />
-        }
-      />
-    </Panel>
+  const abbr = (id: string | undefined) => teams.find((t) => t.id === id)?.abbreviation ?? "—";
+  const teamAbbreviations = Object.fromEntries(
+    Object.entries(evaluation.legality.teams).map(([id, t]) => [id, t.abbreviation]),
   );
-}
 
-/**
- * Players the impact model has never scored are excluded from the projection and named
- * here. Before R1-4 they arrived carrying `tei = 0.0` — the 63rd percentile of rostered
- * players — so a player with no data quietly moved the number.
- */
-function UnmodeledNotice({ teamEval }: { teamEval: TeamEvaluation }) {
-  const names = teamEval.unmodeled_players ?? [];
-  if (!teamEval.has_unmodeled_players || names.length === 0) return null;
-  const inDeal = [...teamEval.incoming, ...teamEval.outgoing]
-    .filter((p) => p.tei === null)
-    .map((p) => p.name);
-  return (
-    <p className="mt-2 border-t border-hairline pt-2.5 text-[11px] leading-snug text-unavail">
-      {names.length === 1 ? "1 player has" : `${names.length} players have`} no impact
-      estimate and {names.length === 1 ? "was" : "were"} left out of the projection rather
-      than given a league-average stand-in: {names.join(", ")}.
-      {inDeal.length > 0 && (
-        <>
-          {" "}
-          {inDeal.length === 1 ? "One of them is" : "Some of them are"} in this deal (
-          {inDeal.join(", ")}), so confidence is reported as low.
-        </>
-      )}{" "}
-      They still count against the roster limits.
-    </p>
-  );
-}
+  const playerAsset = (p: EvaluatedPlayer, direction: "in" | "out"): SheetAsset => {
+    const row = playerIndex[p.player_id];
+    const move = playerMoves.find((m) => m.player_id === p.player_id);
+    return {
+      key: p.player_id,
+      kind: "player",
+      playerId: p.player_id,
+      nbaPlayerId: row?.nba_player_id,
+      label: p.name,
+      detail: [row?.position, row?.archetype].filter(Boolean).join(" · ") || null,
+      tei: p.tei,
+      counterpart: abbr(direction === "in" ? move?.from_team_id : move?.to_team_id),
+    };
+  };
+  const pickAsset = (p: PickMove, direction: "in" | "out", i: number): SheetAsset => ({
+    key: `pick-${direction}-${p.draft_year}-${p.round_number}-${i}`,
+    kind: "pick",
+    label: `${p.draft_year} round ${p.round_number}`,
+    detail: p.protections ?? null,
+    counterpart: abbr(direction === "in" ? p.from_team_id : p.to_team_id),
+    hypothetical: p.is_hypothetical,
+    round: p.round_number,
+  });
 
-function TeamEvaluationView({
-  teamEval,
-  identity,
-  teamAbbreviations,
-  precedent,
-}: {
-  teamEval: TeamEvaluation;
-  identity: ReturnType<typeof teamIdentity>;
-  teamAbbreviations: Record<string, string>;
-  /** Rendered only when its tab is selected, so the search runs on demand. */
-  precedent: React.ReactNode;
-}) {
-  const [tab, setTab] = useState("impact");
-  const verdict = fanVerdict(teamEval.composite_utility, teamEval.confidence);
-  const suppressed = teamEval.decision_status === "suppressed_illegal";
-  const perf = sectionOf<PerformanceDetail>(teamEval.detail, "performance");
-  const gained = teamEval.drivers?.filter((d) => d.contribution > 0.5).slice(0, 3) ?? [];
-  const lost = teamEval.drivers?.filter((d) => d.contribution < -0.5).slice(0, 3) ?? [];
-  const payrollDelta =
-    teamEval.legality.payroll_after !== null && teamEval.legality.payroll_before !== null
-      ? teamEval.legality.payroll_after - teamEval.legality.payroll_before
-      : null;
+  const sides: SheetSide[] = teamIds
+    .filter((tid) => evaluation.evaluations[tid])
+    .map((tid) => {
+      const ev = evaluation.evaluations[tid];
+      const t = teams.find((x) => x.id === tid);
+      return {
+        teamId: tid,
+        abbreviation: t?.abbreviation ?? ev.legality.abbreviation,
+        name: t?.full_name ?? ev.legality.abbreviation,
+        evaluation: ev,
+        legality: ev.legality,
+        receives: [
+          ...ev.incoming.map((p) => playerAsset(p, "in")),
+          ...pickMoves.filter((p) => p.to_team_id === tid).map((p, i) => pickAsset(p, "in", i)),
+        ],
+        sends: [
+          ...ev.outgoing.map((p) => playerAsset(p, "out")),
+          ...pickMoves.filter((p) => p.from_team_id === tid).map((p, i) => pickAsset(p, "out", i)),
+        ],
+      };
+    });
 
-  if (suppressed) {
-    // A deal that fails a verified rule cannot be executed, so it gets no verdict, no
-    // score and no component breakdown — only the reason and the rules that caused it.
-    return (
-      <div
-        className="rounded-lg border px-4 py-4"
-        style={{ borderColor: "var(--illegal)", background: "rgb(248 113 113 / 0.06)" }}
-      >
-        <div className="flex items-center gap-2">
-          <TeamLogo abbreviation={identity.abbreviation} size={18} decorative />
-          <span className="eyebrow">Verdict for {identity.abbreviation}</span>
-        </div>
-        <h3 className="title-lg mt-1.5 text-foreground">No decision score — this deal is illegal</h3>
-        <p className="mt-2 max-w-prose text-[13px] leading-relaxed text-muted">
-          {teamEval.suppression?.message}
-        </p>
-        <ul className="mt-3 space-y-2">
-          {(teamEval.suppression?.failing_rules ?? []).map((rule, index) => (
-            <li
-              key={`${rule.rule_code}-${rule.team_id ?? "all"}-${index}`}
-              className="rounded-lg border border-hairline bg-panel2 px-3 py-2"
-            >
-              <div className="eyebrow flex flex-wrap items-center gap-2 text-[0.5625rem] text-illegal">
-                <span>{rule.rule_code}</span>
-                {/* A deal can be illegal because of the counterparty; naming the side
-                    keeps the refusal from reading as a fault of this team. */}
-                {rule.team_id && teamAbbreviations[rule.team_id] && (
-                  <span className="text-unavail">fails for {teamAbbreviations[rule.team_id]}</span>
-                )}
-              </div>
-              <p className="mt-0.5 text-sm text-foreground">{rule.message}</p>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-3 border-t border-hairline pt-2.5 text-[11px] leading-snug text-faint">
-          Salary in {money(teamEval.legality.incoming_salary)} · out{" "}
-          {money(teamEval.legality.outgoing_salary)} · roster{" "}
-          {teamEval.legality.roster_before} → {teamEval.legality.roster_after}. Fix the rule
-          failures above and evaluate again.
-        </p>
-      </div>
-    );
+  const isRefused = (ev: TeamEvaluation) => ev.decision_status === "suppressed_illegal";
+
+  function selectAndReveal(teamId: string) {
+    setActiveTeam(teamId);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document
+      .getElementById("team-perspective")
+      ?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   }
 
   return (
-    <div className="space-y-5">
-      {/* ------------------------------------------------- 1. headline verdict */}
-      <div
-        className="rounded-lg border px-4 py-4"
-        style={{
-          borderColor: `${identity.bright}40`,
-          background: `linear-gradient(120deg, ${identity.primary}22, transparent 70%)`,
-        }}
-      >
-        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <TeamLogo abbreviation={identity.abbreviation} size={18} decorative />
-              <span className="eyebrow">Verdict for {identity.abbreviation}</span>
-            </div>
-            <h3 className="title-lg mt-1.5 whitespace-nowrap text-foreground">
-              {VERDICT_LABEL[verdict]}
-            </h3>
-            <p className="mt-1.5 text-[12px] text-muted">
-              Confidence {teamEval.confidence} ·{" "}
-              <Link href="/methodology#utility" className="text-signal underline">
-                how this is calculated
-              </Link>
-            </p>
-          </div>
-          <div className="flex shrink-0 items-end gap-5">
-            <StatBlock
-              size="lg"
-              align="right"
-              label="Decision score"
-              value={
-                teamEval.composite_utility != null ? teamEval.composite_utility.toFixed(0) : "—"
-              }
-              note="0–100 · 50 is neutral"
-              accent={identity.bright}
-            />
-          </div>
-        </div>
-        {teamEval.excluded_components.length > 0 && (
-          <p className="mt-3 border-t border-hairline pt-2.5 text-[11px] leading-snug text-unavail">
-            Not scored because the data is missing:{" "}
-            {teamEval.excluded_components.map((c) => COMPONENT_LABEL[c] ?? c).join(", ")} — the
-            remaining weights were rescaled so the score stays comparable.
-          </p>
-        )}
-        <UnmodeledNotice teamEval={teamEval} />
-      </div>
-
-      {/* ------------------------------------------------- 2. impact summary */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <div className="rounded-lg border border-hairline bg-panel2/40 p-3.5">
-          <UncertaintyStrip u={teamEval.uncertainty} />
-          {perf.delta_net_rating !== undefined && (
-            <p className="mt-2 text-[11px] text-faint">
-              Modeled net-rating change{" "}
-              <span className="data text-muted">
-                {perf.delta_net_rating >= 0 ? "+" : ""}
-                {perf.delta_net_rating.toFixed(2)}
-              </span>{" "}
-              per 100 possessions after reallocating rotation minutes.
-            </p>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-lg border border-hairline bg-panel2/40 p-3">
-            <StatBlock
-              size="sm"
-              label="Payroll change"
-              value={payrollDelta !== null ? money(payrollDelta) : "—"}
-              note={payrollDelta !== null ? "committed salary" : "contracts not imported"}
-              title={payrollDelta !== null ? undefined : CONTRACT_TOOLTIP}
-            />
-          </div>
-          <div className="rounded-lg border border-hairline bg-panel2/40 p-3">
-            <StatBlock
-              size="sm"
-              label="Roster spots"
-              value={`${teamEval.legality.roster_before} → ${teamEval.legality.roster_after}`}
-              note="players under contract"
-            />
-          </div>
-          <div className="col-span-2 rounded-lg border border-hairline bg-panel2/40 p-3">
-            <div className="eyebrow text-[0.5625rem]">Strengths gained / lost</div>
-            <div className="mt-1.5 space-y-1 text-[12px] leading-snug">
-              {gained.length > 0 && (
-                <p className="text-legal">
-                  <span aria-hidden>▲</span> gained:{" "}
-                  {gained.map((d) => COMPONENT_LABEL[d.component] ?? d.component).join(", ")}
-                </p>
-              )}
-              {lost.length > 0 && (
-                <p className="text-illegal">
-                  <span aria-hidden>▼</span> lost:{" "}
-                  {lost.map((d) => COMPONENT_LABEL[d.component] ?? d.component).join(", ")}
-                </p>
-              )}
-              {gained.length === 0 && lost.length === 0 && (
-                <p className="text-muted">Roughly neutral across every scored component.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ------------------------------------------------ 3. advanced section */}
-      <div>
-        <div className="border-b border-hairline">
-          <Tabs
-            ariaLabel="Advanced analysis"
-            active={tab}
-            onChange={setTab}
-            tabs={[
-              { id: "impact", label: "Impact" },
-              { id: "fit", label: "Fit" },
-              { id: "cap", label: "Cap" },
-              { id: "timeline", label: "Timeline" },
-              { id: "risk", label: "Risk & uncertainty" },
-              { id: "precedent", label: "Precedent" },
-            ]}
-          />
-        </div>
-        <div className="pt-4">
-          {tab === "impact" && <ImpactTab teamEval={teamEval} perf={perf} />}
-          {tab === "fit" && <FitTab teamEval={teamEval} />}
-          {tab === "cap" && <CapTab teamEval={teamEval} />}
-          {tab === "timeline" && <TimelineTab teamEval={teamEval} />}
-          {tab === "risk" && <RiskTab teamEval={teamEval} />}
-          {tab === "precedent" && precedent}
-        </div>
-      </div>
-
-      <SourceRail
-        source="Pivot evaluation model over ingested NBA data"
-        retrievedAt={teamEval.evaluated_at}
+    <section id="deal-evaluation" aria-labelledby="deal-evaluation-title" className="fade-in">
+      <SectionHead
+        id="deal-evaluation-title"
+        eyebrow={`Deal evaluation · ${formatDate(teamEval.evaluated_at)}`}
+        title="What the deal does to each team"
+        aside="Where each team stands before the deal, what it gives and gets, and where the model projects it after — every side on the same wins scale."
       />
-    </div>
-  );
-}
 
-/**
- * Mounted only while its tab is selected, which is what makes the search on-demand: the
- * retrieval reads 337 corpus sides and there is no reason to do it for a user who never
- * opens the tab.
- */
-/* ------------------------------------------------------------ player drawer */
-
-function PlayerDrawer({
-  player,
-  onClose,
-}: {
-  player: { id: string; name: string };
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const { data } = useQuery({
-    queryKey: ["player", player.id],
-    queryFn: () =>
-      api.get<{
-        player: {
-          full_name: string;
-          nba_player_id: number;
-          position: string | null;
-          birth_date: string | null;
-          current_team: Team | null;
-        };
-        impact: { tei?: number; availability?: number | null; note: string };
-        archetype: { label: string } | null;
-      }>(`/players/${player.id}`),
-  });
-  const { data: stats } = useQuery({
-    queryKey: ["player-stats", player.id],
-    queryFn: () =>
-      api.get<{ seasons: { season: string; base?: Record<string, number> }[] }>(
-        `/players/${player.id}/stats`,
-      ),
-  });
-  const latest = stats?.seasons?.filter((s) => s.base).at(-1);
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex justify-end bg-court/70 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${player.name} details`}
-      onClick={onClose}
-    >
-      <div
-        className="scroll-thin h-full w-full max-w-sm overflow-y-auto border-l border-line bg-panel p-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="eyebrow">Player</div>
-            <h2 className="title-lg mt-1 truncate text-foreground">{player.name}</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close player details"
-            className="shrink-0 rounded-md border border-transparent px-2 py-1 text-muted transition-colors hover:border-line hover:text-foreground"
-          >
-            <span aria-hidden>✕</span>
-          </button>
-        </div>
-        {!data ? (
-          <div className="mt-4 space-y-3">
-            <Skeleton className="h-20" />
-            <SkeletonRows rows={3} height="h-14" />
-          </div>
-        ) : (
-          <div className="mt-4 space-y-3.5">
-            <div className="flex items-center gap-3">
-              <PlayerPhoto
-                nbaPlayerId={data.player.nba_player_id}
-                name={data.player.full_name}
-                size={64}
-                square
-              />
-              <div className="min-w-0">
-                <div className="text-sm text-muted">
-                  {data.player.position ?? "—"}
-                  {data.player.current_team ? ` · ${data.player.current_team.abbreviation}` : ""}
-                </div>
-                {data.archetype && (
-                  <div className="mt-1.5">
-                    {/* Role labels reach 31 characters ("unclassified (no listed
-                        height)") where the retired k-means labels topped out at 18, and
-                        this Badge sits in a max-w-sm drawer, so it must be allowed to
-                        wrap rather than overflow. */}
-                    <Badge status="info" className="max-w-full whitespace-normal text-left">
-                      {data.archetype.label}
-                    </Badge>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-lg border border-hairline bg-panel2 p-2.5">
-                <StatBlock size="sm" label="Est. impact" value={tei(data.impact.tei)} note="TEI" />
-              </div>
-              <div className="rounded-lg border border-hairline bg-panel2 p-2.5">
-                <StatBlock
-                  size="sm"
-                  label="Availability"
-                  value={
-                    data.impact.availability != null
-                      ? `${(data.impact.availability * 100).toFixed(0)}%`
-                      : "—"
-                  }
-                  note="historical"
-                />
-              </div>
-            </div>
-            <div className="rounded-lg border border-hairline bg-panel2 p-2.5">
-              <div className="eyebrow text-[0.5625rem]">Contract</div>
-              <p className="mt-1 text-[12px] leading-snug text-muted">
-                <span className="data">—</span> · {CONTRACT_TOOLTIP}
-              </p>
-            </div>
-            {latest?.base && (
-              <div className="rounded-lg border border-hairline bg-panel2 p-2.5">
-                <div className="eyebrow text-[0.5625rem]">{latest.season} per game</div>
-                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
-                  {(["PTS", "REB", "AST", "STL", "BLK"] as const).map((k) => (
-                    <span key={k} className="whitespace-nowrap text-[12px]">
-                      <span className="text-faint">{k}</span>{" "}
-                      <span className="data text-foreground">
-                        {latest.base?.[k]?.toFixed(1) ?? "—"}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            <ButtonLink href={`/players/${player.id}`} size="sm" className="w-full">
-              Full player page →
-            </ButtonLink>
-            <p className="text-[11px] leading-snug text-faint">{data.impact.note}</p>
-          </div>
-        )}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        <ProjectedImpact sides={sides} isRefused={isRefused} />
+        <TeamComparison key={`tc-${resolvedTeam}`} sides={sides} activeId={resolvedTeam} />
+        <PlayerComparison
+          key={`pc-${resolvedTeam}`}
+          sides={sides}
+          activeId={resolvedTeam}
+          playerIndex={playerIndex}
+          originOf={originOf}
+        />
+        <Insights sides={sides} activeId={resolvedTeam} onSelect={setActiveTeam} />
       </div>
-    </div>
+
+      <h3 className="mb-3 mt-8 text-[1.15rem] font-semibold text-foreground">Before, the move, and after</h3>
+      <ConsequenceSheet
+        sides={sides}
+        isRefused={isRefused}
+        active={resolvedTeam}
+        onSelect={selectAndReveal}
+      />
+
+      <section
+        id="team-perspective"
+        aria-labelledby="perspective-title"
+        className="panel mt-6 overflow-hidden"
+        style={{ "--edge": identity.bright } as React.CSSProperties}
+      >
+        <div className="px-5 pt-5">
+          <div className="eyebrow flex items-center gap-2">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: identity.bright }} />
+            Team perspective · every number scored from this side
+          </div>
+          <h3 id="perspective-title" className="mt-2 font-serif text-[2rem] leading-none text-foreground">
+            {team?.full_name ?? identity.name}, in full
+          </h3>
+          <div className="mt-4">
+            <Tabs
+              ariaLabel="Team perspective"
+              active={resolvedTeam}
+              onChange={setActiveTeam}
+              tabs={sides.map((s) => ({ id: s.teamId, label: s.name }))}
+            />
+          </div>
+        </div>
+        <div className="p-5">
+          <TeamPerspective
+            key={resolvedTeam}
+            evaluation={teamEval}
+            abbreviation={identity.abbreviation}
+            refused={teamEval.decision_status === "suppressed_illegal"}
+            teamAbbreviations={teamAbbreviations}
+            refusalClosing="Fix the rule failures above and evaluate again."
+            precedent={
+              <PrecedentTab
+                focalTeamId={resolvedTeam}
+                teamIds={teamIds}
+                playerMoves={playerMoves}
+                pickMoves={pickMoves}
+              />
+            }
+          />
+          <div className="mt-2">
+            {/* Two different timestamps: when this evaluation ran, and how old the data under it is.
+                A fresh evaluation says nothing about the freshness of its inputs. */}
+            <SourceRail
+              source="Pivot evaluation model over ingested NBA data"
+              extra={
+                <>
+                  <span aria-hidden>·</span>
+                  <span>Evaluated {formatDate(teamEval.evaluated_at)}</span>
+                  <span aria-hidden>·</span>
+                  <span>
+                    Input data: {inputs.season ? `${inputs.season} season stats` : "season stats"}, roster
+                    snapshot {inputs.rosterAsOf ? formatDate(inputs.rosterAsOf) : "date unavailable"}, cap year{" "}
+                    {evaluation.legality.league_year}
+                  </span>
+                </>
+              }
+            />
+          </div>
+        </div>
+      </section>
+    </section>
   );
 }

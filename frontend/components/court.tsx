@@ -1,12 +1,13 @@
 /**
  * Court geometry as product furniture.
  *
- * Every shape here is real basketball geometry used for a functional purpose —
- * the half-court frames the hero, the key holds a verdict, the lane carries
- * assets between teams. None of it is decorative filler.
+ * Every shape here is real basketball geometry used for a functional purpose — the
+ * half-court frames an empty state, the free-throw key holds a verdict, the lane carries
+ * assets between teams. It is drawn the way a coach draws it on a whiteboard: fine chalk
+ * lines, one mint stroke where something is live, nothing filled in.
  */
 
-/** Half-court in true proportions (50ft wide × 47ft deep), drawn as line art. */
+/** Half-court in true proportions (50ft wide × 47ft deep), drawn as fine chalk line art. */
 export function HalfCourt({ className }: { className?: string }) {
   return (
     <svg
@@ -16,30 +17,38 @@ export function HalfCourt({ className }: { className?: string }) {
       fill="none"
       preserveAspectRatio="xMidYMax meet"
     >
-      <g stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke">
+      <g
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      >
         {/* sidelines + baseline */}
-        <rect x="1" y="1" width="498" height="468" opacity="0.35" />
-        {/* the key (16ft lane) + free-throw circle */}
-        <rect x="170" y="310" width="160" height="159" opacity="0.6" />
-        <circle cx="250" cy="310" r="60" opacity="0.6" />
-        {/* restricted arc + rim */}
-        <path d="M210 449a40 40 0 0 0 80 0" opacity="0.5" />
-        <circle cx="250" cy="440" r="9" opacity="0.75" />
-        <line x1="220" y1="455" x2="280" y2="455" opacity="0.75" />
+        <rect x="1" y="1" width="498" height="468" rx="2" opacity="0.4" />
+        {/* the key (16ft lane), free-throw circle — its far half dashed, as on the floor */}
+        <rect x="170" y="310" width="160" height="159" opacity="0.7" />
+        <path d="M190 310a60 60 0 0 1 120 0" opacity="0.7" />
+        <path d="M190 310a60 60 0 0 0 120 0" opacity="0.45" strokeDasharray="6 7" />
+        {/* lane hash marks */}
+        <path d="M170 380h-8M170 410h-8M170 440h-8M330 380h8M330 410h8M330 440h8" opacity="0.5" />
+        {/* restricted arc, rim and backboard */}
+        <path d="M210 449a40 40 0 0 1 80 0" opacity="0.55" />
+        <circle cx="250" cy="440" r="7.5" opacity="0.8" />
+        <line x1="226" y1="455" x2="274" y2="455" opacity="0.8" />
         {/* three-point line: corners then arc */}
         <path d="M30 469V330" opacity="0.6" />
         <path d="M470 469V330" opacity="0.6" />
-        <path d="M30 330a222 222 0 0 0 440 0" opacity="0.6" />
-        {/* half-court arc */}
-        <path d="M130 1a120 120 0 0 0 240 0" opacity="0.3" />
+        <path d="M30 330a222 222 0 0 1 440 0" opacity="0.6" />
+        {/* centre-court arc */}
+        <path d="M190 1a60 60 0 0 0 120 0" opacity="0.35" />
       </g>
     </svg>
   );
 }
 
 /**
- * The free-throw key, used as a container shape for headline verdicts.
- * Renders as a trapezoid-topped block with the semicircle implied by a border.
+ * The free-throw key, used as a container shape for headline verdicts: a fine chalk arc
+ * sits on the top edge of the block like the top of the key, in the verdict's colour.
  */
 export function KeyFrame({
   children,
@@ -52,29 +61,25 @@ export function KeyFrame({
 }) {
   return (
     <div className={`relative ${className ?? ""}`}>
-      <span
-        aria-hidden
-        className="absolute inset-x-0 -top-px mx-auto h-px w-2/3"
-        style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }}
-      />
-      <span
-        aria-hidden
-        className="absolute -top-2.5 left-1/2 h-5 w-5 -translate-x-1/2 rounded-full border"
-        style={{ borderColor: accent, background: "var(--arena)" }}
-      />
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 -top-px flex justify-center">
+        <svg viewBox="0 0 96 14" className="h-[14px] w-[96px]" fill="none">
+          <path d="M8 0.5a40 13 0 0 0 80 0" stroke={accent} strokeOpacity="0.6" strokeWidth="1" />
+        </svg>
+      </span>
       {children}
     </div>
   );
 }
 
 /**
- * The transaction lane: the strip between two team workspaces that carries
- * assets. Direction is encoded by arrow heads AND by label text, never by
- * color alone.
+ * The transaction lane: the strip between two team workspaces that carries assets. Drawn
+ * as a chalk centre line through a centre circle; the circle's dot turns mint while assets
+ * are crossing. Direction is encoded by the arrow heads AND by the label text beside the
+ * lane, never by colour alone.
  */
 export function TransactionLane({
   leftColor = "var(--signal)",
-  rightColor = "var(--leather)",
+  rightColor = "var(--series-b)",
   active = false,
   orientation = "horizontal",
   className,
@@ -85,35 +90,48 @@ export function TransactionLane({
   orientation?: "horizontal" | "vertical";
   className?: string;
 }) {
+  const ring = active ? "var(--signal)" : "var(--chalk-faint)";
   if (orientation === "vertical") {
     return (
       <svg viewBox="0 0 40 120" className={className} aria-hidden fill="none">
-        <line x1="20" y1="0" x2="20" y2="120" stroke="var(--hairline)" strokeWidth="1" />
-        <circle cx="20" cy="60" r="13" stroke="var(--hairline)" strokeWidth="1" fill="var(--arena)" />
-        <circle cx="20" cy="60" r="3" fill={active ? "var(--signal)" : "var(--hairline)"} />
-        <path d="M20 16v14m0 0-5-5m5 5 5-5" stroke={rightColor} strokeWidth="2" strokeLinecap="round" />
-        <path d="M20 104V90m0 0-5 5m5-5 5 5" stroke={leftColor} strokeWidth="2" strokeLinecap="round" />
+        <line x1="20" y1="2" x2="20" y2="118" stroke="var(--hairline)" strokeWidth="1" />
+        <circle cx="20" cy="60" r="12" stroke={ring} strokeOpacity={active ? 0.8 : 0.45} strokeWidth="1" fill="var(--court-black)" />
+        <circle cx="20" cy="60" r="2.5" fill={active ? "var(--signal)" : "var(--chalk-faint)"} opacity={active ? 1 : 0.6} />
+        <path
+          d="M14 18v18m0 0-3.5-3.5M14 36l3.5-3.5"
+          stroke={rightColor}
+          strokeWidth="1.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M26 102V84m0 0-3.5 3.5M26 84l3.5 3.5"
+          stroke={leftColor}
+          strokeWidth="1.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     );
   }
   return (
     <svg viewBox="0 0 120 44" className={className} aria-hidden fill="none">
-      <line x1="0" y1="22" x2="120" y2="22" stroke="var(--hairline)" strokeWidth="1" />
-      <circle cx="60" cy="22" r="14" stroke="var(--hairline)" strokeWidth="1" fill="var(--arena)" />
-      <circle cx="60" cy="22" r="3.5" fill={active ? "var(--signal)" : "var(--hairline)"} />
+      <line x1="2" y1="22" x2="118" y2="22" stroke="var(--hairline)" strokeWidth="1" />
+      <circle cx="60" cy="22" r="12" stroke={ring} strokeOpacity={active ? 0.8 : 0.45} strokeWidth="1" fill="var(--court-black)" />
+      <circle cx="60" cy="22" r="2.5" fill={active ? "var(--signal)" : "var(--chalk-faint)"} opacity={active ? 1 : 0.6} />
       {/* rightward path */}
       <path
-        d="M78 14h22m0 0-6-5m6 5-6 5"
+        d="M78 15h22m0 0-4-3.5m4 3.5-4 3.5"
         stroke={rightColor}
-        strokeWidth="2"
+        strokeWidth="1.25"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       {/* leftward path */}
       <path
-        d="M42 30H20m0 0 6-5m-6 5 6 5"
+        d="M42 29H20m0 0 4-3.5M20 29l4 3.5"
         stroke={leftColor}
-        strokeWidth="2"
+        strokeWidth="1.25"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -125,37 +143,23 @@ export function TransactionLane({
 export function BallGlyph({ size = 16, className }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden fill="none">
-      <circle cx="12" cy="12" r="10.5" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M12 1.5v21M1.5 12h21" stroke="currentColor" strokeWidth="1.2" opacity="0.75" />
+      <circle cx="12" cy="12" r="10.25" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M12 1.75v20.5M1.75 12h20.5" stroke="currentColor" strokeWidth="1" opacity="0.7" />
       <path
-        d="M4.5 4.5c4 3.2 4 12 0 15M19.5 4.5c-4 3.2-4 12 0 15"
+        d="M4.6 4.6c3.9 3.2 3.9 11.6 0 14.8M19.4 4.6c-3.9 3.2-3.9 11.6 0 14.8"
         stroke="currentColor"
-        strokeWidth="1.2"
-        opacity="0.75"
+        strokeWidth="1"
+        opacity="0.7"
       />
     </svg>
   );
 }
 
-/** Shot-chart scatter used only where "where the value comes from" is the point. */
+/**
+ * Retired. Pivot has no shot-location data, so a shot-chart scatter would present an
+ * invented distribution as basketball fact. The export is kept so an old import still
+ * compiles; it draws nothing.
+ */
 export function ShotChartMotif({ className }: { className?: string }) {
-  const dots = [
-    [250, 430, 5], [190, 415, 4], [310, 418, 4], [140, 380, 3], [360, 384, 3],
-    [250, 350, 4], [205, 330, 3], [295, 332, 3], [60, 430, 3], [440, 430, 3],
-    [120, 300, 2.5], [380, 302, 2.5], [250, 268, 3], [170, 258, 2], [330, 260, 2],
-  ];
-  return (
-    <svg viewBox="0 0 500 470" className={className} aria-hidden fill="none">
-      {dots.map(([x, y, r], i) => (
-        <circle
-          key={i}
-          cx={x}
-          cy={y}
-          r={r}
-          fill="currentColor"
-          opacity={0.15 + (i % 5) * 0.12}
-        />
-      ))}
-    </svg>
-  );
+  return <svg viewBox="0 0 500 470" className={className} aria-hidden fill="none" />;
 }

@@ -1,33 +1,32 @@
 import type { Metadata } from "next";
-import { Archivo, Barlow_Condensed, IBM_Plex_Mono } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { AppNav, AppFooter } from "@/components/shell";
+import { AppShell } from "@/components/shell";
 import { ToastProvider } from "@/components/toast";
 
-/** Three typographic roles: condensed athletic display (jersey/scoreboard),
- *  a grotesque for interface text, and tabular mono for box-score data. */
-const display = Barlow_Condensed({
-  variable: "--font-barlow-condensed",
+/** One application voice: Inter — a calm, normal-width, slightly rounded sans — for headings,
+ *  navigation, controls, names, tables, figures and chart labels. Hierarchy comes from size,
+ *  weight and spacing, not from competing display faces. Inter is a practical stand-in for the
+ *  OpenAI Sans look we were pointed at (no licensed OpenAI Sans asset is available to Pivot); it
+ *  is served by next/font from Google Fonts under the SIL Open Font License 1.1 (see
+ *  docs/redesign/THIRD_PARTY_NOTICES.md). Geist Mono is kept only where something is code. The
+ *  Pivot logo is an image and is unaffected. */
+const sans = Inter({
+  variable: "--font-sans-app",
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
   display: "swap",
 });
-const sans = Archivo({
-  variable: "--font-archivo",
+const mono = Geist_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-const mono = IBM_Plex_Mono({
-  variable: "--font-plex-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Pivot — Basketball Intelligence for Better Decisions",
+  // One convention: the homepage is exactly "Pivot"; every tool renders "Pivot - <Tool>" through
+  // the template, from the `metadata` its own route (or route layout) exports.
+  title: { default: "Pivot", template: "Pivot - %s" },
   description:
     "Understand a roster, find what it is missing, test a move, and read why — on real NBA data, with every number traced to how it was produced and what it cannot support.",
 };
@@ -36,22 +35,18 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html
       lang="en"
-      className={`${display.variable} ${sans.variable} ${mono.variable} h-full antialiased`}
+      className={`${sans.variable} ${mono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">
+      <body className="min-h-full">
         <Providers>
           <ToastProvider>
             <a
               href="#main"
-              className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-[100] focus:rounded-md focus:bg-signal focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-court"
+              className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-[100] focus:rounded-md focus:bg-volt focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-ink"
             >
               Skip to content
             </a>
-            <AppNav />
-            <main id="main" className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 lg:px-8">
-              {children}
-            </main>
-            <AppFooter />
+            <AppShell>{children}</AppShell>
           </ToastProvider>
         </Providers>
       </body>

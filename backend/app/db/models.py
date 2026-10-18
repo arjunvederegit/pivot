@@ -513,14 +513,15 @@ class PlayerImpactEstimate(Base, TimestampMixin):
     player_id: Mapped[str] = mapped_column(ForeignKey("players.id"), index=True)
     season: Mapped[str] = mapped_column(String(10), index=True)
     model_version_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id"))
-    #: Pivot Estimated Impact, per-100 scale. The acronym predates the renames from
+    #: Pivot Estimated Impact — a unitless index (weighted z-score composite × 2.5), not
+    #: points per 100 possessions. The acronym predates the renames from
     #: TradeLab and is kept because it names this column and every API field built on
     #: it; see `analytics/impact.py`.
     tei: Mapped[float] = mapped_column(Float)
     tei_offense: Mapped[float | None] = mapped_column(Float)
     tei_defense: Mapped[float | None] = mapped_column(Float)
-    tei_low: Mapped[float | None] = mapped_column(Float)  # bootstrap 10th percentile
-    tei_high: Mapped[float | None] = mapped_column(Float)  # bootstrap 90th percentile
+    tei_low: Mapped[float | None] = mapped_column(Float)  # analytic 10th percentile band
+    tei_high: Mapped[float | None] = mapped_column(Float)  # analytic 90th percentile band
     availability: Mapped[float | None] = mapped_column(Float)  # 0..1 weighted GP share
     minutes_estimate: Mapped[float | None] = mapped_column(Float)
     inputs: Mapped[dict] = mapped_column(JSON, default=dict)

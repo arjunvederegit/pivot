@@ -234,7 +234,16 @@ def test_the_distance_form_seam_is_reachable_from_rank(corpus):
 
 
 def test_the_fast_distance_equals_the_full_one(corpus):
-    """The fast path must be the same arithmetic, not an approximation of it."""
+    """The fast path must be the same arithmetic, not an approximation of it.
+
+    "Same" is to floating-point rounding, not to the last bit: `compare` totals its weighted
+    terms with the builtin `sum()`, which Python 3.12 made compensated (Neumaier) and 3.11 did
+    not, while the fast path accumulates with `+=`. The two therefore agree bit-for-bit on 3.11
+    and can differ by one unit in the last place on 3.12 (CI), e.g. 0.41885331753121824 vs
+    0.4188533175312183. A relative bound of 1e-12 is thousands of times that difference and
+    still far tighter than any ranking or validation threshold; a genuine change of arithmetic
+    (a dropped term, a different weighting) moves the distance by orders of magnitude more.
+    """
     from app.analytics.comparables import compare, distance_between, robust_scales
 
     scales = robust_scales(corpus)
@@ -245,7 +254,7 @@ def test_the_fast_distance_equals_the_full_one(corpus):
                 continue
             assert distance_between(
                 query.features(), other.features(), scales
-            ) == compare(query, other, scales).distance
+            ) == pytest.approx(compare(query, other, scales).distance, rel=1e-12, abs=0)
             checked += 1
     assert checked > 0
 

@@ -37,9 +37,20 @@ export function payrollDisclosure(
   return { kind: "unavailable", value: "—", note: "not imported" };
 }
 
+/**
+ * The backend stores every timestamp in UTC but some endpoints serialise it without an
+ * offset, and `new Date()` reads an offset-less ISO date-time as LOCAL time — so one sync
+ * rendered as two different times on the same screen. Offset-less date-times are marked
+ * as UTC before parsing; anything with `Z` / `±hh:mm`, or a bare date, is left alone.
+ */
+export function asUtc(iso: string): string {
+  if (!/T\d{2}:\d{2}/.test(iso)) return iso;
+  return /(Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? iso : `${iso}Z`;
+}
+
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "unknown";
-  const d = new Date(iso);
+  const d = new Date(asUtc(iso));
   return d.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
@@ -172,14 +183,16 @@ export const NEED_LABEL: Record<string, string> = {
  * two, so the vocabulary is now large enough to name properly.
  */
 export const SKILL_LABEL: Record<string, string> = {
-  shooting_volume: "3PT volume",
+  // Matched to the server's vocabulary (/intelligence/vocabulary) so a skill has one name
+  // everywhere it appears.
+  shooting_volume: "Shooting volume",
   shooting_accuracy: "Shooting accuracy",
-  creation: "Creation",
+  creation: "Shot creation",
   turnover_avoidance: "Ball security",
-  team_defense: "Overall defense",
+  team_defense: "Team defense",
   rim_protection: "Rim protection",
   rebounding: "Rebounding",
-  size: "Size",
+  size: "Positional size",
   scoring: "Scoring",
 };
 
@@ -189,7 +202,9 @@ export const COMPONENT_LABEL: Record<string, string> = {
   contract: "Contract value",
   timeline: "Competitive window",
   assets: "Flexibility & future value",
-  risk: "Downside risk",
+  // Higher is better on every component, including this one (less availability exposure),
+  // so it is named for what a high score means.
+  risk: "Downside protection",
 };
 
 export const COMPONENT_EXPLAIN: Record<string, string> = {
@@ -198,7 +213,7 @@ export const COMPONENT_EXPLAIN: Record<string, string> = {
   contract: "Salary paid vs estimated on-court value (needs contract data).",
   timeline: "How player ages align with the team's competitive window and strategy.",
   assets: "Draft capital, payroll flexibility and roster optionality gained or lost.",
-  risk: "Availability history and the share of simulations where the deal helps.",
+  risk: "Availability exposure: games-played availability of the minutes arriving vs leaving — higher means the deal sheds games-missed risk.",
 };
 
 /**

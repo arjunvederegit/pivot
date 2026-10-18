@@ -44,6 +44,7 @@ export function TeamLogo({
   size = 32,
   className,
   decorative = false,
+  onLight = false,
 }: {
   abbreviation: string | null | undefined;
   name?: string;
@@ -51,6 +52,8 @@ export function TeamLogo({
   className?: string;
   /** True when an adjacent label already names the team. */
   decorative?: boolean;
+  /** The logo sits on a light surface (a team card), so it needs no keyline. */
+  onLight?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const manifest = useAssetManifest();
@@ -67,7 +70,7 @@ export function TeamLogo({
         aria-label={decorative ? undefined : `${label} crest`}
         aria-hidden={decorative || undefined}
         className={clsx(
-          "numeral flex shrink-0 items-center justify-center rounded-md",
+          "numeral flex shrink-0 items-center justify-center rounded-sm",
           className,
         )}
         style={{
@@ -93,7 +96,12 @@ export function TeamLogo({
       height={size}
       loading="lazy"
       decoding="async"
-      className={clsx("shrink-0 object-contain", className)}
+      // The backend serves transparent artwork (opaque sources are normalised on index), so
+      // the logo is drawn as-is and never stretched. Many marks are drawn with black outlines
+      // and wordmarks that vanish on a dark ground, so on dark surfaces `.logo-keyline` adds a
+      // one-pixel white keyline around the artwork — colours untouched, no plate behind it.
+      // On a light surface (a team card) the artwork needs nothing.
+      className={clsx("shrink-0 object-contain", !onLight && "logo-keyline", className)}
       style={{ width: size, height: size }}
       onError={() => setFailed(true)}
     />
@@ -153,18 +161,34 @@ export function PlayerPhoto({
       .filter(Boolean)
       .slice(0, 2)
       .join("");
+    // No headshot on file: a player silhouette at portrait sizes, initials at row sizes
+    // (where a silhouette would be an unreadable smudge). Either way it reads as "no photo",
+    // never as somebody else's face.
+    const portrait = size >= 48;
     return (
       <span
         role="img"
         aria-label={`${name} — no photo available`}
         className={clsx(
-          "numeral flex shrink-0 items-center justify-center bg-panel3 text-muted",
+          "relative flex shrink-0 items-center justify-center overflow-hidden border border-hairline bg-gradient-to-b from-panel3 to-panel2 text-muted",
           shape,
           className,
         )}
-        style={{ width: size, height: size, fontSize: size * 0.38 }}
+        style={{ width: size, height: size, fontSize: Math.max(10, size * 0.34) }}
       >
-        {initials}
+        {portrait ? (
+          <>
+            <svg viewBox="0 0 64 64" className="absolute inset-x-0 bottom-0 h-[88%] w-full text-[#4a4a50]" aria-hidden>
+              <circle cx="32" cy="24" r="11" fill="currentColor" />
+              <path d="M10 64c1.5-14 10.5-22 22-22s20.5 8 22 22Z" fill="currentColor" />
+            </svg>
+            <span className="numeral relative mt-auto mb-[8%] text-[0.42em] tracking-[0.06em] text-muted">
+              {initials}
+            </span>
+          </>
+        ) : (
+          <span className="numeral">{initials}</span>
+        )}
       </span>
     );
   }

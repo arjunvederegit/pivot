@@ -65,6 +65,10 @@ class RosterPlayerOut(BaseModel):
     height_inches: int | None = None
     years_experience: int | None = None
     tei: float | None = None
+    #: The estimate's 10th/90th percentile band. Served beside the point because the model
+    #: card excludes any use that strips it; None exactly when `tei` is None.
+    tei_low: float | None = None
+    tei_high: float | None = None
     archetype: str | None = None
     availability: float | None = None
     # Contract facts for the cap league year. All three are None when unknown — the
