@@ -70,7 +70,7 @@ const COMPARE_MAX = 4;
 const COMPARE_MIN = 2;
 
 const CONTROL =
-  "h-9 w-full rounded-lg border border-line bg-panel2 px-3 text-[13.5px] text-foreground placeholder:text-faint transition-colors hover:border-[#3a433f] focus:border-signal/60";
+  "h-9 w-full rounded-lg border border-line bg-panel2 px-3 text-[13.5px] text-foreground placeholder:text-faint transition-colors hover:border-[#4a4a50] focus:border-signal/60";
 
 export default function PlayerExplorerPage() {
   return (

@@ -46,12 +46,13 @@ import type {
   TeamEvaluation,
   TradeDetail,
 } from "@/lib/types";
-import { TransactionLane } from "@/components/court";
 import { PrecedentTab } from "@/components/evaluation-tabs";
-import { TeamLogo } from "@/components/media";
+import { IconBookmark, IconMore } from "@/components/icons";
+import { TeamGrid } from "@/components/team-card";
 import { useToast } from "@/components/toast";
 import { DealLedger, RulesCheck, RunIt } from "@/components/trade/desk";
 import { PlayerDrawer } from "@/components/trade/drawer";
+import { Insights, PlayerComparison, ProjectedImpact, TeamComparison } from "@/components/trade/overview";
 import { TeamPerspective } from "@/components/trade/perspective";
 import { SectionHead } from "@/components/trade/section-head";
 import { ConsequenceSheet, type SheetAsset, type SheetSide } from "@/components/trade/sheet";
@@ -66,7 +67,7 @@ import {
 import { Badge, Button, PageHeader, Skeleton, SourceRail, Tabs } from "@/components/ui";
 
 const LEDE =
-  "Build a two- or three-team deal, watch the rules check run live on the backend, then see what it does to every side — before, the move, and after.";
+  "Build a two- or three-team deal, check it against the rules, and see what it does to every side — before, the move, and after.";
 
 /** After an evaluation lands, bring its first line into view (instantly under reduced motion). */
 function revealResults() {
@@ -91,13 +92,11 @@ export default function TradeEvaluatorPage() {
 function BuilderSkeleton() {
   return (
     <div role="status" aria-label="Loading the Trade Evaluator">
-      <PageHeader eyebrow="Test the move" title="Trade Evaluator" lede={LEDE} />
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-        <Skeleton className="h-[420px] rounded-xl" />
-        <div className="flex items-center justify-center py-1 lg:min-h-[27rem] lg:px-1">
-          <TransactionLane className="h-11 w-24" />
-        </div>
-        <Skeleton className="h-[420px] rounded-xl" />
+      <PageHeader eyebrow="Trade Evaluator" title="Trade Analysis" lede={LEDE} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)]">
+        <Skeleton className="h-[420px] rounded-md" />
+        <div aria-hidden />
+        <Skeleton className="h-[420px] rounded-md" />
       </div>
     </div>
   );
@@ -399,17 +398,34 @@ function TradeEvaluator() {
   return (
     <div className="pb-24 lg:pb-0">
       <PageHeader
-        eyebrow="Test the move"
-        title="Trade Evaluator"
+        eyebrow="Trade Evaluator"
+        title="Trade Analysis"
         lede={LEDE}
         actions={
-          <TeamPicker
-            teams={loaded}
-            selected={teamIds}
-            onAdd={addTeam}
-            open={pickerOpen}
-            setOpen={setPickerOpen}
-          />
+          <>
+            <TeamPicker
+              teams={loaded}
+              selected={teamIds}
+              onAdd={addTeam}
+              open={pickerOpen}
+              setOpen={setPickerOpen}
+            />
+            <Button
+              variant="secondary"
+              disabled={!hasMoves || saveTrade.isPending}
+              title={hasMoves ? "Save this deal as a scenario" : "Move a player to save a scenario"}
+              onClick={() => saveTrade.mutate()}
+            >
+              <IconBookmark size={16} />
+              {saveTrade.isPending ? "Saving…" : "Save Scenario"}
+            </Button>
+            <DealMenu
+              disabled={teamIds.length < 2 || !hasMoves}
+              onCopy={copyShareLink}
+              onMemo={() => memo.mutate()}
+              memoPending={memo.isPending}
+            />
+          </>
         }
         meta={
           <>
@@ -542,6 +558,7 @@ function TradeEvaluator() {
             playerMoves={playerMoves}
             pickMoves={picks}
             playerIndex={playerIndex}
+            originOf={originOf}
           />
         )}
       </div>
@@ -610,6 +627,84 @@ function TradeEvaluator() {
   );
 }
 
+/* ---------------------------------------------------------------- deal menu */
+
+/** The ⋯ menu beside Save Scenario: the two ways a deal leaves the page. */
+function DealMenu({
+  disabled,
+  onCopy,
+  onMemo,
+  memoPending,
+}: {
+  disabled: boolean;
+  onCopy: () => void;
+  onMemo: () => void;
+  memoPending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(event: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <div ref={boxRef} className="relative">
+      <Button
+        variant="secondary"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="More actions"
+        disabled={disabled}
+        className="px-3"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <IconMore size={18} />
+      </Button>
+      {open && (
+        <div
+          role="menu"
+          className="fade-in absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-md border border-line bg-arena py-1 shadow-[var(--shadow-pop)]"
+        >
+          <button
+            role="menuitem"
+            type="button"
+            className="block w-full px-3.5 py-2 text-left text-[13px] text-foreground transition-colors hover:bg-panel3"
+            onClick={() => {
+              setOpen(false);
+              onCopy();
+            }}
+          >
+            Copy share link
+          </button>
+          <button
+            role="menuitem"
+            type="button"
+            disabled={memoPending}
+            className="block w-full px-3.5 py-2 text-left text-[13px] text-foreground transition-colors hover:bg-panel3 disabled:opacity-50"
+            onClick={() => {
+              setOpen(false);
+              onMemo();
+            }}
+          >
+            {memoPending ? "Building memo…" : "Open memo"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* -------------------------------------------------------------- team picker */
 
 function TeamPicker({
@@ -672,7 +767,7 @@ function TeamPicker({
         title={full ? "A trade can involve at most three teams" : "Add a team to the trade"}
         onClick={() => setOpen(!open)}
       >
-        <span aria-hidden className="text-[16px] leading-none text-signal">
+        <span aria-hidden className="text-[16px] leading-none">
           +
         </span>
         {full ? "Max 3 teams" : "Add team"}
@@ -704,36 +799,24 @@ function TeamPicker({
                 No team matches “{query}”.
               </p>
             ) : (
-              <ul className="grid grid-cols-4 gap-1.5 sm:grid-cols-5">
-                {options.map((team) => {
-                  const taken = selected.includes(team.id);
-                  return (
-                    <li key={team.id}>
-                      <button
-                        type="button"
-                        disabled={taken}
-                        aria-label={
-                          taken
-                            ? `${team.full_name} is already in this trade`
-                            : `Add ${team.full_name} to the trade`
-                        }
-                        title={team.full_name}
-                        onClick={() => {
-                          onAdd(team.id);
-                          setOpen(false);
-                          setQuery("");
-                        }}
-                        className="hover-frame flex w-full flex-col items-center gap-1.5 rounded-lg border border-hairline bg-panel2/60 px-1 py-2.5 disabled:pointer-events-none disabled:opacity-30"
-                      >
-                        <TeamLogo abbreviation={team.abbreviation} size={26} decorative />
-                        <span className="numeral text-[12px] leading-none text-muted">
-                          {team.abbreviation}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              <TeamGrid
+                teams={options}
+                grouped={false}
+                columns="grid-cols-4 sm:grid-cols-5"
+                size="sm"
+                selectedIds={selected}
+                disabledIds={selected}
+                onSelect={(team) => {
+                  onAdd(team.id);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                ariaLabelFor={(team, { disabled }) =>
+                  disabled
+                    ? `${team.full_name} is already in this trade`
+                    : `Add ${team.full_name} to the trade`
+                }
+              />
             )}
           </div>
           <p className="border-t border-hairline px-4 py-2.5 text-[12px] text-faint">
@@ -754,6 +837,7 @@ function EvaluationSection({
   playerMoves,
   pickMoves,
   playerIndex,
+  originOf,
 }: {
   evaluation: { legality: LegalityResponse; evaluations: Record<string, TeamEvaluation> };
   teams: Team[];
@@ -761,6 +845,7 @@ function EvaluationSection({
   playerMoves: PlayerMove[];
   pickMoves: PickMove[];
   playerIndex: Record<string, RosterPlayer>;
+  originOf: Record<string, string>;
 }) {
   const [activeTeam, setActiveTeam] = useState(teamIds[0]);
   const resolvedTeam = evaluation.evaluations[activeTeam] ? activeTeam : teamIds[0];
@@ -820,6 +905,8 @@ function EvaluationSection({
       };
     });
 
+  const isRefused = (ev: TeamEvaluation) => ev.decision_status === "suppressed_illegal";
+
   function selectAndReveal(teamId: string) {
     setActiveTeam(teamId);
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -837,9 +924,23 @@ function EvaluationSection({
         aside="Where each team stands before the deal, what it gives and gets, and where the model projects it after — every side on the same wins scale."
       />
 
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        <ProjectedImpact sides={sides} isRefused={isRefused} />
+        <TeamComparison key={`tc-${resolvedTeam}`} sides={sides} activeId={resolvedTeam} />
+        <PlayerComparison
+          key={`pc-${resolvedTeam}`}
+          sides={sides}
+          activeId={resolvedTeam}
+          playerIndex={playerIndex}
+          originOf={originOf}
+        />
+        <Insights sides={sides} activeId={resolvedTeam} onSelect={setActiveTeam} />
+      </div>
+
+      <h3 className="mb-3 mt-8 text-[1.15rem] font-semibold text-foreground">Before, the move, and after</h3>
       <ConsequenceSheet
         sides={sides}
-        isRefused={(ev) => ev.decision_status === "suppressed_illegal"}
+        isRefused={isRefused}
         active={resolvedTeam}
         onSelect={selectAndReveal}
       />

@@ -33,7 +33,6 @@ import {
   observeStatus,
   testStatus,
 } from "@/components/command/workflow";
-import { ArenaScene } from "@/components/home/arena-hero";
 import { NeedAnswers, TeamIntelligence } from "@/components/home/team-intelligence";
 import { useToast } from "@/components/toast";
 import { ButtonLink } from "@/components/ui";
@@ -99,40 +98,23 @@ export default function HomePage() {
   return (
     <div>
       {/* ------------------------------------------------------------------ hero */}
-      <section aria-labelledby="home-title" className="relative isolate overflow-hidden border-b border-hairline">
-        <ArenaScene className="absolute inset-0 -z-20 h-full w-full" />
-        <div
-          aria-hidden
-          className="absolute inset-0 -z-10 bg-gradient-to-r from-ink via-ink/70 to-transparent lg:via-ink/55"
-        />
-        <div aria-hidden className="absolute inset-x-0 bottom-0 -z-10 h-28 bg-gradient-to-t from-ink to-transparent" />
-        <div aria-hidden className="absolute inset-x-0 top-0 -z-10 h-24 bg-gradient-to-b from-ink/70 to-transparent" />
-        {/* Phones: the scene crops to its centre, which puts the scoreboard behind the
-            headline — fade the upper half so the type sits on clean dark. */}
-        <div
-          aria-hidden
-          className="absolute inset-x-0 top-0 -z-10 h-[62%] bg-gradient-to-b from-ink via-ink/85 to-transparent lg:hidden"
-        />
-
-        <div className="mx-auto grid w-full max-w-[1480px] items-end gap-10 px-4 pb-12 pt-14 sm:px-6 lg:min-h-[560px] lg:grid-cols-[minmax(0,1fr)_380px] lg:px-10 lg:pb-16 lg:pt-24">
-          <div className="min-w-0 max-w-2xl">
-            <div className="eyebrow flex items-center gap-2 text-muted">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-signal" />
-              Pivot{health ? ` · ${health.current_season} season` : ""}
-            </div>
+      <section aria-labelledby="home-title" className="border-b border-hairline">
+        <div className="mx-auto grid w-full max-w-[1560px] items-end gap-8 px-4 pb-8 pt-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8 lg:pb-9 lg:pt-9">
+          <div className="min-w-0 max-w-3xl">
+            <div className="eyebrow text-faint">Pivot{health ? ` · ${health.current_season} season` : ""}</div>
             <h1
               id="home-title"
-              className="mt-5 font-serif text-[clamp(2.75rem,1.6rem+4.2vw,5.4rem)] leading-[0.98] tracking-[-0.015em] text-foreground"
+              className="mt-2.5 font-serif text-[clamp(2.2rem,1.5rem+2.2vw,3.5rem)] font-medium leading-[1.04] tracking-[-0.018em] text-foreground"
             >
               Sharper decisions.
               <br />
-              <span className="italic text-signal">Better basketball.</span>
+              <span className="italic text-muted">Better basketball.</span>
             </h1>
-            <p className="mt-6 max-w-lg text-[17px] leading-relaxed text-muted">
+            <p className="mt-3.5 max-w-xl text-[14.5px] leading-relaxed text-muted">
               Basketball intelligence for the decisions that shape winning — every number traced to
               the data it came from.
             </p>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
+            <div className="mt-5 flex flex-wrap items-center gap-2.5">
               <ButtonLink
                 href={team ? `/trade-evaluator?team=${team.id}` : "/trade-evaluator"}
                 variant="primary"
@@ -150,7 +132,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <div className="mx-auto w-full max-w-[1480px] space-y-14 px-4 py-12 sm:px-6 lg:px-10">
+      <div className="mx-auto w-full max-w-[1560px] space-y-10 px-4 py-8 sm:px-6 lg:px-8">
         {/* ------------------------------------------------------ team intelligence */}
         {team && (
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">

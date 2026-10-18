@@ -28,7 +28,7 @@ import {
 import { Button, SegmentedControl, Skeleton } from "@/components/ui";
 
 const FIELD =
-  "rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-[13px] text-foreground transition-colors placeholder:text-faint hover:border-[#3a433f] focus:border-signal/60 disabled:opacity-50";
+  "rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-[13px] text-foreground transition-colors placeholder:text-faint hover:border-[#4a4a50] focus:border-signal/60 disabled:opacity-50";
 
 const MODE_OPTIONS = [
   { value: "research", label: "Research" },

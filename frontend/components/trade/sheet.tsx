@@ -48,6 +48,8 @@ export interface TeamDetailResponse {
     conference: string | null;
     playoff_rank: number | null;
   } | null;
+  /** Measured season ratings by group ("advanced", "base"), as the backend served them. */
+  stats?: Record<string, Record<string, number>>;
 }
 
 /** Shared with the builder's workspaces, so a record is fetched once per team. */

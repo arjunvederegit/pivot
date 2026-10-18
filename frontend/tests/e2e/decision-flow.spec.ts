@@ -57,7 +57,7 @@ test("overview presents the platform with honest data status", async ({ page }) 
 
 test("renamed modules keep old links working", async ({ page }) => {
   for (const [oldPath, heading] of [
-    ["/trade-machine", "Trade Evaluator"],
+    ["/trade-machine", "Trade Analysis"],
     ["/compare", "Decision board"],
     ["/player-lab", "Player Explorer"],
   ] as const) {
@@ -126,7 +126,7 @@ test("full flow: team outlook → strategy → trade evaluator → rules → eva
   // 3. Trade Evaluator, carrying the team through (exact name: "Trade Evaluator"
   //    in the nav also matches a loose /Trade/ pattern)
   await page.getByRole("link", { name: "Start a trade", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Trade Evaluator", level: 1 })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Trade Analysis", level: 1 })).toBeVisible({
     timeout: 20_000,
   });
 

@@ -76,7 +76,7 @@ export function Composer({
           event.preventDefault();
           if (canSend) onSend();
         }}
-        className="scroll-thin block w-full resize-none rounded-lg border border-line bg-panel2 px-3.5 py-2.5 text-[14px] leading-[1.55] text-foreground transition-colors placeholder:text-faint hover:border-[#3a433f] focus:border-signal/60 disabled:cursor-not-allowed disabled:opacity-50"
+        className="scroll-thin block w-full resize-none rounded-lg border border-line bg-panel2 px-3.5 py-2.5 text-[14px] leading-[1.55] text-foreground transition-colors placeholder:text-faint hover:border-[#4a4a50] focus:border-signal/60 disabled:cursor-not-allowed disabled:opacity-50"
       />
       <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
         {/* Hidden on phones unless it explains why the box is locked; it still describes

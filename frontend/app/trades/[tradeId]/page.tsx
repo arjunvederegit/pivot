@@ -46,7 +46,7 @@ import {
 } from "@/components/ui";
 
 const REPORT_LINK =
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[13px] text-foreground transition-colors hover:border-[#3a433f] hover:bg-panel3";
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[13px] text-foreground transition-colors hover:border-[#4a4a50] hover:bg-panel3";
 
 /** Every side that is not scored gets "No decision score" — never a verdict word. */
 const notScored = (ev: TeamEvaluation) => ev.decision_status !== "scored";

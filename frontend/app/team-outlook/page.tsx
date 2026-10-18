@@ -23,7 +23,6 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { count } from "@/lib/format";
 import { useHydrated } from "@/lib/hydrated";
-import { teamIdentity } from "@/lib/teamIdentity";
 import { useFavoriteTeam } from "@/lib/favoriteTeam";
 import type { Team } from "@/lib/types";
 import { IconSearch } from "@/components/icons";
@@ -274,7 +273,6 @@ function DivisionColumn({
  * nickname ("Timberwolves") is never cut; elsewhere it sits beside it.
  */
 function TeamTile({ team, dimmed, isFavorite }: { team: Team; dimmed: boolean; isFavorite: boolean }) {
-  const identity = teamIdentity(team.abbreviation);
   return (
     <Link
       href={`/team-outlook/${team.id}`}
@@ -283,26 +281,19 @@ function TeamTile({ team, dimmed, isFavorite }: { team: Team; dimmed: boolean; i
       inert={dimmed}
       aria-hidden={dimmed || undefined}
       tabIndex={dimmed ? -1 : undefined}
-      className={clsx(
-        "panel group flex h-full min-w-0 items-center gap-2.5 rounded-[10px] px-3 py-2.5 transition-[opacity,border-color,background-color] duration-150 md:gap-3 xl:flex-col xl:items-start xl:gap-2.5 xl:py-3",
-        dimmed ? "opacity-25" : "hover-frame",
-        isFavorite && !dimmed && "border-signal/45",
-      )}
-      style={{ "--edge": identity.bright } as React.CSSProperties}
+      className={clsx("team-card team-card-row h-full", dimmed && "opacity-25")}
+      data-selected={isFavorite && !dimmed ? "true" : undefined}
       title={team.full_name}
     >
-      <TeamLogo abbreviation={team.abbreviation} name={team.full_name} size={30} decorative />
+      <TeamLogo abbreviation={team.abbreviation} name={team.full_name} size={32} decorative onLight />
       <span className="w-full min-w-0 flex-1">
-        <span className="block truncate font-serif text-[1.15rem] leading-[1.1] text-foreground transition-colors group-hover:text-signal md:text-[1.3rem] xl:text-[1.22rem] 2xl:text-[1.3rem]">
+        <span className="block truncate text-[14px] font-semibold leading-tight">
           {team.nickname ?? team.full_name}
         </span>
-        <span className="mt-1 block truncate text-[11.5px] leading-tight text-muted">
-          <span className="font-medium text-foreground/80">{team.abbreviation}</span>
-          <span aria-hidden className="text-faint">
-            {" "}
-            ·{" "}
-          </span>
-          {isFavorite ? <span className="font-medium text-signal">Your team</span> : team.city}
+        <span className="mt-0.5 block truncate text-[11.5px] leading-tight opacity-65">
+          <span className="font-semibold">{team.abbreviation}</span>
+          <span aria-hidden> · </span>
+          {isFavorite ? <span className="font-semibold">Your team</span> : team.city}
         </span>
       </span>
     </Link>

@@ -45,7 +45,7 @@ export function Panel({
       style={accent ? ({ "--edge": accent } as React.CSSProperties) : undefined}
     >
       {(title || actions) && (
-        <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-hairline px-5 py-4">
+        <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-hairline px-5 py-3.5">
           <div className="min-w-0">
             {title && <h2 className="title-md truncate text-foreground">{title}</h2>}
             {subtitle && (
@@ -81,16 +81,18 @@ export function PageHeader({
   accent?: string;
 }) {
   return (
-    <header className="relative mb-7 border-b border-hairline pb-6 lg:mb-9">
+    <header className="relative mb-6 lg:mb-7">
       <div className="relative flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="min-w-0">
           {eyebrow && (
-            <div className="eyebrow mb-3 flex items-center gap-2">
-              <span
-                aria-hidden
-                className="h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{ background: accent ?? "var(--signal)" }}
-              />
+            <div className="eyebrow mb-2.5 flex items-center gap-2 text-faint">
+              {accent && (
+                <span
+                  aria-hidden
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ background: accent }}
+                />
+              )}
               {eyebrow}
             </div>
           )}
@@ -99,12 +101,12 @@ export function PageHeader({
           {/* One step above the title-lg section headings pages use under it. */}
           <h1 className="title-xl text-balance text-foreground">{title}</h1>
           {lede && (
-            <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-muted">{lede}</p>
+            <p className="mt-2.5 max-w-3xl text-[14.5px] leading-relaxed text-muted">{lede}</p>
           )}
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {meta && <div className="relative mt-4 flex flex-wrap items-center gap-2">{meta}</div>}
+      {meta && <div className="relative mt-3.5 flex flex-wrap items-center gap-2">{meta}</div>}
     </header>
   );
 }
@@ -131,9 +133,9 @@ export function SectionLabel({
 /* ------------------------------------------------------------------ actions */
 
 const BUTTON_VARIANTS: Record<string, string> = {
-  primary: "bg-volt text-ink font-medium border border-volt hover:bg-[#9bd6b6] active:bg-volt2",
-  signal: "bg-volt text-ink font-medium border border-volt hover:bg-[#9bd6b6] active:bg-volt2",
-  secondary: "border border-line bg-panel2 text-foreground hover:bg-panel3 hover:border-[#3a433f]",
+  primary: "bg-volt text-ink font-semibold border border-volt hover:bg-white active:bg-volt2",
+  signal: "bg-volt text-ink font-semibold border border-volt hover:bg-white active:bg-volt2",
+  secondary: "border border-line bg-transparent text-foreground hover:bg-panel2 hover:border-[#55555b]",
   ghost: "border border-transparent text-muted hover:bg-panel2 hover:text-foreground",
   danger: "border border-illegal/45 bg-illegal/10 text-illegal hover:bg-illegal/20",
 };
@@ -147,7 +149,7 @@ type ButtonProps = {
 
 function buttonClass(variant: string, size: string, className?: string) {
   return clsx(
-    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg transition-[background-color,border-color,color] duration-150 disabled:cursor-not-allowed disabled:opacity-40",
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md transition-[background-color,border-color,color] duration-150 disabled:cursor-not-allowed disabled:opacity-40",
     size === "sm" ? "px-3 py-1.5 text-[13px]" : "px-4 py-2.5 text-[14px]",
     BUTTON_VARIANTS[variant] ?? BUTTON_VARIANTS.secondary,
     className,
@@ -235,7 +237,7 @@ export function Badge({
   return (
     <span
       className={clsx(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-[3px] text-[11px] font-medium leading-tight",
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-[4px] border px-2 py-[3px] text-[11px] font-medium leading-tight",
         style.className,
         className,
       )}
@@ -418,7 +420,7 @@ export function EmptyState({
   return (
     <div
       className={clsx(
-        "court-grid relative overflow-hidden rounded-lg border border-dashed border-line bg-panel px-6 py-12 text-center",
+        "relative overflow-hidden rounded-md border border-dashed border-line bg-panel px-6 py-12 text-center",
         className,
       )}
     >
@@ -431,7 +433,7 @@ export function EmptyState({
         <path d="M4 38h112M40 38V14h40v24M30 38a30 30 0 0 1 60 0" stroke="currentColor" strokeWidth="1.3" />
         <circle cx="60" cy="30" r="3" stroke="currentColor" strokeWidth="1.3" />
       </svg>
-      <p className="font-serif text-[1.5rem] leading-tight text-foreground">{title}</p>
+      <p className="font-serif text-[1.35rem] leading-tight text-foreground">{title}</p>
       {hint && <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-muted">{hint}</p>}
       {action && <div className="mt-4 flex flex-wrap justify-center gap-2">{action}</div>}
     </div>
@@ -553,7 +555,7 @@ export function SegmentedControl({
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className="inline-flex rounded-lg border border-hairline bg-panel2 p-0.5"
+      className="inline-flex rounded-md border border-hairline bg-panel2 p-0.5"
     >
       {options.map((option) => (
         <button
@@ -563,9 +565,9 @@ export function SegmentedControl({
           aria-checked={value === option.value}
           onClick={() => onChange(option.value)}
           className={clsx(
-            "whitespace-nowrap rounded-md px-3 py-1.5 text-[12.5px] transition-colors",
+            "whitespace-nowrap rounded-[4px] px-3 py-1.5 text-[12.5px] transition-colors",
             value === option.value
-              ? "bg-panel3 font-medium text-foreground"
+              ? "bg-foreground font-medium text-ink"
               : "text-muted hover:text-foreground",
           )}
         >

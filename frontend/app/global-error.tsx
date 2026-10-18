@@ -11,9 +11,9 @@
  * thing that broke.
  *
  * The colours below are the literal values of the editorial tokens — the near-black
- * ground (#0B0E0D), the charcoal card (#151A18), its hairlines (#222A26 / #2D3531), warm
- * chalk text (#F0EEE8), muted (#A3ACA7) and faint (#808A85) text, the mint accent
- * (#86C9A5) and the understated coral for failure (#E08A77) — duplicated here on purpose.
+ * ground (#070707), the charcoal card (#0E0E0F), its hairlines (#232326 / #2C2C2F), warm
+ * chalk text (#F4F4F5), muted (#A1A1A6) and faint (#86868C) text, the mint accent
+ * (#F4F4F5) and the understated coral for failure (#F0524F) — duplicated here on purpose.
  * The headline uses Georgia, the system serif closest to the product's editorial face,
  * which cannot be loaded from here.
  *
@@ -21,16 +21,16 @@
  * are the things that failed, so a client-side transition would restore the broken state.
  */
 
-const GROUND = "#0B0E0D";
-const CARD = "#151A18";
-const RAISED = "#1C2220";
-const HAIRLINE_SOFT = "#222A26";
-const HAIRLINE = "#2D3531";
-const CHALK = "#F0EEE8";
-const MUTED = "#A3ACA7";
-const FAINT = "#808A85";
-const SIGNAL = "#86C9A5";
-const CORAL = "#E08A77";
+const GROUND = "#070707";
+const CARD = "#0E0E0F";
+const RAISED = "#151516";
+const HAIRLINE_SOFT = "#232326";
+const HAIRLINE = "#2C2C2F";
+const CHALK = "#F4F4F5";
+const MUTED = "#A1A1A6";
+const FAINT = "#86868C";
+const SIGNAL = "#F4F4F5";
+const CORAL = "#F0524F";
 const SANS = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif";
 const SERIF = "Georgia, 'Times New Roman', serif";
 const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
@@ -39,8 +39,8 @@ const CSS = `
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   .ge-btn { cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease; }
-  .ge-primary:hover { background: #9bd6b6; }
-  .ge-secondary:hover { background: #252C29; border-color: #3a433f; }
+  .ge-primary:hover { background: #ffffff; }
+  .ge-secondary:hover { background: #1e1e20; border-color: #4a4a50; }
   .ge-btn:focus-visible {
     outline: 2px solid ${SIGNAL};
     outline-offset: 2px;

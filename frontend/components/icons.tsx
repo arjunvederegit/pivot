@@ -175,6 +175,14 @@ export function IconCollapse(p: IconProps & { collapsed?: boolean }) {
   );
 }
 
+export function IconChevron(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="m6 9 6 6 6-6" />
+    </Svg>
+  );
+}
+
 export function IconArrowRight(p: IconProps) {
   return (
     <Svg {...p}>
@@ -190,6 +198,32 @@ export function IconBall(p: IconProps) {
       <circle cx="12" cy="12" r="8.5" />
       <path d="M12 3.5v17M3.5 12h17" />
       <path d="M6 6c2.6 3.2 2.6 8.8 0 12M18 6c-2.6 3.2-2.6 8.8 0 12" />
+    </Svg>
+  );
+}
+
+export function IconSwap(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 8h15m-3.5-3.5L19 8l-3.5 3.5M20 16H5m3.5-3.5L5 16l3.5 3.5" />
+    </Svg>
+  );
+}
+
+export function IconBookmark(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M7 4.5h10a1 1 0 0 1 1 1V20l-6-4-6 4V5.5a1 1 0 0 1 1-1Z" />
+    </Svg>
+  );
+}
+
+export function IconMore(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="5.5" cy="12" r="1.2" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.2" fill="currentColor" />
+      <circle cx="18.5" cy="12" r="1.2" fill="currentColor" />
     </Svg>
   );
 }

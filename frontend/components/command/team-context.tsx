@@ -26,6 +26,7 @@ import { ImpactInline } from "@/components/impact";
 import { PlayerPhoto, TeamLogo } from "@/components/media";
 import { asUtc } from "@/components/command/time";
 import { ErrorState, Skeleton, SourceRail } from "@/components/ui";
+import { TeamGrid } from "@/components/team-card";
 
 interface TeamDetailResponse {
   team: Team;
@@ -41,9 +42,9 @@ interface TeamDetailResponse {
   } | null;
 }
 
-/** The elevated card that sits over the arena: charcoal at 90%, one hairline, no blur. */
+/** The team card beside the page header: a panel, nothing more. */
 const HERO_CARD =
-  "panel max-w-xl border-line/80 bg-panel2/90 shadow-[0_28px_60px_-28px_rgb(0_0_0/0.85)] lg:max-w-none";
+  "panel max-w-xl lg:max-w-none";
 
 /* ------------------------------------------------------------ your team */
 
@@ -257,83 +258,6 @@ export function YourTeamCard({
 
 /* ------------------------------------------------------------- the board */
 
-function CheckMark({ color }: { color: string }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 16 16"
-      className="absolute right-1.5 top-1.5 h-3.5 w-3.5"
-      fill="none"
-    >
-      <circle cx="8" cy="8" r="7.5" fill={color} />
-      <path d="m4.8 8.2 2.1 2.1 4.3-4.5" stroke="#0b0e0d" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ConferenceGrid({
-  label,
-  teams,
-  chosenId,
-  onPick,
-}: {
-  label: string;
-  teams: Team[];
-  chosenId: string | null;
-  onPick: (team: Team) => void;
-}) {
-  return (
-    <div className="min-w-0">
-      <div className="mb-3 flex items-baseline justify-between gap-2">
-        <h3 className="font-serif text-[1.3rem] leading-none text-foreground">{label}</h3>
-        <span className="text-[11.5px] text-faint">{count(teams.length, "team")}</span>
-      </div>
-      <ul className="grid grid-cols-5 gap-1.5 sm:gap-2">
-        {teams.map((team) => {
-          const chosen = chosenId === team.id;
-          const identity = teamIdentity(team.abbreviation);
-          return (
-            <li key={team.id} className="min-w-0">
-              <button
-                type="button"
-                aria-pressed={chosen}
-                aria-label={`Set ${team.full_name} as your team`}
-                title={`Set ${team.full_name} as your team`}
-                onClick={() => onPick(team)}
-                className={clsx(
-                  "relative flex w-full flex-col items-center gap-1.5 rounded-lg border px-1 pb-2 pt-2.5 transition-[background-color,border-color] duration-150",
-                  chosen
-                    ? "bg-panel3"
-                    : "border-hairline bg-panel2/50 hover:border-line hover:bg-panel2",
-                )}
-                style={
-                  chosen
-                    ? {
-                        borderColor: identity.bright,
-                        boxShadow: `inset 0 0 0 1px ${identity.bright}40`,
-                      }
-                    : undefined
-                }
-              >
-                {chosen && <CheckMark color={identity.bright} />}
-                <TeamLogo abbreviation={team.abbreviation} size={28} decorative />
-                <span
-                  className={clsx(
-                    "text-[12px] font-medium leading-none tracking-[0.02em] tabular-nums",
-                    chosen ? "text-foreground" : "text-muted",
-                  )}
-                >
-                  {team.abbreviation}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
 export function TeamBoard({
   teams,
   error,
@@ -353,39 +277,17 @@ export function TeamBoard({
     );
   }
 
-  if (!teams) {
-    // Same shape as the loaded board, so nothing reflows when the request resolves.
-    return (
-      <div className="panel p-4 sm:p-5" role="status" aria-label="Loading teams">
-        <div className="grid gap-x-10 gap-y-7 lg:grid-cols-2">
-          {["East", "West"].map((c) => (
-            <div key={c}>
-              <Skeleton className="mb-3 h-5 w-40" />
-              <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-                {Array.from({ length: 15 }).map((_, i) => (
-                  <Skeleton key={i} className="h-[60px]" />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const east = teams.filter((t) => t.conference === "East");
-  const west = teams.filter((t) => t.conference === "West");
-  const other = teams.filter((t) => t.conference !== "East" && t.conference !== "West");
-
   return (
     <div className="panel p-4 sm:p-5">
-      <div className="grid gap-x-10 gap-y-7 lg:grid-cols-2">
-        <ConferenceGrid label="Eastern Conference" teams={east} chosenId={chosenId} onPick={onPick} />
-        <ConferenceGrid label="Western Conference" teams={west} chosenId={chosenId} onPick={onPick} />
-        {other.length > 0 && (
-          <ConferenceGrid label="Conference not listed" teams={other} chosenId={chosenId} onPick={onPick} />
-        )}
-      </div>
+      <TeamGrid
+        teams={teams}
+        selectedIds={chosenId ? [chosenId] : []}
+        onSelect={onPick}
+        columns="grid-cols-5"
+        ariaLabelFor={(team, { selected }) =>
+          selected ? `${team.full_name} is your team` : `Set ${team.full_name} as your team`
+        }
+      />
       <p className="mt-5 border-t border-hairline pt-3 text-[12px] text-faint">
         Stored in this browser only · Team Outlook and the Trade Evaluator open on it
       </p>

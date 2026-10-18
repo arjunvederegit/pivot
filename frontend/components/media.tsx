@@ -44,6 +44,7 @@ export function TeamLogo({
   size = 32,
   className,
   decorative = false,
+  onLight = false,
 }: {
   abbreviation: string | null | undefined;
   name?: string;
@@ -51,6 +52,8 @@ export function TeamLogo({
   className?: string;
   /** True when an adjacent label already names the team. */
   decorative?: boolean;
+  /** The logo sits on a light surface (a team card), so it needs no keyline. */
+  onLight?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const manifest = useAssetManifest();
@@ -93,9 +96,12 @@ export function TeamLogo({
       height={size}
       loading="lazy"
       decoding="async"
-      // Every logo sits on the same small off-white plate: source assets mix transparent and
-      // white backgrounds, and dark marks (Brooklyn, San Antonio) vanish on an ink tile.
-      className={clsx("shrink-0 rounded-[3px] bg-paperhi object-contain p-[2px]", className)}
+      // The backend serves transparent artwork (opaque sources are normalised on index), so
+      // the logo is drawn as-is and never stretched. Many marks are drawn with black outlines
+      // and wordmarks that vanish on a dark ground, so on dark surfaces `.logo-keyline` adds a
+      // one-pixel white keyline around the artwork — colours untouched, no plate behind it.
+      // On a light surface (a team card) the artwork needs nothing.
+      className={clsx("shrink-0 object-contain", !onLight && "logo-keyline", className)}
       style={{ width: size, height: size }}
       onError={() => setFailed(true)}
     />
@@ -172,7 +178,7 @@ export function PlayerPhoto({
       >
         {portrait ? (
           <>
-            <svg viewBox="0 0 64 64" className="absolute inset-x-0 bottom-0 h-[88%] w-full text-[#3a433f]" aria-hidden>
+            <svg viewBox="0 0 64 64" className="absolute inset-x-0 bottom-0 h-[88%] w-full text-[#4a4a50]" aria-hidden>
               <circle cx="32" cy="24" r="11" fill="currentColor" />
               <path d="M10 64c1.5-14 10.5-22 22-22s20.5 8 22 22Z" fill="currentColor" />
             </svg>

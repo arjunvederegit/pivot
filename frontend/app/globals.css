@@ -1,12 +1,14 @@
 @import "tailwindcss";
 
 /* ===========================================================================
-   Pivot design tokens — "front office, after hours"
+   Pivot design tokens — "intelligence terminal"
 
-   A restrained dark editorial system: arena-black ground, layered charcoal
-   surfaces, warm chalk type, one subdued mint accent. Headlines are set in an
-   editorial serif (Instrument Serif); everything operational in a precise UI
-   sans (Geist) with tabular figures.
+   A monochrome system: black ground, layered neutral charcoal surfaces, white
+   type. There is no brand accent colour — hierarchy comes from contrast alone.
+   Colour is reserved for official team marks, player imagery and the semantic
+   pair (--legal / --illegal) that marks a favourable or unfavourable change.
+   Headlines are set in a refined serif (Source Serif 4); everything operational
+   in a precise UI sans (Geist) with tabular figures.
 
    Token names are the ones the whole codebase already uses (`--chalk`, `--arena`,
    `--signal`, …) so every Tailwind colour utility restyles in one place. The two
@@ -17,44 +19,46 @@
 
 :root {
   /* --- fixed brand constants ------------------------------------------- */
-  --volt: #86c9a5; /* the accent; name kept for existing `bg-volt` utilities */
-  --volt-2: #6fb08d;
-  --volt-ink: #86c9a5;
-  --ink: #0b0e0d;
-  --ink-2: #151a18;
-  --ink-3: #1c2220;
-  --paper: #f0eee8; /* warm chalk — logo plates, the rare light chip */
-  --paper-hi: #f6f4ef;
-  --white: #fbfaf7;
-  --hardwood: #b98a5a;
+  --volt: #f4f4f5; /* the "accent" is white; name kept for existing `bg-volt` utilities */
+  --volt-2: #d4d4d8;
+  --volt-ink: #f4f4f5;
+  --ink: #070707;
+  --ink-2: #0e0e0f;
+  --ink-3: #151516;
+  --paper: #efeff0; /* white interactive surfaces — selected / hovered entities */
+  --paper-hi: #f7f7f8;
+  --white: #fafafa;
+  --hardwood: #8a8a90;
 
   /* Layout: a mobile top bar; on desktop the sidebar replaces it. */
   --nav-h: 56px;
-  --sidebar-w: 248px;
+  --topbar-h: 0px;
+  --sidebar-w: 256px;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 140ms;
   --dur-base: 240ms;
 
-  --r-sm: 4px;
-  --r-md: 8px;
-  --r-lg: 12px;
-  --r-xl: 16px;
+  --r-sm: 3px;
+  --r-md: 5px;
+  --r-lg: 6px;
+  --r-xl: 8px;
 
   --z-nav: 40;
   --z-drawer: 60;
   --z-toast: 80;
 
   /* Team context (scoped per subtree by `teamVars` in lib/teamIdentity.ts) */
-  --team-primary: #3a423e;
-  --team-secondary: #5d6662;
-  --team-bright: #a3aca7;
-  --team-contrast: #f0eee8;
+  --team-primary: #3a3a3e;
+  --team-secondary: #5c5c62;
+  --team-bright: #a1a1a6;
+  --team-contrast: #f4f4f5;
 }
 
 @media (min-width: 1024px) {
   :root {
     --nav-h: 0px;
+    --topbar-h: 68px;
   }
 }
 
@@ -65,37 +69,38 @@
   .scope-terminal,
   .scope-paper,
   .panel {
-    --court-black: #0b0e0d; /* page ground */
-    --arena: #151a18; /* cards, sidebar */
-    --arena-raised: #1c2220; /* elevated cards, inputs */
-    --arena-high: #252c29; /* hover, tracks */
-    --hairline: #2d3531; /* borders */
-    --hairline-soft: #222a26; /* quiet dividers */
+    --court-black: #070707; /* page ground */
+    --arena: #0e0e0f; /* cards, sidebar */
+    --arena-raised: #151516; /* elevated cards, inputs */
+    --arena-high: #1e1e20; /* hover, tracks */
+    --hairline: #2c2c2f; /* borders */
+    --hairline-soft: #232326; /* quiet dividers */
 
-    --chalk: #f0eee8;
-    --chalk-dim: #a3aca7;
-    --chalk-faint: #808a85;
+    --chalk: #f4f4f5;
+    --chalk-dim: #a1a1a6;
+    --chalk-faint: #86868c;
 
-    --signal: #86c9a5;
-    --signal-2: #6fb08d;
-    --signal-deep: #1d2b24;
+    /* The interactive "accent" is white: active nav, focus rings, the primary action. */
+    --signal: #f4f4f5;
+    --signal-2: #d4d4d8;
+    --signal-deep: #232326;
 
     /* Status: positive / negative / conditional / unavailable. Every badge also carries
        a glyph and a word, so state is never carried by colour alone. */
-    --legal: #8cc79a;
-    --illegal: #e08a77;
-    --conditional: #ddb873;
-    --unknown: #8d9692;
+    --legal: #3fcf6e;
+    --illegal: #f0524f;
+    --conditional: #d9a441;
+    --unknown: #8a8a90;
 
     /* The neutral comparison series — never a judgement colour. */
-    --series-b: #c8c3b8;
+    --series-b: #c4c4c8;
 
-    --grid-minor: rgb(240 238 232 / 0.025);
-    --grid-major: rgb(240 238 232 / 0.05);
+    --grid-minor: rgb(255 255 255 / 0.025);
+    --grid-major: rgb(255 255 255 / 0.05);
 
-    --shadow-panel: 0 1px 0 0 rgb(255 255 255 / 0.025) inset, 0 12px 32px -20px rgb(0 0 0 / 0.7);
-    --shadow-pop: 0 24px 64px -24px rgb(0 0 0 / 0.8);
-    --glow-signal: 0 0 0 1px rgb(134 201 165 / 0.5);
+    --shadow-panel: none;
+    --shadow-pop: 0 18px 48px -20px rgb(0 0 0 / 0.9);
+    --glow-signal: 0 0 0 1px rgb(244 244 245 / 0.5);
 
     color-scheme: dark;
     color: var(--chalk);
@@ -167,8 +172,8 @@
      sets small labels and figures in the UI face with tabular numerals, not in a
      terminal mono. Real code (code/kbd/pre) gets Geist Mono in the base layer. */
   --font-sans: var(--font-geist);
-  --font-display: var(--font-instrument-serif);
-  --font-serif: var(--font-instrument-serif);
+  --font-display: var(--font-display-serif);
+  --font-serif: var(--font-display-serif);
   --font-mono: var(--font-geist);
 
   --radius-sm: var(--r-sm);
@@ -179,7 +184,7 @@
 
 @layer base {
   html {
-    scroll-padding-top: calc(var(--nav-h) + 16px);
+    scroll-padding-top: calc(var(--nav-h) + var(--topbar-h) + 16px);
   }
   body {
     background: var(--ink);
@@ -195,13 +200,13 @@
     font-family: var(--font-geist-mono), ui-monospace, monospace;
   }
   ::selection {
-    background: rgb(134 201 165 / 0.35);
-    color: #f0eee8;
+    background: rgb(244 244 245 / 0.28);
+    color: #ffffff;
   }
   :focus-visible {
     outline: 2px solid var(--signal);
     outline-offset: 2px;
-    border-radius: 4px;
+    border-radius: 3px;
   }
   /* A control that is itself a card draws its ring inside its own edge. */
   :is(a, button, [tabindex]):is(.panel, .sheet):focus-visible {
@@ -231,27 +236,13 @@
 @layer components {
   /* --- surfaces ----------------------------------------------------------- */
 
-  /* A card: charcoal surface, a quiet hairline, a soft drop. In team context `--edge`
-     draws a thin team-coloured line along the top. */
+  /* A card: charcoal surface and a thin neutral border. No shadow, no glow. */
   .panel {
     position: relative;
     background: var(--arena);
     border: 1px solid var(--hairline-soft);
     border-radius: var(--r-lg);
     box-shadow: var(--shadow-panel);
-  }
-  .panel::before {
-    content: "";
-    position: absolute;
-    inset: -1px 14px auto 14px;
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      color-mix(in srgb, var(--edge, transparent) 85%, transparent),
-      transparent
-    );
-    pointer-events: none;
   }
 
   /* An elevated inner card. */
@@ -287,15 +278,15 @@
     z-index: -1;
     pointer-events: none;
     background:
-      radial-gradient(circle at 50% 120%, transparent 38%, rgb(240 238 232 / 0.05) 38.4%, transparent 39%),
-      linear-gradient(to right, transparent calc(50% - 0.5px), rgb(240 238 232 / 0.04) 50%, transparent calc(50% + 0.5px));
+      radial-gradient(circle at 50% 120%, transparent 38%, rgb(255 255 255 / 0.05) 38.4%, transparent 39%),
+      linear-gradient(to right, transparent calc(50% - 0.5px), rgb(255 255 255 / 0.04) 50%, transparent calc(50% + 0.5px));
   }
 
   /* Hardwood: a few warm planks, for the hero and player headers only. */
   .floorboards {
     background-image: repeating-linear-gradient(
       90deg,
-      rgb(185 138 90 / 0.05) 0 1px,
+      rgb(255 255 255 / 0.03) 0 1px,
       transparent 1px 46px
     );
   }
@@ -306,25 +297,25 @@
   .font-display,
   .display,
   .font-serif {
-    font-family: var(--font-instrument-serif), Georgia, serif;
-    font-weight: 400;
-    letter-spacing: -0.01em;
+    font-family: var(--font-display-serif), Georgia, serif;
+    font-weight: 500;
+    letter-spacing: -0.012em;
   }
 
   .title-xl {
-    font-family: var(--font-instrument-serif), Georgia, serif;
-    font-weight: 400;
-    font-size: clamp(2.3rem, 1.5rem + 2.6vw, 3.9rem);
-    line-height: 1.02;
-    letter-spacing: -0.015em;
+    font-family: var(--font-display-serif), Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(2rem, 1.55rem + 1.35vw, 2.75rem);
+    line-height: 1.05;
+    letter-spacing: -0.018em;
     text-wrap: balance;
   }
   .title-lg {
-    font-family: var(--font-instrument-serif), Georgia, serif;
-    font-weight: 400;
-    font-size: clamp(1.7rem, 1.25rem + 1.3vw, 2.45rem);
-    line-height: 1.06;
-    letter-spacing: -0.01em;
+    font-family: var(--font-display-serif), Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(1.5rem, 1.25rem + 0.8vw, 1.95rem);
+    line-height: 1.1;
+    letter-spacing: -0.012em;
     text-wrap: balance;
   }
   .title-md {
@@ -350,10 +341,10 @@
   }
   /* A headline statistic set in the serif — the scouting-report figure. */
   .stat-serif {
-    font-family: var(--font-instrument-serif), Georgia, serif;
-    font-weight: 400;
+    font-family: var(--font-geist), system-ui, sans-serif;
+    font-weight: 600;
     font-variant-numeric: lining-nums tabular-nums;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.025em;
   }
   .data,
   .tabular {
@@ -366,14 +357,14 @@
     font-weight: 500;
     font-size: 0.6875rem;
     line-height: 1.2;
-    letter-spacing: 0.09em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--chalk-dim);
   }
 
   /* An accent underline for one key phrase. */
   .mark-volt {
-    background: linear-gradient(transparent 0 88%, rgb(134 201 165 / 0.55) 88% 96%, transparent 96%);
+    background: linear-gradient(transparent 0 88%, rgb(244 244 245 / 0.45) 88% 96%, transparent 96%);
   }
 
   /* --- loading & motion --------------------------------------------------- */
@@ -389,7 +380,7 @@
     position: absolute;
     inset: 0;
     transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgb(240 238 232 / 0.05), transparent);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.05), transparent);
     animation: shimmer 1.6s infinite;
   }
   .lane-in {
@@ -412,6 +403,113 @@
     animation: fade-in var(--dur-base) var(--ease-out) both;
   }
 
+  /* A one-pixel white keyline around transparent team artwork on dark surfaces. Four
+     offset shadows trace the alpha edge (and the counters inside wordmarks); the artwork's
+     own colours are never altered. */
+  .logo-keyline {
+    filter: drop-shadow(0.9px 0 0 rgb(255 255 255 / 0.92)) drop-shadow(-0.9px 0 0 rgb(255 255 255 / 0.92))
+      drop-shadow(0 0.9px 0 rgb(255 255 255 / 0.92)) drop-shadow(0 -0.9px 0 rgb(255 255 255 / 0.92));
+  }
+
+  /* --- team card ---------------------------------------------------------
+     The one selectable-franchise tile (components/team-card.tsx). Light by default so
+     official logos — many drawn with black outlines and wordmarks — sit on a surface
+     they were designed for; white is the interaction colour, the dark page is the
+     frame. `[data-team-tone="dark"]` on an ancestor flips the resting tile to charcoal
+     with white-on-hover (kept for contexts where a bright wall would overwhelm). */
+  .team-card {
+    --tc-bg: #dededf;
+    --tc-fg: #1a1a1c;
+    --tc-border: #c4c4c8;
+    position: relative;
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 68px;
+    padding: 9px 4px 8px;
+    border: 1px solid var(--tc-border);
+    border-radius: var(--r-lg);
+    background: var(--tc-bg);
+    color: var(--tc-fg);
+    transition:
+      background-color 160ms var(--ease-out),
+      color 160ms var(--ease-out),
+      border-color 160ms var(--ease-out),
+      box-shadow 160ms var(--ease-out);
+  }
+  .team-card-sm {
+    min-height: 56px;
+    gap: 4px;
+    padding: 7px 4px 6px;
+  }
+  .team-card-lg {
+    min-height: 88px;
+    gap: 8px;
+  }
+  /* A wide tile for lists of franchises (Teams): crest beside nickname and city. */
+  .team-card-row {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    min-height: 54px;
+    padding: 8px 12px;
+    text-align: left;
+  }
+  .team-card-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+  .team-card:hover:not(:disabled),
+  .team-card:focus-visible {
+    --tc-bg: #ffffff;
+    --tc-border: #ffffff;
+  }
+  .team-card[data-selected="true"] {
+    --tc-bg: #ffffff;
+    --tc-border: #ffffff;
+    box-shadow:
+      0 0 0 2px var(--court-black),
+      0 0 0 3.5px #ffffff;
+  }
+  .team-card:disabled {
+    opacity: 0.32;
+    cursor: not-allowed;
+  }
+  .team-card-check {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: grid;
+    place-items: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: #0b0b0c;
+    color: #ffffff;
+  }
+  [data-team-tone="dark"] .team-card {
+    --tc-bg: var(--arena-raised);
+    --tc-fg: var(--chalk-dim);
+    --tc-border: var(--hairline);
+  }
+  [data-team-tone="dark"] .team-card:hover:not(:disabled),
+  [data-team-tone="dark"] .team-card:focus-visible {
+    --tc-bg: #f7f7f8;
+    --tc-fg: #0b0b0c;
+    --tc-border: #f7f7f8;
+  }
+  [data-team-tone="dark"] .team-card[data-selected="true"] {
+    --tc-bg: #efeff0;
+    --tc-fg: #0b0b0c;
+    --tc-border: #ffffff;
+  }
+
   /* Card hover: the frame warms, nothing jumps. */
   .hover-frame {
     transition:
@@ -419,7 +517,7 @@
       background-color var(--dur-base) var(--ease-out);
   }
   .hover-frame:hover {
-    border-color: color-mix(in srgb, var(--signal) 40%, var(--hairline));
+    border-color: #44444a;
     background-color: var(--arena-raised);
   }
 

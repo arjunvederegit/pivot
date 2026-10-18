@@ -21,12 +21,15 @@ import { api } from "@/lib/api";
 import { dataHealthSchema } from "@/lib/schemas";
 import type { DataHealth, Team } from "@/lib/types";
 import { ASSISTANT_ENABLED } from "@/lib/features";
-import { BrandMark, BrandWordmark } from "@/components/brand";
+import { PivotLogo, PivotMark } from "@/components/brand";
+import { TeamGrid } from "@/components/team-card";
+import { setFavoriteTeam, useFavoriteTeam } from "@/lib/favoriteTeam";
 import {
   IconAsk,
   IconCap,
   IconClose,
   IconCollapse,
+  IconChevron,
   IconHealth,
   IconHome,
   IconInfo,
@@ -249,6 +252,11 @@ function GlobalSearch({
     }
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") setOpen(false);
+      if (hotkey && event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        inputRef.current?.focus();
+        return;
+      }
       if (!hotkey || event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       const typing =
@@ -308,8 +316,8 @@ function GlobalSearch({
   return (
     <div ref={boxRef} className="relative w-full">
       <IconSearch
-        size={16}
-        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint"
+        size={17}
+        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
       />
       <input
         ref={inputRef}
@@ -320,7 +328,7 @@ function GlobalSearch({
         aria-autocomplete="list"
         aria-activedescendant={showList ? `${listId}-${activeIndex}` : undefined}
         aria-label="Search players and teams"
-        placeholder="Search players & teams"
+        placeholder="Search players and teams…"
         value={query}
         onChange={(event) => {
           setQuery(event.target.value);
@@ -340,21 +348,21 @@ function GlobalSearch({
             go(hits[activeIndex]);
           }
         }}
-        className="peer w-full rounded-md border border-hairline bg-panel2 py-2 pl-8 pr-8 text-[13px] text-foreground placeholder:text-faint focus:border-line"
+        className="peer w-full rounded-md border border-line bg-arena py-2.5 pl-10 pr-14 text-[14px] text-foreground placeholder:text-faint focus:border-[#55555b]"
       />
       {hotkey && (
         <kbd
           aria-hidden
-          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line px-1.5 text-[10px] leading-4 text-faint peer-focus:hidden peer-[:not(:placeholder-shown)]:hidden"
+          className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-line px-1.5 text-[10.5px] leading-[18px] text-faint peer-focus:hidden peer-[:not(:placeholder-shown)]:hidden"
         >
-          /
+          ⌘ K
         </kbd>
       )}
       {showList && (
         <ul
           id={listId}
           role="listbox"
-          className="absolute left-0 top-11 z-50 w-full min-w-[18rem] overflow-hidden rounded-lg border border-line bg-panel2 py-1 shadow-[var(--shadow-pop)]"
+          className="absolute left-0 top-12 z-50 w-full min-w-[18rem] overflow-hidden rounded-md border border-line bg-panel2 py-1 shadow-[var(--shadow-pop)]"
         >
           {hits.map((hit, i) => (
             <li
@@ -408,7 +416,7 @@ function NavItems({
   return (
     <>
       {GROUPS.map(({ label, items }) => (
-        <div key={label} className="mt-5 first:mt-0">
+        <div key={label} className="mt-6 first:mt-0">
           {collapsed ? (
             <div aria-hidden className="mx-auto mb-2 h-px w-6 bg-hairline" />
           ) : (
@@ -427,25 +435,19 @@ function NavItems({
                     aria-current={active ? "page" : undefined}
                     title={collapsed ? item.label : undefined}
                     onClick={onNavigate}
-                    className={`group relative flex items-center gap-3 rounded-md px-3 py-2 text-[13.5px] transition-colors ${
+                    className={`group relative flex items-center gap-3.5 rounded-md px-3 py-2.5 text-[14.5px] transition-colors ${
                       active
-                        ? "bg-panel2 font-medium text-foreground"
-                        : "text-muted hover:bg-panel2/60 hover:text-foreground"
+                        ? "bg-panel3 font-medium text-foreground"
+                        : "text-muted hover:bg-panel2 hover:text-foreground"
                     } ${collapsed ? "justify-center px-0" : ""}`}
                   >
-                    {active && (
-                      <span
-                        aria-hidden
-                        className="absolute inset-y-2 left-0 w-[2px] rounded-full bg-signal"
-                      />
-                    )}
                     <Icon
-                      size={19}
-                      className={active ? "text-signal" : "text-faint group-hover:text-muted"}
+                      size={20}
+                      className={active ? "text-foreground" : "text-muted group-hover:text-foreground"}
                     />
                     <span className={collapsed ? "sr-only" : "min-w-0 truncate"}>{item.label}</span>
                     {item.badge && !collapsed && (
-                      <span className="ml-auto shrink-0 rounded-full border border-line px-1.5 py-px text-[10px] font-medium uppercase leading-[1.4] tracking-[0.1em] text-faint">
+                      <span className="ml-auto shrink-0 rounded-[3px] border border-line px-1.5 py-px text-[10px] font-medium uppercase leading-[1.4] tracking-[0.1em] text-faint">
                         {item.badge}
                       </span>
                     )}
@@ -462,46 +464,73 @@ function NavItems({
 
 /* --------------------------------------------------------------------- shell */
 
+/** The team the workspace opens on — stored in this browser, set here or on the home page. */
+function useTeamContext() {
+  const favorite = useFavoriteTeam();
+  const { data: teams } = useQuery({
+    queryKey: ["teams"],
+    queryFn: () => api.get<Team[]>("/teams"),
+    staleTime: 300_000,
+  });
+  const team = favorite ? teams?.find((t) => t.id === favorite.id) : undefined;
+  return { favorite, teams, team };
+}
+
+function SidebarTeamContext({ collapsed }: { collapsed: boolean }) {
+  const { favorite, team } = useTeamContext();
+  const { data: health } = useHealth();
+  if (!favorite) return null;
+  const name = team?.full_name ?? favorite.abbreviation;
+  return (
+    <div className={collapsed ? "flex justify-center" : ""}>
+      {!collapsed && <p className="mb-2 px-1 text-[12px] text-muted">Team Context</p>}
+      <Link
+        href={`/team-outlook/${favorite.id}`}
+        title={`${name} — open Team Outlook`}
+        className={`flex items-center gap-3 rounded-md px-1 py-1 transition-colors hover:bg-panel2 ${
+          collapsed ? "justify-center" : ""
+        }`}
+      >
+        <TeamLogo abbreviation={favorite.abbreviation} name={name} size={30} decorative />
+        {collapsed ? (
+          <span className="sr-only">{name}</span>
+        ) : (
+          <span className="min-w-0 leading-tight">
+            <span className="block truncate text-[13.5px] text-foreground">{name}</span>
+            {health?.current_season && (
+              <span className="block text-[11.5px] text-faint">{health.current_season} season</span>
+            )}
+          </span>
+        )}
+      </Link>
+    </div>
+  );
+}
+
 function Sidebar({ pathname }: { pathname: string }) {
   const [collapsed, setCollapsed] = useCollapsed();
-  const searchRef = useRef<HTMLInputElement>(null);
 
   return (
     <aside
       aria-label="Sidebar"
       className="fixed inset-y-0 left-0 z-40 hidden w-[var(--sidebar-w)] flex-col border-r border-hairline bg-arena transition-[width] duration-200 lg:flex"
     >
-      <div className={`flex items-center gap-3 px-4 pb-4 pt-5 ${collapsed ? "justify-center px-0" : ""}`}>
-        <Link href="/" className="flex min-w-0 items-center gap-3" aria-label="Pivot — home">
-          <BrandMark size={34} />
-          {!collapsed && <BrandWordmark />}
+      <div className={`flex h-[var(--topbar-h)] shrink-0 items-center border-b border-hairline ${collapsed ? "justify-center px-0" : "px-5"}`}>
+        <Link
+          href="/"
+          className={`flex min-w-0 items-center ${collapsed ? "mx-auto" : ""}`}
+          aria-label="Pivot — home"
+        >
+          {collapsed ? <PivotMark size={36} /> : <PivotLogo height={34} />}
         </Link>
       </div>
 
-      <div className={collapsed ? "flex justify-center px-0 pb-3" : "px-3 pb-3"}>
-        {collapsed ? (
-          <button
-            type="button"
-            aria-label="Search players and teams"
-            title="Search players and teams"
-            onClick={() => {
-              setCollapsed(false);
-              requestAnimationFrame(() => searchRef.current?.focus());
-            }}
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-hairline text-muted transition-colors hover:border-line hover:text-foreground"
-          >
-            <IconSearch size={17} />
-          </button>
-        ) : (
-          <GlobalSearch hotkey listId="global-search-results" inputRef={searchRef} />
-        )}
-      </div>
-
-      <nav aria-label="Primary" className="scroll-thin flex-1 overflow-y-auto px-3 py-2">
+      <nav aria-label="Primary" className="scroll-thin flex-1 overflow-y-auto px-3 py-5">
         <NavItems pathname={pathname} collapsed={collapsed} />
       </nav>
 
-      <div className="space-y-2 border-t border-hairline p-3">
+      <div className="space-y-3 border-t border-hairline p-3">
+        <SidebarTeamContext collapsed={collapsed} />
         <DataStatus collapsed={collapsed} />
         <button
           type="button"
@@ -517,6 +546,110 @@ function Sidebar({ pathname }: { pathname: string }) {
         </button>
       </div>
     </aside>
+  );
+}
+
+/** Top toolbar: global search on the left, the selected team on the right. */
+function TeamSelector() {
+  const { favorite, teams, team } = useTeamContext();
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(event: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const label = team?.full_name ?? (favorite ? favorite.abbreviation : "Select team");
+  return (
+    <div ref={boxRef} className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-11 items-center gap-3 rounded-md border border-line bg-arena px-3.5 text-[14px] text-foreground transition-colors hover:border-[#55555b]"
+      >
+        {favorite ? (
+          <>
+            <span className="numeral text-[13px] text-muted">{favorite.abbreviation}</span>
+            <TeamLogo abbreviation={favorite.abbreviation} name={label} size={24} decorative />
+            <span className="hidden max-w-[11rem] truncate xl:block">{label}</span>
+          </>
+        ) : (
+          <span>Select team</span>
+        )}
+        <IconChevron size={16} className="text-muted" />
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Choose your team"
+          className="fade-in absolute right-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),30rem)] overflow-hidden rounded-md border border-line bg-arena shadow-[var(--shadow-pop)]"
+        >
+          <p className="border-b border-hairline px-4 py-3 text-[12px] text-muted">
+            Team context — Team Outlook and the Trade Evaluator open on it.
+          </p>
+          <div className="scroll-thin max-h-[26rem] overflow-y-auto p-3">
+            <TeamGrid
+              teams={teams}
+              grouped={false}
+              columns="grid-cols-5"
+              size="sm"
+              selectedIds={favorite ? [favorite.id] : []}
+              onSelect={(t) => {
+                setFavoriteTeam({ id: t.id, abbreviation: t.abbreviation });
+                setOpen(false);
+              }}
+              ariaLabelFor={(t, { selected }) =>
+                selected ? `${t.full_name} is your team` : `Set ${t.full_name} as your team`
+              }
+            />
+          </div>
+          {favorite && (
+            <button
+              type="button"
+              onClick={() => {
+                setFavoriteTeam(null);
+                setOpen(false);
+              }}
+              className="w-full border-t border-hairline px-4 py-2.5 text-left text-[12px] text-muted transition-colors hover:text-foreground"
+            >
+              Clear team context
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TopBar() {
+  const searchRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className="sticky top-0 z-30 hidden h-[var(--topbar-h)] items-center gap-4 border-b border-hairline bg-ink/95 px-6 backdrop-blur lg:flex xl:px-8">
+      <div className="w-full max-w-[34rem]">
+        <GlobalSearch hotkey listId="global-search-results" inputRef={searchRef} />
+      </div>
+      <div className="ml-auto flex items-center gap-3">
+        <TeamSelector />
+      </div>
+    </div>
   );
 }
 
@@ -545,9 +678,8 @@ function MobileBar({ pathname }: { pathname: string }) {
   return (
     <>
       <header className="sticky top-0 z-40 flex h-[var(--nav-h)] items-center gap-3 border-b border-hairline bg-ink/95 px-4 backdrop-blur lg:hidden">
-        <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label="Pivot — home">
-          <BrandMark size={30} />
-          <BrandWordmark compact />
+        <Link href="/" className="flex min-w-0 items-center" aria-label="Pivot — home">
+          <PivotLogo height={26} />
         </Link>
         <div className="ml-auto flex items-center gap-2">
           <DataStatus collapsed />
@@ -579,9 +711,8 @@ function MobileBar({ pathname }: { pathname: string }) {
             className="fade-in scroll-thin absolute inset-y-0 left-0 flex w-[min(86vw,20rem)] flex-col overflow-y-auto border-r border-hairline bg-arena px-3 pb-6 pt-4"
           >
             <div className="mb-4 flex items-center justify-between px-1">
-              <Link href="/" onClick={() => setOpen(false)} className="flex items-center gap-2.5">
-                <BrandMark size={30} />
-                <BrandWordmark />
+              <Link href="/" onClick={() => setOpen(false)} className="flex items-center" aria-label="Pivot — home">
+                <PivotLogo height={30} />
               </Link>
               <button
                 type="button"
@@ -651,11 +782,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="min-h-dvh lg:pl-[var(--sidebar-w)]"
-      style={{ "--sidebar-w": collapsed ? "76px" : "248px" } as React.CSSProperties}
+      style={{ "--sidebar-w": collapsed ? "76px" : "256px" } as React.CSSProperties}
     >
       <Sidebar pathname={pathname} />
       <MobileBar pathname={pathname} />
-      <div className="flex min-h-[calc(100dvh-var(--nav-h))] flex-col">
+      <TopBar />
+      <div className="flex min-h-[calc(100dvh-var(--nav-h)-var(--topbar-h))] flex-col">
         {fullBleed ? (
           <main id="main" className="flex-1">
             {children}
@@ -663,7 +795,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         ) : (
           <main
             id="main"
-            className="mx-auto w-full max-w-[1480px] flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-9"
+            className="mx-auto w-full max-w-[1560px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-7"
           >
             {children}
           </main>

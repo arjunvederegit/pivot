@@ -353,7 +353,7 @@ export function SelectionBar({
               aria-describedby="scored-side"
               value={scenarioId}
               onChange={(event) => onScenario(event.target.value)}
-              className="min-w-[12rem] flex-1 rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-foreground transition-colors hover:border-[#3a433f] md:max-w-80"
+              className="min-w-[12rem] flex-1 rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-foreground transition-colors hover:border-[#4a4a50] md:max-w-80"
             >
               <option value="">League default weights</option>
               {/* Name alone is not an identity: Team Outlook generates "BOS — Contend now"

@@ -101,7 +101,7 @@ export function FitChip({
         <>
           <span className="font-semibold text-foreground">{score.toFixed(0)}</span>
           <span
-            className={score > 52 ? "text-signal" : score < 48 ? "text-illegal" : "text-faint"}
+            className={score > 52 ? "text-legal" : score < 48 ? "text-illegal" : "text-faint"}
             aria-hidden
           >
             {score > 52 ? "▲" : score < 48 ? "▼" : "■"}

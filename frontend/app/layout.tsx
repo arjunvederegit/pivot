@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { Geist, Geist_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { AppShell } from "@/components/shell";
 import { ToastProvider } from "@/components/toast";
 
-/** Two voices. An editorial serif for statements — hero lines, page titles, the headline
- *  figure on a scouting card — and a precise UI sans for everything a person operates or
- *  reads as data. Geist Mono appears only where something is literally code. */
-const serif = Instrument_Serif({
-  variable: "--font-instrument-serif",
+/** Two voices. A refined serif for statements — page titles and selected headings — and
+ *  a precise UI sans for everything a person operates or reads as data. Geist Mono
+ *  appears only where something is literally code. */
+const serif = Source_Serif_4({
+  variable: "--font-display-serif",
   subsets: ["latin"],
-  weight: "400",
+  weight: ["400", "500", "600"],
   style: ["normal", "italic"],
   display: "swap",
 });
