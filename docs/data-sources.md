@@ -107,3 +107,10 @@ Precedence and conflict policy: see [identity-resolution.md](identity-resolution
 Nothing in these directories is committed or redistributed; the backend serves images
 locally and Data Status reports coverage (30/30 logos, ~84% of rostered players with
 photos as of the July 2026 index run).
+
+## R8 additions (October 2026)
+
+Provider-independent records, season/statistic definitions, identity crosswalk, freshness metadata and
+the optional BALLDONTLIE adapter are described in [r8/architecture.md](r8/architecture.md). **Licensing:**
+NBA.com's Terms of Use §9 restrict NBA statistics to private, non-commercial use absent consent — see
+[r8/resource-research.md](r8/resource-research.md) before any public launch.

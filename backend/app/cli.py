@@ -76,10 +76,12 @@ Commands
                    the resulting freshness. A snapshot a provider answers with but that
                    cannot be the league (empty, a fraction of it) is rejected and the
                    stored data is left untouched. Network required.
-  link-balldontlie [--dry-run]
-                   Fetch BALLDONTLIE's teams and active players and link their ids to
-                   Pivot's players and teams (provider_entity_ids). Ambiguous or unmatched
-                   players are reported and left unlinked. Needs BALLDONTLIE_API_KEY.
+  link-balldontlie [--dry-run] [--active-only]
+                   Fetch BALLDONTLIE's teams and players (the free-tier /players list,
+                   ~50 pages; --active-only uses /players/active, which needs a paid plan)
+                   and link their ids to Pivot's players and teams (provider_entity_ids).
+                   Ambiguous or unmatched players are reported and left unlinked. Needs
+                   BALLDONTLIE_API_KEY.
   balldontlie-plan [tier]
                    Print the GOAT trial evaluation plan, its request cost and pacing.
                    Makes no request.
@@ -212,7 +214,7 @@ def _refresh(args: list[str], single_jobs: dict[str, Callable[..., int]]) -> int
     return 0 if all(r["status"] == "succeeded" for r in results.values()) else 2
 
 
-def _link_balldontlie(dry_run: bool) -> int:
+def _link_balldontlie(dry_run: bool, active_only: bool = False) -> int:
     from app.integrations.balldontlie.crosswalk import crosswalk_players, crosswalk_teams
     from app.integrations.balldontlie.provider import BalldontlieProvider
 
@@ -224,8 +226,8 @@ def _link_balldontlie(dry_run: bool) -> int:
     out: dict = {"dry_run": dry_run}
     with SessionLocal() as db:
         teams = provider.teams()
-        players = provider.active_players()
-        for label, result in (("teams", teams), ("active_players", players)):
+        players = provider.active_players() if active_only else provider.players()
+        for label, result in (("teams", teams), ("players", players)):
             out[label + "_call"] = {
                 "status": result.status.value,
                 "records": len(result.records),
@@ -357,7 +359,7 @@ def main() -> None:
     elif command == "refresh":
         sys.exit(_refresh(sys.argv[2:], single_jobs))
     elif command == "link-balldontlie":
-        sys.exit(_link_balldontlie("--dry-run" in sys.argv[2:]))
+        sys.exit(_link_balldontlie("--dry-run" in sys.argv[2:], "--active-only" in sys.argv[2:]))
     elif command == "balldontlie-plan":
         from app.integrations.balldontlie.evaluation import plan_summary
 

@@ -24,7 +24,7 @@ from app.integrations.balldontlie.provider import BalldontlieProvider, tier_allo
 from tests.conftest import make_player, make_team
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "balldontlie"
-KEY = "bdl-test-key-DO-NOT-LOG-0123456789"
+KEY = "not-a-real-key-bbbbbbbb"  # fixture value; low entropy on purpose (secret scanners)
 
 
 def fixture(name: str) -> dict:

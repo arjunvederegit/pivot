@@ -81,8 +81,8 @@ refresh: ## Refresh selected datasets: make refresh DATASETS=rosters,standings,p
 balldontlie-plan: ## Print the GOAT trial evaluation plan and its request cost (no requests)
 	cd $(BACKEND) && .venv/bin/python -m app.cli balldontlie-plan $(TIER)
 
-link-balldontlie: ## Link BALLDONTLIE ids to Pivot players/teams (needs BALLDONTLIE_API_KEY; DRY=1 to preview)
-	cd $(BACKEND) && .venv/bin/python -m app.cli link-balldontlie $(if $(DRY),--dry-run,)
+link-balldontlie: ## Link BALLDONTLIE ids to Pivot players/teams (needs BALLDONTLIE_API_KEY, free tier is enough; DRY=1 to preview)
+	cd $(BACKEND) && .venv/bin/python -m app.cli link-balldontlie $(if $(DRY),--dry-run,) $(if $(ACTIVE_ONLY),--active-only,)
 
 balldontlie-evaluate: ## Run the trial evaluation (needs a key; REPLAY=<dir> re-analyses recorded responses)
 	cd $(BACKEND) && .venv/bin/python -m app.cli balldontlie-evaluate $(if $(REPLAY),--replay $(REPLAY),) $(if $(BUDGET),--budget $(BUDGET),) $(if $(ONLY),--only $(ONLY),)

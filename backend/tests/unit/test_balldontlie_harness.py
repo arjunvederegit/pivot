@@ -19,7 +19,7 @@ from app.integrations.balldontlie.client import BalldontlieClient
 from app.integrations.balldontlie.provider import BalldontlieProvider
 from tests.conftest import make_player, make_team
 
-KEY = "harness-secret-key-0123456789"
+KEY = "not-a-real-key-aaaaaaaa"  # fixture value; low entropy on purpose (secret scanners)
 
 ATL = {"id": 1, "abbreviation": "ATL", "full_name": "Atlanta Hawks", "city": "Atlanta", "name": "Hawks"}
 BOS = {"id": 2, "abbreviation": "BOS", "full_name": "Boston Celtics", "city": "Boston", "name": "Celtics"}

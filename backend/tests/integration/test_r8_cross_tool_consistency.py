@@ -230,14 +230,14 @@ class TestProvenanceAgrees:
     def test_the_provider_registry_never_exposes_a_credential(self, client, monkeypatch):
         from app.config import get_settings
 
-        monkeypatch.setenv("BALLDONTLIE_API_KEY", "bdl-secret-0123456789")
+        monkeypatch.setenv("BALLDONTLIE_API_KEY", "not-a-real-key-cccccccc")
         get_settings.cache_clear()
         try:
             body = client.get("/api/v1/data/providers").json()
         finally:
             get_settings.cache_clear()
         text = str(body)
-        assert "bdl-secret" not in text and "0123456789" not in text
+        assert "not-a-real-key" not in text and "cccccccc" not in text
         bdl = next(p for p in body["providers"] if p["provider"] == "balldontlie")
         assert bdl["status"] == "configured" and bdl["live_verified"] is False
 
