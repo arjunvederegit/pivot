@@ -411,6 +411,27 @@
       drop-shadow(0 0.9px 0 rgb(255 255 255 / 0.92)) drop-shadow(0 -0.9px 0 rgb(255 255 255 / 0.92));
   }
 
+  /* Player table rows (trade workspace). Columns are set against the panel's own width, so a
+     narrow panel drops Yrs, then Age, and the name, salary, impact and action always remain.
+     `--act-w` is the width of the trailing action column, set per table. */
+  .pt-row {
+    display: grid;
+    align-items: center;
+    column-gap: 10px;
+    padding-inline: 16px;
+    grid-template-columns: minmax(0, 1fr) 4rem 3.5rem var(--act-w, 2rem);
+  }
+  @container (min-width: 28rem) {
+    .pt-row {
+      grid-template-columns: minmax(0, 1fr) 1.75rem 4rem 3.5rem var(--act-w, 2rem);
+    }
+  }
+  @container (min-width: 36rem) {
+    .pt-row {
+      grid-template-columns: minmax(0, 1fr) 1.75rem 4rem 1.75rem 3.5rem var(--act-w, 2rem);
+    }
+  }
+
   /* --- team card ---------------------------------------------------------
      The one selectable-franchise tile (components/team-card.tsx). Light by default so
      official logos — many drawn with black outlines and wordmarks — sit on a surface
@@ -480,6 +501,11 @@
   .team-card:disabled {
     opacity: 0.32;
     cursor: not-allowed;
+  }
+  /* Already in the deal: still reads as the selected (white, checked) tile, just inert. */
+  .team-card:disabled[data-selected="true"] {
+    opacity: 0.62;
+    cursor: default;
   }
   .team-card-check {
     position: absolute;

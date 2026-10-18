@@ -408,8 +408,8 @@ export function TeamWorkspace({
         <div role="table" aria-label={`${team?.full_name ?? "Team"} roster`}>
           <TableHead
             impactTitle="League impact percentile: where each player's Pivot Estimated Impact sits among every player the model scored this season. Hover a figure for the model index and rank."
-            trailing="Send"
-            actWidth={`${destinations.length * 3.9 + (destinations.length - 1) * 0.25}rem`}
+            trailing={destinations.length ? "Send" : ""}
+            actWidth={sendColumnWidth(destinations.length)}
           />
           {/* `relative`, so anything absolutely positioned inside a row (screen-reader text)
               is clipped by this scroller instead of stretching the page. */}
@@ -582,11 +582,15 @@ export function TeamWorkspace({
 
 /**
  * Column template shared by the head and every row, so a column lines up down the panel.
- * The workspace is a container: below ~32rem the contract-years column drops away, below
+ * The workspace is a container: below ~36rem the contract-years column drops away, below
  * ~28rem age does too — the name, salary, impact and action always remain.
  */
-const ROW_GRID =
-  "grid items-center gap-x-2.5 px-4 grid-cols-[minmax(0,1fr)_4rem_3.5rem_var(--act-w,2rem)] @md:grid-cols-[minmax(0,1fr)_1.75rem_4rem_3.5rem_var(--act-w,2rem)] @xl:grid-cols-[minmax(0,1fr)_1.75rem_4rem_1.75rem_3.5rem_var(--act-w,2rem)]";
+/** Width of the "→ ABBR" column: one button per destination, none when no partner is chosen yet. */
+function sendColumnWidth(destinations: number): string {
+  return destinations === 0 ? "0rem" : `${destinations * 3.9 + (destinations - 1) * 0.25}rem`;
+}
+
+const ROW_GRID = "pt-row";
 
 function TableHead({
   impactTitle,
@@ -792,7 +796,7 @@ export function RosterRow({
     <div
       ref={setNodeRef}
       role="row"
-      style={{ ["--act-w" as string]: `${destinations.length * 3.9 + (destinations.length - 1) * 0.25}rem` }}
+      style={{ ["--act-w" as string]: sendColumnWidth(destinations.length) }}
       className={clsx(
         ROW_GRID,
         "group border-b border-hairline py-2 transition-colors last:border-b-0 hover:bg-panel2/70",
