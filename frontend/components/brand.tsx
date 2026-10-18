@@ -1,17 +1,17 @@
 /**
  * Pivot brand.
  *
- * The official Pivot logo — ships as `public/brand/pivot-logo.png` — the supplied artwork with its black ground keyed out
- * (scripts/brand/extract_logo.py), pixels otherwise untouched — a white serif wordmark with an
- * orange basketball for the "o". It is never retyped or approximated: every placement renders that
- * one asset, scaled by height so the proportions cannot drift.
+ * The official Pivot logo — `public/brand/pivot-logo.png`: rounded white lettering with an orange
+ * basketball (black outline, white seams) for the "o". It is built from the approved artwork by
+ * `scripts/brand/build_logo.py` (lettering de-noised and re-filled, ball kept pixel-for-pixel). It is
+ * never retyped: every placement renders that one asset, scaled by height so proportions cannot drift.
  */
 
 export const PRODUCT_NAME = "Pivot";
 export const PRODUCT_TAGLINE = "Basketball Intelligence for Better Decisions";
 
-/** The logo's native aspect ratio (1432 × 499). */
-const LOGO_RATIO = 1432 / 499;
+/** The logo's native aspect ratio (1519 × 472). */
+const LOGO_RATIO = 1519 / 472;
 
 export function PivotLogo({ height = 30, className }: { height?: number; className?: string }) {
   return (

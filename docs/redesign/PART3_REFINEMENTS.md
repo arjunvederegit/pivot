@@ -5,7 +5,7 @@ Branch `feat/pivot-minimal-redesign`. Frontend only; no API, model, prompt or fl
 ## Typography and surfaces
 - One application sans: **Inter** (next/font/google, SIL OFL 1.1 — see `THIRD_PARTY_NOTICES.md`). OpenAI Sans was a visual
   reference only; no licensed asset is available, so Inter is the practical stand-in, not an exact match. Geist Mono stays for code.
-  The serif Pivot logo is an image and is unchanged. Verified loaded in-browser (`document.fonts`: Inter 100–900).
+  The Pivot logo is an image and is unaffected by the app typeface. Verified loaded in-browser (`document.fonts`: Inter 100–900).
 - True black (`#000`) canvas, sidebar and top bar; cards `#0c0c0d`, raised `#141415`, borders `#2d2d30`.
 - Roles: page title 1.65–2.1rem/600, section 1.25–1.5rem/600, descriptions 15.5px, dense tables stay 12–13px. No blanket scale-up.
 

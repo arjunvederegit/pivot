@@ -11,7 +11,7 @@ import { ToastProvider } from "@/components/toast";
  *  OpenAI Sans look we were pointed at (no licensed OpenAI Sans asset is available to Pivot); it
  *  is served by next/font from Google Fonts under the SIL Open Font License 1.1 (see
  *  docs/redesign/THIRD_PARTY_NOTICES.md). Geist Mono is kept only where something is code. The
- *  serif Pivot logo is an image and is unaffected. */
+ *  Pivot logo is an image and is unaffected. */
 const sans = Inter({
   variable: "--font-sans-app",
   subsets: ["latin"],
