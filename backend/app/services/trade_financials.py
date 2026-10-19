@@ -38,6 +38,7 @@ UNCHECKED_CATEGORIES: tuple[dict[str, str], ...] = (
     {"category": "Base-year compensation", "note": "Recently re-signed players' salary-matching value (poison-pill provisions) is not modelled."},
     {"category": "Hard-cap triggers", "note": "Whether using an exception hard-caps a team at an apron is not modelled."},
     {"category": "Incentives and guarantees", "note": "Likely/unlikely incentives and non-guaranteed amounts, which change the salary counted in a trade, are not on file."},
+    {"category": "Cap holds and dead money", "note": "Cap holds, waived or stretched salary and other charges that count toward team salary are not on file, so a payroll may be understated."},
     {"category": "Aggregation timing", "note": "Restrictions on re-trading recently acquired players need transaction dates Pivot does not hold."},
     {"category": "Pick legality", "note": "Pick swaps, protections and ownership beyond the Stepien check are not validated."},
     {"category": "Calendar restrictions", "note": "The trade deadline, moratoriums and the recently-signed-free-agent window are not checked against today's date."},
@@ -107,12 +108,10 @@ def _commitments(team: TeamContext, params_season: str, seasons: list[str]) -> l
                     total += figures.cap_hit
                 elif fin.end_status == "ends" and fin.final_season is not None and season > fin.final_season:
                     pass  # the contract is over: a known absence of commitment, not an unknown
-                elif season == params_season:
-                    unknown.append(asset.name)
-                elif fin.end_status == "through_horizon" or fin.end_status == "ends":
-                    pass  # within the loaded horizon and no row: contract not running that season
                 else:
-                    unknown.append(asset.name)  # length unknown: later seasons cannot be stated
+                    # Anything else with no row — a gap inside the contract, a season past the loaded horizon, a
+                    # length that cannot be derived — is UNKNOWN, never $0 (round-1 finding).
+                    unknown.append(asset.name)
             row[key] = {"known_total": total, "unknown_players": sorted(set(unknown)), "complete": not unknown}
         both = row["outgoing"]["complete"] and row["incoming"]["complete"]
         row["net_known"] = row["incoming"]["known_total"] - row["outgoing"]["known_total"] if both else None

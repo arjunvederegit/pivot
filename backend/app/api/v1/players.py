@@ -295,7 +295,10 @@ def get_player_contract(player_id: str, db: Session = Depends(get_db)) -> dict:
     player = db.get(Player, player_id)
     if player is None:
         raise NotFoundError(f"player {player_id} not found")
-    contract = db.scalar(select(Contract).where(Contract.player_id == player.id))
+    # Deterministic when a player has more than one contract row (the lowest id), the same pick every reader makes.
+    contract = db.scalar(
+        select(Contract).where(Contract.player_id == player.id).order_by(Contract.id).limit(1)
+    )
     settings = get_settings()
     # R9.3A: the same assembled record Cap Center and the Trade Evaluator read, so the three agree.
     financials = player_financials(db, {player.id: player.full_name}, settings.cap_league_year)[

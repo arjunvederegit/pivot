@@ -417,9 +417,16 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
     ).all()
     roster_ids = {e.player_id: e.player.full_name for e in entries}
 
-    contracts = db.scalars(
-        select(Contract).where(Contract.player_id.in_(list(roster_ids))).limit(500)
-    ).all()
+    # One contract per player, the lowest id — the pick every reader makes (a second row for the same player would
+    # otherwise be summed into the chart while the subtotal counts one).
+    contracts = []
+    seen_players: set[str] = set()
+    for row in db.scalars(
+        select(Contract).where(Contract.player_id.in_(list(roster_ids))).order_by(Contract.id).limit(500)
+    ).all():
+        if row.player_id not in seen_players:
+            seen_players.add(row.player_id)
+            contracts.append(row)
     if not contracts:
         configured = get_contract_provider() is not None
         return {
@@ -508,7 +515,9 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
             LeagueCapParameters.league_year == settings.cap_league_year
         )
     )
-    covered = sum(1 for pid in roster_ids if any(c.player_id == pid for c in contracts))
+    # R9.3A: "covered" is the number of rostered players with a PRICED financial-season cap hit — the same count the
+    # financials block reports — not the number with any contract row (round 1: LAC 17 vs 15 priced).
+    covered = len(fin.priced)
     params = (
         {
             "salary_cap": cap_row.salary_cap,
@@ -529,7 +538,7 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
         "roster_season": roster_season,
         "roster_size": len(roster_ids),
         "players_with_contracts": covered,
-        "complete": covered == len(roster_ids),
+        "complete": fin.complete,
         "seasons": [{"season": season, **bucket} for season, bucket in sorted(by_season.items())],
         "players": player_rows,
         "cap_parameters": {

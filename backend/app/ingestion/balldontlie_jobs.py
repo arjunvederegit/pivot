@@ -213,6 +213,9 @@ def sync_contracts_from_balldontlie(
         now = datetime.now(UTC)
         records: list[ContractYearRecord] = []
         failed_teams: list[dict[str, str]] = []
+        #: Rows the adapter rejected as malformed and rows this job refuses below (R9.3A round 1): a season read with
+        #: any of them is ``partial`` and never counts toward the contract horizon.
+        read_warnings: list[dict[str, str]] = []
         requests = 0
         for provider_team in sorted(team_links.values(), key=int):
             result = provider.team_contracts(int(provider_team), target)
@@ -222,7 +225,31 @@ def sync_contracts_from_balldontlie(
                     {"team_provider_id": provider_team, "status": result.status.value}
                 )
                 continue
+            for warning in result.warnings:
+                read_warnings.append({"team_provider_id": provider_team, "warning": str(warning)[:200]})
             records.extend(result.records)
+
+        # A row is trusted only if it is for the season that was asked for, has one row per player-season, and
+        # a cap hit (when present) that is a positive amount. Everything else is refused and listed, never stored.
+        refused: list[dict[str, Any]] = []
+        seen_keys: dict[tuple[str, str], int] = {}
+        for record in records:
+            key = (record.player_provider_id, record.season.label)
+            seen_keys[key] = seen_keys.get(key, 0) + 1
+        accepted: list[ContractYearRecord] = []
+        for record in records:
+            if record.season != target:
+                refused.append({"player": record.player_name, "provider_id": record.player_provider_id,
+                                "why": f"season {record.season.label} returned for a {target.label} request"})
+            elif seen_keys[(record.player_provider_id, record.season.label)] > 1:
+                refused.append({"player": record.player_name, "provider_id": record.player_provider_id,
+                                "why": "more than one provider row for this player and season"})
+            elif record.cap_hit is not None and record.cap_hit <= 0:
+                refused.append({"player": record.player_name, "provider_id": record.player_provider_id,
+                                "why": f"non-positive cap hit {record.cap_hit}"})
+            else:
+                accepted.append(record)
+        records = accepted
 
         identity_extension = link_embedded_players(db, records)
         stats: Counter[str] = Counter(
@@ -259,7 +286,9 @@ def sync_contracts_from_balldontlie(
                     }
                 )
                 continue
-            contract = db.scalar(select(Contract).where(Contract.player_id == player_id))
+            contract = db.scalar(
+                select(Contract).where(Contract.player_id == player_id).order_by(Contract.id).limit(1)
+            )
             if contract is None:
                 contract = Contract(
                     player_id=player_id,
@@ -341,23 +370,29 @@ def sync_contracts_from_balldontlie(
         roster_season = resolve_roster_season(db)
         coverage = contract_coverage(db, roster_season, target.label)
         uncovered = roster_side_unmatched(db, roster_season, target.label)
-        complete = not failed_teams and not unmapped
+        # Complete means: every team answered, no row was rejected or refused, and the season is not empty. A
+        # season that fails any of these is `partial` and the contract horizon will not count it.
+        clean_read = not failed_teams and not read_warnings and not refused and bool(records)
+        complete = clean_read and not unmapped
         run.rows_written = stats["years_created"] + stats["years_updated"]
         run.detail = {
             "provider": PROVIDER,
             "season": target.label,
-            "outcome": "complete" if not failed_teams else "partial",
+            "outcome": "complete" if clean_read else "partial",
             "salary_basis": SALARY_BASIS,
             "requests": requests,
             "teams_requested": len(team_links),
             "teams_failed": failed_teams,
+            "read_warnings": read_warnings[:20],
+            "refused_rows": refused[:50],
+            "refused_rows_total": len(refused),
             "identity_extension": identity_extension,
             "rows_returned": len(records),
             **dict(stats),
             "not_reseen": len(not_reseen),
             "unmapped_players": unmapped[:50],
             "unmapped_players_total": len(unmapped),
-            "unpriced_players": unpriced[:80],
+            "unpriced_players": unpriced[:300],
             "unpriced_players_total": len(unpriced),
             "provider_conflicts": conflicts[:50],
             "provider_conflicts_total": len(conflicts),

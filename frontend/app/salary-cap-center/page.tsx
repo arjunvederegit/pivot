@@ -23,7 +23,7 @@ import { api } from "@/lib/api";
 import { useHydrated } from "@/lib/hydrated";
 import { dataHealthSchema } from "@/lib/schemas";
 import { count, formatDate, money } from "@/lib/format";
-import { contractLength, dollars, type TeamFinancialSummary } from "@/lib/financials";
+import { basisLabel, contractLength, dollars, type TeamFinancialSummary } from "@/lib/financials";
 import { teamIdentity } from "@/lib/teamIdentity";
 import type {
   CapOutlookAvailable,
@@ -877,12 +877,17 @@ function CapOutlookView({
   teamName: string;
 }) {
   const fin = outlook.financials;
-  const seasons = outlook.seasons.map((season) => season.season);
+  // R9.3A: the chart and columns are the financial season onward (the shared commitments), not every season any
+  // contract row happens to carry; legacy snapshots with past seasons keep the old list as a fallback.
+  const commitmentSeasons = fin?.commitments.map((c) => ({ season: c.season, total: c.known_total, players: c.players }));
+  const seasonRows = commitmentSeasons && commitmentSeasons.length > 0 ? commitmentSeasons : outlook.seasons;
+  const seasons = seasonRows.map((season) => season.season);
   const params = outlook.cap_parameters;
   const sourceName = outlook.players.find((player) => player.source_name)?.source_name ?? null;
   const sourceDate =
     fin?.retrieved_at ?? outlook.players.find((player) => player.source_date)?.source_date ?? null;
-  const firstSeason = outlook.seasons.find((season) => season.season === outlook.cap_league_year) ?? outlook.seasons[0];
+  // Never relabel another season's total as the financial season's: no row for it means "—".
+  const firstSeason = seasonRows.find((season) => season.season === outlook.cap_league_year);
   const priced = fin?.coverage.priced ?? outlook.players_with_contracts;
   const rosterSize = fin?.coverage.roster_size ?? outlook.roster_size;
   const missing = rosterSize - priced;
@@ -984,7 +989,7 @@ function CapOutlookView({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <Panel accent={accent}>
-          {outlook.seasons.length === 0 ? (
+          {seasonRows.length === 0 ? (
             <EmptyState
               title="No contract years found"
               hint="The import produced no season rows for this roster."
@@ -992,7 +997,7 @@ function CapOutlookView({
           ) : (
             <>
               <SalaryTimeline
-                seasons={outlook.seasons}
+                seasons={seasonRows}
                 capLine={params?.salary_cap}
                 taxLine={params?.luxury_tax}
                 title="Known cap hits by season"
@@ -1007,7 +1012,7 @@ function CapOutlookView({
             </>
           )}
           <SourceRail
-            source={sourceName ? `${sourceName} (cap-hit basis)` : "imported contract snapshot"}
+            source={sourceName ? `${sourceName} (${basisLabel(outlook.players.find((p) => p.financials?.salary_basis)?.financials?.salary_basis)})` : "imported contract snapshot"}
             retrievedAt={sourceDate}
           />
         </Panel>
@@ -1181,7 +1186,7 @@ function CapOutlookView({
           </div>
         )}
         <SourceRail
-          source={sourceName ? `${sourceName} (cap-hit basis)` : "imported contract snapshot"}
+          source={sourceName ? `${sourceName} (${basisLabel(outlook.players.find((p) => p.financials?.salary_basis)?.financials?.salary_basis)})` : "imported contract snapshot"}
           retrievedAt={sourceDate}
         />
       </Panel>

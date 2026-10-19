@@ -155,12 +155,13 @@ def financials(db: Session, players: dict[str, str], league_year: str) -> dict[s
             fin.horizon(db, league_year, runs),
             fin.two_way_salary(db, league_year, cap_params_row(db, league_year)),
             fin.unpriced_observations(db, league_year, runs),
+            fin.later_unpriced_seasons(db, league_year, runs),
         )
-    info, two_way, observed = shared[league_year]
+    info, two_way, observed, later = shared[league_year]
     missing = {pid: name for pid, name in players.items() if (pid, league_year) not in cache}
     if missing:
         computed = fin.player_financials(
-            db, missing, league_year, horizon_info=info, two_way=two_way, observed=observed
+            db, missing, league_year, horizon_info=info, two_way=two_way, observed=observed, later_unpriced=later
         )
         for pid, record in computed.items():
             cache[(pid, league_year)] = record

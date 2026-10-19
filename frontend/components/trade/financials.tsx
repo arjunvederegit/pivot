@@ -20,6 +20,7 @@ import { playerFileLink } from "@/lib/investigation";
 import clsx from "clsx";
 import {
   VERDICT_WORD,
+  basisLabel,
   contractLength,
   contractLengthShort,
   dollars,
@@ -373,7 +374,7 @@ export function SalaryAndContracts({
           </ul>
         </Explainer>
         <SourceRail
-          source={`${sourceName ?? "contract provider"} (cap-hit basis)`}
+          source={`${sourceName ?? "contract provider"} (${basisLabel(analysis.players.find((p) => p.financials?.salary_basis)?.financials?.salary_basis)})`}
           retrievedAt={retrieved ?? null}
         />
         {retrieved && <span className="sr-only">Retrieved {formatDate(retrieved)}</span>}

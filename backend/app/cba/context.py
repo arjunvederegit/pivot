@@ -36,6 +36,9 @@ class PlayerAsset:
     #: ``False``, when that cannot be shown. ``contract_type`` is still only ever what a source stated.
     not_two_way: bool | None = None
     not_two_way_basis: str | None = None
+    #: Whether the player is on his from-team's roster snapshot. A player on no roster (a free agent named in a deal)
+    #: is not in that team's payroll or roster count, so the trade must not subtract him from them.
+    on_roster_before: bool = True
     #: Financial facts for display and for the trade's financial analysis.
     financials: "PlayerFinancials | None" = None
 
@@ -232,17 +235,20 @@ class TeamContext:
         this is `None` the moment any of them is missing — a lower bound built from an
         unknown subtraction is not a lower bound.
         """
-        if self.coverage_before is None:
-            return None
+        if self.coverage_before is None or self.coverage_before.players_total <= 0:
+            return None  # no roster on file: nothing to add a trade's players to or subtract them from
         out_total, in_total = self.outgoing_salary_total, self.incoming_salary_total
         if out_total is None or in_total is None:
             return None
         # Deliberately the *totals*, not the matching-eligible sums: coverage describes
         # what is on file, so it must not change because a contract type is unknown.
+        # Only players who are on this team's roster come off its books: a free agent "sent" by a team was never in its
+        # payroll or its roster count, so subtracting him would manufacture a verified payroll (round-1 finding).
+        out_on_roster = sum(p.salary or 0 for p in self.outgoing if p.on_roster_before)
         return PayrollCoverage(
-            known=self.coverage_before.known - out_total + in_total,
+            known=self.coverage_before.known - out_on_roster + in_total,
             players_known=self.coverage_before.players_known
-            - len(self.outgoing)
+            - len([p for p in self.outgoing if p.on_roster_before])
             + len(self.incoming),
             players_total=self.roster_count_after,
         )
@@ -254,7 +260,7 @@ class TeamContext:
 
     @property
     def roster_count_after(self) -> int:
-        return self.roster_count_before - len(self.outgoing) + len(self.incoming)
+        return self.roster_count_before - len([p for p in self.outgoing if p.on_roster_before]) + len(self.incoming)
 
     @property
     def salaries_known(self) -> bool:

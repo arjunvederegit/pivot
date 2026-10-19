@@ -160,11 +160,14 @@ describe("financial wording helpers", () => {
 
   it("a lower-bound length carries a plus and 'at least'; an unknown length says so", () => {
     const base = fin().contract_end;
-    expect(contractLength(base)).toBe("4 seasons · through 2029-30");
+    expect(contractLength(base)).toBe("4 seasons on file · through 2029-30");
     expect(contractLength({ ...base, status: "through_horizon", final_season: "2030-31", years_remaining: 5, years_remaining_is_lower_bound: true })).toBe("5+ seasons · through at least 2030-31");
     expect(contractLength({ ...base, status: "unknown", years_remaining: null, final_season: null })).toBe("length unknown");
     expect(contractLengthShort({ ...base, status: "through_horizon", final_season: "2030-31" })).toBe("thru ≥ 30-31");
     expect(contractLength(null)).toBe("length unknown");
+    expect(contractLength({ ...base, has_gap: true })).toBe("4 seasons on file (with a gap) · through 2029-30");
+    expect(signedMillions(40_000)).toBe("+<$0.1M");
+    expect(signedMillions(-40_000)).toBe("−<$0.1M");
   });
 });
 

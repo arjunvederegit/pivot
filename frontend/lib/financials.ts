@@ -211,10 +211,11 @@ export function contractLength(end: ContractEnd | null | undefined): string {
   if (!end) return "length unknown";
   if (end.status === "ends" && end.final_season && end.years_remaining !== null) {
     const years = end.years_remaining;
-    return `${years} season${years === 1 ? "" : "s"} · through ${end.final_season}`;
+    // A gap means the seasons with a row are not consecutive: say so instead of implying an unbroken run.
+    return `${years} season${years === 1 ? "" : "s"} on file${end.has_gap ? " (with a gap)" : ""} · through ${end.final_season}`;
   }
   if (end.status === "through_horizon" && end.final_season && end.years_remaining !== null) {
-    return `${end.years_remaining}+ seasons · through at least ${end.final_season}`;
+    return `${end.years_remaining}+ seasons${end.has_gap ? " (with a gap)" : ""} · through at least ${end.final_season}`;
   }
   if (end.status === "none") return "no contract on file";
   return "length unknown";
@@ -244,5 +245,12 @@ export function signedMillions(value: number | null | undefined): string {
   if (value === null || value === undefined) return "not stated";
   const m = value / 1_000_000;
   const r = Number(m.toFixed(1));
+  // A real but tiny difference must not read as "$0.0M" (which looks like "no change").
+  if (r === 0 && value !== 0) return `${value > 0 ? "+" : "−"}<$0.1M`;
   return `${r > 0 ? "+" : r < 0 ? "−" : ""}$${Math.abs(r).toFixed(1)}M`;
+}
+
+/** What a source rail may say about the figure's basis: only "cap hit" when the rows say so. */
+export function basisLabel(basis: string | null | undefined): string {
+  return basis === "cap_hit" ? "cap-hit basis" : "basis not stated";
 }

@@ -58,6 +58,7 @@ NOT_ON_FILE = {
     "and Pivot does not parse prose into structured options.",
     "guarantees": "Guaranteed amounts are not loaded (they need one provider request per player).",
     "no_trade_clause": "No-trade clauses are not reported by the provider.",
+    "cap_holds": "Cap holds, dead money and waived or stretched salary are not on file, so a payroll can be understated.",
     "signing_date": "Signing dates are not reported by the provider, so recently-signed restrictions cannot be checked.",
     "contract_type": "The provider's contract-type vocabulary is inconsistent and is not loaded as a structured field.",
 }
@@ -136,7 +137,13 @@ def horizon(db: Session, financial_season: str, runs: list[DataSyncRun] | None =
         season = detail.get("season")
         if not isinstance(season, str) or not _valid(season):
             continue
-        if detail.get("outcome") == "complete" and not detail.get("teams_failed"):
+        # A season counts only if the read was clean (no failed team, no rejected or refused row) and returned rows.
+        if (
+            detail.get("outcome") == "complete"
+            and not detail.get("teams_failed")
+            and not detail.get("refused_rows_total")
+            and detail.get("rows_returned", 1) > 0
+        ):
             complete[season] = run.finished_at.isoformat() if run.finished_at else ""
             partial.discard(season)
         elif season not in complete:
@@ -284,6 +291,30 @@ def unpriced_observations(
     return out
 
 
+def later_unpriced_seasons(
+    db: Session, financial_season: str, runs: list[DataSyncRun] | None = None
+) -> dict[str, list[str]]:
+    """``{player_id: [seasons after the financial season]}`` the provider lists WITHOUT a cap hit.
+
+    Such a row proves the contract runs at least that long even though no cap hit was stored for it, so the
+    contract's length cannot be derived from the stored rows (round-1 finding: it read as "ends")."""
+    out: dict[str, list[str]] = {}
+    floor = _season_key(financial_season)
+    for run in contract_runs(db) if runs is None else runs:
+        detail = run.detail if isinstance(run.detail, dict) else {}
+        season = detail.get("season")
+        if not isinstance(season, str) or not _valid(season) or _season_key(season) <= floor:
+            continue
+        for row in detail.get("unpriced_players") or []:
+            if isinstance(row, dict) and row.get("player_id"):
+                seasons = out.setdefault(str(row["player_id"]), [])
+                if season not in seasons:
+                    seasons.append(season)
+    for seasons in out.values():
+        seasons.sort(key=_season_key)
+    return out
+
+
 def two_way_salary(
     db: Session, financial_season: str, row: LeagueCapParameters | None = None
 ) -> int | None:
@@ -323,6 +354,7 @@ def player_financials(
     horizon_info: ContractHorizon | None = None,
     two_way: int | None = None,
     observed: dict[str, dict[str, Any]] | None = None,
+    later_unpriced: dict[str, list[str]] | None = None,
 ) -> dict[str, PlayerFinancials]:
     """``{player_id: PlayerFinancials}`` for ``players`` (``id -> display name``), in two queries.
 
@@ -334,6 +366,8 @@ def player_financials(
         two_way = two_way_salary(db, financial_season)
     if observed is None:
         observed = unpriced_observations(db, financial_season)
+    if later_unpriced is None:
+        later_unpriced = later_unpriced_seasons(db, financial_season)
     ids = list(dict.fromkeys(players))
     contracts: dict[str, Contract] = {}
     if ids:
@@ -348,7 +382,8 @@ def player_financials(
     out: dict[str, PlayerFinancials] = {}
     for pid in ids:
         out[pid] = _assemble(
-            players[pid], pid, contracts.get(pid), years, financial_season, info, two_way, observed.get(pid)
+            players[pid], pid, contracts.get(pid), years, financial_season, info, two_way, observed.get(pid),
+            later_unpriced.get(pid),
         )
     return out
 
@@ -362,6 +397,7 @@ def _assemble(
     info: ContractHorizon,
     two_way: int | None,
     observed: dict[str, Any] | None = None,
+    later_unpriced: list[str] | None = None,
 ) -> PlayerFinancials:
     if contract is None:
         status, reason = "no_contract", "no contract row on file for this player"
@@ -389,17 +425,25 @@ def _assemble(
     current = next((f for f in figures if f.season == financial_season), None)
     # Freshness is the financial season's own retrieval: a later load of another season does not make
     # this season's figure newer.
-    retrieved = current.retrieved_at if current is not None else max(
-        (f.retrieved_at for f in figures if f.retrieved_at), default=None
-    )
+    # An unpriced record has no financial-season figure to be fresh about: its retrieval time is null, not the time a
+    # later season was loaded (round 1: Devin Carter showed the 2027-28 load time for an unpriced 2026-27 figure).
+    retrieved = current.retrieved_at if current is not None else None
     if current is None:
         status, reason = "unpriced", f"a contract is on file but it has no {financial_season} cap hit"
         if observed is not None:
             reason = _observed_reason(observed, financial_season, two_way)
+        if figures:  # later seasons carry cap hits: this is not a two-way-only deal, so drop any two-way hint
+            reason = reason.split(". The cash figure equals")[0] + (
+                f"; later seasons do carry cap hits (from {figures[0].season}), so a standard contract is likely"
+            )
     else:
         status, reason = "priced", f"{financial_season} cap hit on file"
 
     end_status, final, remaining, lower_bound, gap = _length(figures, financial_season, info, contract)
+    if later_unpriced and end_status in ("ends", "through_horizon"):
+        # The provider lists a later season without a cap hit: the contract runs at least that long, so a length
+        # derived from the stored rows would be wrong in the "ends" direction.
+        end_status, remaining, lower_bound = "unknown", None, False
 
     not_two_way: bool | None = None
     basis: str | None = None
@@ -574,6 +618,10 @@ def team_financial_summary(
             "payroll": payroll,
             "room_below_cap": max(params["salary_cap"] - payroll, 0),
             "over_cap_by": max(payroll - params["salary_cap"], 0),
+            "caveat": (
+                "Computed from the cap hits on file for the current roster snapshot; it excludes cap holds, dead money and "
+                "anything not on file, and a provisional roster is not the final roster."
+            ),
             "status": (
                 "above_second_apron" if payroll > params["second_apron"]
                 else "above_first_apron" if payroll > params["first_apron"]
@@ -607,7 +655,8 @@ def team_financial_summary(
         }
     )
 
-    retrieved = max((p.retrieved_at for p in (*fin.priced, *fin.unpriced) if p.retrieved_at), default=None)
+    # The OLDEST financial-season figure behind the team's subtotal: "how fresh is this number" is its weakest part.
+    retrieved = min((p.retrieved_at for p in fin.priced if p.retrieved_at), default=None)
     return {
         "financial_season": fin.financial_season,
         "roster_season": fin.roster_season,

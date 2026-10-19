@@ -249,6 +249,10 @@ class SalaryMatchingRule:
                     "band": "under the cap after the trade",
                 },
                 source_reference=CBA_REF,
+                # Cap holds and dead money count toward team salary for cap purposes and are not on file, so a
+                # payroll that looks under the cap may not be. The adjacent absorb-with-nothing-out branch is
+                # `medium` for the same reason.
+                confidence="medium",
             )
         status_after = team.apron_status(payroll_after, params)
         if status_after in ("above_first_apron", "above_second_apron"):

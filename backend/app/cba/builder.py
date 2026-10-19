@@ -206,7 +206,9 @@ def build_trade_context(
         if player is None:
             raise NotFoundError(f"Unknown player id {move['player_id']}")
         salary, contract = resolved[player.id]
+        from_roster = set(resolver.team_roster_ids(db, move["from_team_id"], season)) if move["from_team_id"] in contexts else set()
         asset = PlayerAsset(
+            on_roster_before=player.id in from_roster,
             player_id=player.id,
             name=player.full_name,
             from_team_id=move["from_team_id"],

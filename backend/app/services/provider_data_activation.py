@@ -183,7 +183,7 @@ def plan(source_path: Path, target_url: str) -> dict[str, Any]:
                 else:
                     tp.conflicts.append({"id": row["id"], "differs_in": _diff(row, current)})
                 continue
-            problem = _dangling(name, row, players, teams)
+            problem = _dangling(name, row, players, teams) or _duplicate_contract(target, name, row)
             if problem:
                 tp.dangling.append({"id": row["id"], "problem": problem})
             else:
@@ -243,6 +243,21 @@ def _norm(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.replace(tzinfo=None).isoformat()
     return value
+
+
+def _duplicate_contract(target: Engine, table: str, row: dict[str, Any]) -> str | None:
+    """A contract row for a player who already has a DIFFERENT contract row in the target would create two contracts for one
+    player (there is no unique index on ``contracts.player_id``): readers pick the lowest id and the legacy chart sums
+    them, so the tools would disagree. Round-1 finding; refused here."""
+    if table != "contracts":
+        return None
+    with target.connect() as conn:
+        other = conn.execute(
+            select(_table("contracts").c.id).where(
+                _table("contracts").c.player_id == row["player_id"], _table("contracts").c.id != row["id"]
+            )
+        ).first()
+    return f"player {row['player_id']} already has a different contract row in the target" if other else None
 
 
 def _dangling(table: str, row: dict[str, Any], players: set[str], teams: set[str]) -> str | None:

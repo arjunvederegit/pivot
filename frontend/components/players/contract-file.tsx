@@ -8,7 +8,7 @@
  */
 
 import Link from "next/link";
-import { dollars, contractLength, type PlayerFinancialsRecord } from "@/lib/financials";
+import { basisLabel, dollars, contractLength, type PlayerFinancialsRecord } from "@/lib/financials";
 import { formatDate } from "@/lib/format";
 import { tradeEvaluatorLink } from "@/lib/investigation";
 import {
@@ -126,7 +126,7 @@ export function ContractFile({
               </ul>
             </Explainer>
             <SourceRail
-              source={`${f.source.name ?? "contract provider"} (cap-hit basis)`}
+              source={`${f.source.name ?? "contract provider"} (${basisLabel(f.salary_basis)})`}
               retrievedAt={f.source.retrieved_at}
             />
             {f.source.retrieved_at && <span className="sr-only">Retrieved {formatDate(f.source.retrieved_at)}</span>}
