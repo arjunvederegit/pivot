@@ -1,6 +1,6 @@
 # R9.2 — Reusable Player Intelligence & Skill Engine: executive report
 
-**Status: {{STATUS}}** · Branch `feat/r9-2-player-skill-engine` (from R9.1 `40f8602`) · Not merged · Nothing live was changed: no TEI rating, no stored estimate, no active model, no existing route.
+**Status: R9.2 COMPLETE — VALIDATED** · Branch `feat/r9-2-player-skill-engine` (from R9.1 `40f8602`) · Not merged · Nothing live was changed: no TEI rating, no stored estimate, no active model, no existing route.
 Start here; the evidence is in the other files in `docs/r9-2/`. What "validated" means in that status line is spelled out in §6: the engineering and the *testable* statistical gates are met, every model-derived output is a
 labelled **candidate**, and nothing was promoted.
 
@@ -57,12 +57,21 @@ Honest limits, in plain words:
 * **No migration**; the three existing validation batteries (comparable, acquisition, adversarial) produce **byte-identical** output on the R9.1 baseline and on R9.2, on identical copies of the same database.
 * **Protected state:** on a copy of the real database, materialising the candidate models changed only the candidate tables; the 19 existing model versions and 512 TEI estimates hash identically before and after, on SQLite and PostgreSQL.
 * **Frontend:** wording only (the TEI band is called a "model range", with its measured coverage); 311 frontend tests, `tsc` and eslint pass. No redesign.
-* **Tests:** the full backend suite passes (3,180 passed, 19 environmental skips; R9.1 had 2,970 passing); the R9.2 and PostgreSQL-compat tests pass on **PostgreSQL 16** as well (386). SQLite and PostgreSQL produce **bit-identical** candidate rows.
+* **Tests:** the full backend suite passes (3,188 passed, 19 environmental skips; R9.1 had 2,970 passing); the R9.2 and PostgreSQL-compat tests pass on **PostgreSQL 16** as well (393). SQLite and PostgreSQL produce **bit-identical** candidate rows.
 * **Secrets / data:** no credentials or raw licensed rows are committed (aggregates only); no provider request was made.
 
 ## 6. Is R9.2 complete? What remains
 
-{{COMPLETE}}
+**Yes: R9.2 is complete and validated at the level its own gates define — not more.**
+
+* **Met:** the shared engine works end to end; measured shooting, playmaking, rebounding, usage/role and games played are available with provenance and integrity checks; three shooting quantities have inferred and projected outputs with their
+  validation evidence; unsupported dimensions are unavailable with reasons; no model was promoted and no active model, TEI estimate or existing route changed; results are reproducible (clean-clone re-run, SQLite = PostgreSQL bit for bit);
+  three independent QA rounds, a retest and a final verification pass were run, and every critical and high finding was fixed and re-tested (final pass: none open).
+* **What "validated" does and does not mean here:** the *engine and its gates* are validated. The *models* are labelled candidates: three-point and free-throw accuracy are experimental (confirmed on a first-read holdout against the pre-registered
+  reference, but only about 1.5% better than an attempts-aware regression, below the 2% bar R9.2 set); true-shooting projection is **not** confirmed and serves the baseline; inferred ability has development-only evidence; nothing is "trusted" or promoted.
+* **Not built, by design or evidence:** defence, shot profile/zones, shot creation and any overall rating (unavailable); availability and inferred playmaking/rebounding/usage (studied or unnecessary, not served); a GOAT historical backfill (deferred for survivor
+  bias); a recalibrated TEI band and trade-evaluator σ (labelled instead).
+* **Known residual limits:** see [FINAL-QA-SIGNOFF.md](FINAL-QA-SIGNOFF.md) §5 and [qa-and-regression-report.md](qa-and-regression-report.md) §5–§8 (all reviewers were AI agents; low-severity CLI and test-gap items remain; the owner's PostgreSQL activation run is still to do).
 
 ## 7. Decisions for the owner
 

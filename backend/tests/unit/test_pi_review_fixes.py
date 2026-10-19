@@ -107,11 +107,13 @@ class TestRegistryEvidenceIsNotBorrowed:
     def test_a_model_trained_under_another_configuration_gets_no_evidence(self, league):
         db = league["db"]
         train_candidate(db, "state_space", "fg3_pct", "2021-22", features=FeatureConfig(min_target_minutes=300), experiment_dir=league["experiment_dir"])
-        v = db.scalar(select(ModelVersion).where(ModelVersion.config["origin"].as_string() == "2021-22", ModelVersion.model_name == "player_forecast_fg3_pct"))
+        v = db.scalar(select(ModelVersion).where(ModelVersion.config["origin"].as_string() == "2021-22", ModelVersion.config["features"]["min_target_minutes"].as_float() == 300))
         assert v.validation_metrics["config_matches"] is False
-        r = svc(league).get(top_player(league), ["fg3_pct"], as_of="2021-22", kinds=["projected"], include_experimental=True)
-        assert r.records and r.records[0].model.evaluation_status is not EvaluationStatus.DEVELOPMENT_ONLY or "evidence is NOT attached" in " ".join(r.records[0].limitations)
-        assert r.records[0].interval.calibration is None
+        r = svc(league).get(top_player(league), ["fg3_pct"], as_of="2021-22", kinds=["projected"], model_version=v.version, include_experimental=True)
+        rec = r.records[0]
+        assert rec.model.version == v.version and rec.model.evaluation_status is EvaluationStatus.UNEVALUATED
+        assert any("evidence is NOT attached" in lim for lim in rec.limitations)
+        assert rec.interval.calibration is None
 
     def test_the_matching_model_still_gets_the_evidence(self, league):
         rec = svc(league).get(top_player(league), ["fg3_pct"], as_of=CUTOFF, kinds=["projected"], include_experimental=True).records[0]
@@ -888,3 +890,48 @@ class TestReuseSetAndCountSemantics:
         v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
         for row in db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct").limit(20)):
             assert {"history_exposure", "n_observed"} <= set(row.inputs)
+
+
+class TestRound4FinalFindings:
+    def test_an_inferred_label_is_capped_when_the_registrys_evidence_does_not_apply(self, league):
+        """R5-N1: a stale or foreign stored 'holdout_confirmed' must not label a latent-ability output more strongly than the registry would."""
+        db = league["db"]
+        v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        saved = dict(v.config)
+        try:
+            v.config = {**saved, "artifact_schema": "r9.2-2"}
+            v.validation_metrics = {**v.validation_metrics, "evaluation_status": "holdout_confirmed"}
+            db.flush()
+            r = svc(league).get(top_player(league), ["fg3_pct"], as_of=CUTOFF, kinds=["inferred"], model_version=v.version, include_experimental=True)
+            assert r.records and r.records[0].model.evaluation_status is EvaluationStatus.DEVELOPMENT_ONLY
+        finally:
+            db.rollback()
+
+    def test_a_missing_own_fingerprint_gets_no_evidence(self, league):
+        reg = make_registry(league["fingerprint"])
+        v = league["db"].scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        without = {k: x for k, x in v.validation_metrics.items() if k != "current_data_fingerprint"}
+        assert reg.applies_to("fg3_pct", "state_space", v.config, without) is False
+
+    @pytest.mark.parametrize("claimed", ["development_only", "benchmarked", "holdout_confirmed", "stale:failed"])
+    def test_no_positive_status_can_be_claimed_by_a_caller(self, league, claimed):
+        db = league["db"]
+        mt = 360 + len(claimed)
+        train_candidate(db, "state_space", "fg3_pct", "2021-22", features=FeatureConfig(min_target_minutes=mt), evaluation={"evaluation_status": claimed})
+        v = db.scalar(select(ModelVersion).where(ModelVersion.config["origin"].as_string() == "2021-22", ModelVersion.config["features"]["min_target_minutes"].as_float() == mt))
+        assert v.validation_metrics["evaluation_status"] == "unevaluated"
+
+    def test_a_sub_attempt_true_shooting_range_is_visible_in_the_text(self):
+        from app.player_intelligence.measured import _ambiguity_limitation
+
+        text = _ambiguity_limitation(562.7, 562.52, 562.96, makes=False)
+        assert "562.5 and 563.0" in text and "makes are not given" not in text
+        assert "between 5 and 9" in _ambiguity_limitation(7.0, 5.0, 9.0)
+
+    def test_empty_cli_values_are_refused(self, tmp_path):
+        backend = Path(__file__).resolve().parents[2]
+        env = {**__import__("os").environ, "PYTHONPATH": str(backend), "DATABASE_URL": f"sqlite:///{tmp_path / 'z.db'}"}
+        for argv in (["--origin", ""], ["--evidence-dir", ""]):
+            out = subprocess.run([sys.executable, "-W", "ignore", "-m", "app.cli", "materialise-skills", *argv], env=env, capture_output=True, text=True, cwd=str(backend))
+            assert out.returncode == 2 and "needs a value" in out.stdout, (argv, out.stdout)
+        assert not (tmp_path / "z.db").exists()

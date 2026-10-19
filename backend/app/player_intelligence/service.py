@@ -385,6 +385,10 @@ class PlayerIntelligenceService:
         stored_eval = status_from_stored(stored_raw)
         applies = self.registry.applies_to(quantity, facts.method, version.config, version.validation_metrics)
         evaluation = facts.evaluation_status if applies else stored_eval
+        if kind is OutputKind.INFERRED and evaluation is EvaluationStatus.HOLDOUT_CONFIRMED:
+            # Ability is latent: nothing confirms it on a holdout (the registry caps it at development_only), so a stored
+            # label cannot raise it above that when the registry's evidence does not apply to this version.
+            evaluation = EvaluationStatus.DEVELOPMENT_ONLY
         # A stored 'failed' (the candidate did not advance, or was not confirmed, as a FORECASTER) blocks its projections,
         # and a stale 'failed' stays failed. It does not block an ability estimate: that is governed by its own
         # pre-registered serving rule, already applied by the registry (non-inferiority of the model's forecasts and

@@ -1,6 +1,6 @@
 # R9.2 — QA and regression report
 
-Three independent QA rounds were run against the implementation, each followed by fixes, regression tests and a retest. This report records, for each round, who reviewed what, what they found
+Three independent QA rounds were run against the implementation, each followed by fixes, regression tests and a retest; the retest of Round 3 found a high-severity defect, so a fourth, final verification pass was run. This report records, for each round, who reviewed what, what they found
 (with severity), what was fixed and by which test, what was *not* fixed and why, and the final numbers. It is the evidence behind [FINAL-QA-SIGNOFF.md](FINAL-QA-SIGNOFF.md).
 
 ## 1. How the reviews were run, and what that does and does not prove
@@ -14,18 +14,18 @@ Three independent QA rounds were run against the implementation, each followed b
   source-level mutants run against the test suite (Rounds 2, 3); a clean-clone re-run of a full development experiment that reproduced the committed run id and artifacts byte for byte (Round 3).
 * **The full reports** are not committed (they contain scratch paths and probe databases); their findings, severities, dispositions and tests are reproduced below, finding by finding, without softening.
 * **Retest.** Every round's findings were fixed and then re-tested. The fixes for Rounds 1 and 2 were verified by Round 3's reviewer (who re-ran the earlier reproductions). The fixes for Round 3 were verified by a further
-  independent reviewer ("Round 3 retest", §5). A fix verified only by the author's own tests is stated as such.
+  independent reviewer ("Round 3 retest", §6), whose fixes were in turn verified by a final independent pass (§6b). A fix verified only by the author's own tests is stated as such.
 
 ## 2. Final test and verification numbers
 
 | Check | Result |
 | --- | --- |
-| Full backend suite, SQLite, at the final commit's code (`pytest tests`) | **3,180 passed, 19 skipped, 0 failed** (3,199 collected; 369 s). The 19 skips are environmental and pre-existing: no live Ollama, no local RealGM snapshot, no `tei_to_net_rating` model in the test database, … |
-| R9.1 baseline for comparison | 2,970 passed at `40f8602` → R9.2 adds ≈ 210 tests (207 in nine new/extended R9.2 files, plus contract and compatibility additions) and changes no existing assertion's meaning |
-| R9.2 files + `test_postgres_compat.py` + modeling tests, **PostgreSQL 16** (`PIVOT_TEST_DB_URL`, `PIVOT_TEST_POSTGRES_URL`) | **386 passed, 1 skipped** (the one skip is a foreign-key-dependent case that the PostgreSQL schema makes impossible); the module fixtures build the league in the real PostgreSQL schema |
+| Full backend suite, SQLite, at the final commit's code (`pytest tests`) | **3,188 passed, 19 skipped, 0 failed** (3,207 collected; 401 s). The 19 skips are environmental and pre-existing: no live Ollama, no local RealGM snapshot, no `tei_to_net_rating` model in the test database, … |
+| R9.1 baseline for comparison | 2,970 passed at `40f8602` → R9.2 adds ≈ 218 tests (215 in nine new/extended R9.2 files, plus contract and compatibility additions) and changes no existing assertion's meaning |
+| R9.2 files + `test_postgres_compat.py` + modeling tests, **PostgreSQL 16** (`PIVOT_TEST_DB_URL`, `PIVOT_TEST_POSTGRES_URL`) | **393 passed, 1 skipped** (the one skip is a foreign-key-dependent case that the PostgreSQL schema makes impossible); the module fixtures build the league in the real PostgreSQL schema |
 | Frontend (vitest / `tsc --noEmit` / eslint) | **311 passed** (22 files) / clean / clean |
 | `ruff check` on every R9.2 file; `mypy app` | clean; 188 source files, no issues. (`ruff check .` over the whole backend reports the same 17 pre-existing findings in migrations and R9.1 scripts with and without this branch.) |
-| Per-file R9.2 test counts | components 9 · diagnostics 3 · mutations 20 · rate models 11 · registry builder 7 · review fixes 110 · service 37 · API 7 · TEI band 3 |
+| Per-file R9.2 test counts | components 9 · diagnostics 3 · mutations 20 · rate models 11 · registry builder 7 · review fixes 118 · service 37 · API 7 · TEI band 3 |
 | Migration | **none** (`git diff 40f8602..HEAD -- backend/alembic` is empty); `alembic upgrade head` + `alembic check` clean on a fresh PostgreSQL database and on a copy of the real SQLite database |
 | Existing validation batteries (comparable-, acquisition-, adversarial-validation) | the three JSON outputs are **byte-identical** between the R9.1 baseline worktree and the R9.2 final tree, run on identical copies of the same database (re-run at the final code) |
 | Protected state | on a copy of the real database, candidate materialisation changed only `model_versions` (+4 candidate rows) and `candidate_estimates` (+4,424 rows); the 19 non-candidate model versions hash to `16a96351ab50fc1b` before and after, and the 512 `player_impact_estimates` rows to `04677fdff5754c5f` before and after, on SQLite and PostgreSQL (the protected-state fingerprint covers all 38 tables) |
@@ -105,7 +105,7 @@ and status probes; failure injection on both backends; two concurrent materialis
 | N8 | LOW | `as_of` validated but not normalised | **Fixed** | `TestRequestsAreNormalised` |
 | N9 | LOW | Concurrent materialisations end in a raw `IntegrityError` | **Fixed** (loser reuses) | `test_the_loser_of_a_creation_race_reuses_the_winner` |
 | N10 | LOW | CLI ignored unknown flags; `materialise-skills --help` materialised | **Fixed** | `test_unknown_flags_write_nothing_and_help_prints_usage` |
-| N11 | LOW | New order-dependent test | **Fixed** (module fixture creates the version) | reverse-order run of the R9.2 service/mutation/review/API files: 174 passed |
+| N11 | LOW | New order-dependent test | **Fixed** (module fixture creates the version) | reverse-order run of the R9.2 service/mutation/review/API files: 182 passed |
 | N12 | LOW | `status_from_stored` failed open (`failed`, `STALE:…`, trailing spaces) | **Fixed** (unknown → failed) | `TestStatusParsingFailsClosed` (11 cases) |
 | N13 | LOW | Wording (floor message rounding, "0 games played", doc range "+1.2 to +3.5") | **Fixed** | docs; `TestMeasuredHonesty` |
 | N14 | LOW | Weak tests behind the six surviving mutants | **Fixed:** a test for each (below) | `TestSurvivingMutantsNowHaveTests` + the rewritten rounding guard in `test_pi_mutations.py` |
@@ -150,10 +150,33 @@ Three more families got direct tests (a swapped player set of equal size, reuse 
 prefers the *oldest* applicable version" (two simultaneously applicable versions at one cutoff cannot be built with the synthetic league; the rule is covered only for applicable-vs-not), and its "`promotion_readiness` credits
 non-applying evidence" mutant (the readiness tests assert nothing is credited for a non-applying model but were not re-mutated).
 
-**After the fixes:** full backend suite on SQLite **3,180 passed, 19 skipped, 0 failed**; R9.2 + modeling + PostgreSQL-compatibility tests on PostgreSQL 16 (`tests/unit/test_pi_*`, the API and TEI-band tests, `test_modeling_*`,
-`tests/integration/test_postgres_compat.py`) **386 passed, 1 skipped**; `ruff` and `mypy` clean; materialisation twice on a fresh copy of the real database: 4 versions, second run reused all 4, existing 19 model versions and 512 estimates
+**After the fixes:** full backend suite on SQLite **3,188 passed, 19 skipped, 0 failed**; R9.2 + modeling + PostgreSQL-compatibility tests on PostgreSQL 16 (`tests/unit/test_pi_*`, the API and TEI-band tests, `test_modeling_*`,
+`tests/integration/test_postgres_compat.py`) **393 passed, 1 skipped**; `ruff` and `mypy` clean; materialisation twice on a fresh copy of the real database: 4 versions, second run reused all 4, existing 19 model versions and 512 estimates
 hash-identical; a 60-player real-data sample of every quantity and kind served with the registry evidence attached to the right models (3P/FT projections `holdout_confirmed`, TS projection `benchmarked`, all inferred `development_only`)
 and no attempt range violating `min ≤ attempts ≤ max`.
+
+## 6b. Final verification pass (Round 4, target `206672b`)
+
+The Round 3 retest had found a high-severity defect, so the protocol required the relevant review to be repeated. A further fresh independent reviewer re-verified the fixes against a clean clone of `206672b`: all 573
+players with exact 2025-26 totals, tamper tests on every stored column, materialisation twice on SQLite *and* PostgreSQL (same version ids, second run reuses all four; an `ada003c` store reuses identically), a 60-player sample of
+every quantity and kind on both backends (947 records, no exceptions, no number contradicting its limitation text, registry evidence attached to the right models), and **46 more mutants**.
+It could not run the full suite, the PostgreSQL suites, rollback injection or the frontend (the author ran those).
+
+* **Result: no critical or high defect, no gating bypass, no wrong number served as measured.** R4-1, R4-3, R4-4 and R4-7 verified fixed; R4-2, R4-5, R4-6 verified with residuals (below).
+* **Measured path against the exact totals (573 players):** attempt range always satisfies min ≤ attempts ≤ max (0 violations in 3P, FT, TS); the true attempts lie inside every served range (0 misses); every ranged record carries
+  the limitation (0 without); no bounded record serves `makes` (0 of 104); maximum |served rate − true rate| 0.000500 (3P), 0.000490 (FT), 0.000534 (TS — one player whose provider-published FGA differs by one from the totals; pre-existing, no range or note).
+* **Mutation:** 46 planted, 37 killed, 8 survivors + 1 equivalent. All survivors are test gaps, not defects in the shipped code.
+
+| # | Severity | Finding | Disposition |
+| --- | --- | --- | --- |
+| R5-1 | MEDIUM | When the registry evidence does not apply (a pre-schema store, named explicitly, with the opt-in), the inferred output was labelled with the version's stored status — which could read `holdout_confirmed`, stronger than the registry's own cap of `development_only`; `promotion_readiness` disagreed | **Fixed:** an inferred output is never labelled above `development_only` (test `test_an_inferred_label_is_capped…`) |
+| R5-2 | LOW | A model stored `unevaluated` because its configuration did not match still carries the holdout run id and `confirmed` in its stored decision | Disclosed (the label and the served status are correct; the artifact fields are traceability) |
+| R5-3 | LOW | Empty-string CLI values (`--origin ""`) not refused; `train-candidate --experiment` with no value silently ignored; `--evidence-dir /nonexistent` materialises without evidence | **Fixed for `materialise-skills` empty values** (test); the other two disclosed |
+| R5-4 | LOW | 25 of 50 bounded true-shooting ranges narrower than one attempt printed as "between 563 and 563"; the TS text said "makes are not given" although TS has no makes | **Fixed** (one decimal when the range is sub-attempt; the makes clause only where makes exist) |
+| R5-5 | LOW (pre-existing, safe direction) | `train-candidate --experiment <sensitivity directory>` rewrites a legitimate version's evidence record (e.g. to `failed_development_rule`, which *refuses* its projections); re-running with the holdout directory restores it | Disclosed; not a gating bypass |
+| R5-6 | LOW | Test gaps behind the survivors: `applies_to` accepting a missing own fingerprint; caller status coercion letting `development_only` through; the race path rewriting a caller's evaluation; text-column comparison for ability rows only / skipped for falsy values; range-text precision | **Tests added** for the first two, the range text and the CLI; the rest are listed as remaining test gaps |
+| R5-7 | LOW (pre-existing) | One TS record (provider FGA differs from the totals by one) is off by one attempt with no note | Disclosed |
+| R5-8 | LOW (docs) | Placeholders still in the sign-off and executive report | Filled |
 
 ## 7. Things the reviews tried and failed to break
 

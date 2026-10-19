@@ -322,7 +322,7 @@ def test_dropping_the_traded_player_note_is_detected(monkeypatch, league):
 
 def test_suppressing_the_rounding_disclosure_is_detected(monkeypatch):
     guard_rounding_ambiguity_is_disclosed()
-    monkeypatch.setattr(measured_module, "_ambiguity_limitation", lambda *a: "")  # the planted defect: the note can never fire
+    monkeypatch.setattr(measured_module, "_ambiguity_limitation", lambda *a, **k: "")  # the planted defect: the note can never fire
     with pytest.raises(AssertionError, match="was not disclosed"):
         guard_rounding_ambiguity_is_disclosed()
 

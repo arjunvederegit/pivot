@@ -140,10 +140,12 @@ def _source(row: SeasonRow, dataset: str) -> SourceRef:
     return SourceRef(provider="nba_api", dataset=dataset, retrieved_at=row.retrieved_at)
 
 
-def _ambiguity_limitation(shown: float, low: float, high: float) -> str:
+def _ambiguity_limitation(shown: float, low: float, high: float, *, makes: bool = True) -> str:
+    digits = 0 if round(low) != round(high) else 1  # a sub-attempt range (true-shooting attempts) needs a decimal to be visible
+    tail = " and the makes are not given because the counts are not exact" if makes else " because the counts are not exact"
     return (
-        f"the provider's rounding leaves the exact attempt count undetermined: between {low:.0f} and {high:.0f} "
-        f"(shown: {shown:.0f}, the nearest consistent count); the published three-decimal rate is shown and the makes are not given because the counts are not exact"
+        f"the provider's rounding leaves the exact attempt count undetermined: between {low:.{digits}f} and {high:.{digits}f} "
+        f"(shown: {shown:.{digits}f}, the nearest consistent count); the published three-decimal rate is shown{tail}"
     )
 
 
@@ -223,7 +225,7 @@ def measured_record(player_id: str, quantity: str, row: SeasonRow) -> PlayerInte
             a_min, a_max = rec.fga + 0.44 * rec.fta_min, rec.fga + 0.44 * rec.fta_max
         bounded = rec.quality == "bounded" and a_max > a_min
         if bounded:
-            note = _ambiguity_limitation(a, a_min, a_max)
+            note = _ambiguity_limitation(a, a_min, a_max, makes=quantity != "ts_pct")
             if note:
                 limits.append(note)
         if quantity == "ts_pct":
