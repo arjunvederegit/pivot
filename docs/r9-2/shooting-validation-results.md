@@ -8,17 +8,20 @@ statistics permuted, identities and teams re-assigned, a third of rows deleted) 
 
 ## 1. Headline
 
-| Quantity | Recommended projection | vs the strongest simple baseline (`ols_history`) | Holdout | Status served |
-| --- | --- | --- | --- | --- |
-| Three-point accuracy | `state_space` | **−4.4%** MAE (development, 5/5 folds) | **−3.2%**, 95% CI [−0.00195, −0.00010], both folds improve — first read of this holdout | experimental |
-| Free-throw accuracy | `state_space_role` | **−5.3%** (4 of 5 folds improve; §3) | **−6.5%**, CI [−0.00446, −0.00130], both folds — first read | experimental |
-| True shooting | **`ols_history` (a benchmark)** | candidates −2.6% / −2.8% in development (5/5 folds) | **−1.9%**, CI [−0.00130, +0.00018] — **not confirmed**; and a *re-read* of a holdout R9.1 had read | benchmarked — **no improvement claimed** |
+| Quantity | Served projection | vs `ols_history` (the pre-registered reference; does **not** use attempts) | vs the strongest *attempts-aware* regression (exploratory, development only; §3a) | Holdout vs `ols_history` | Status served |
+| --- | --- | --- | --- | --- | --- |
+| Three-point accuracy | `state_space` | **−4.4%** MAE (development, 5/5 folds) | **−1.5%** vs `ols_eb`, 5/5 folds, **below the 2% floor** | **−3.2%**, 95% CI [−0.00195, −0.00010], both folds improve — first read of this holdout | experimental |
+| Free-throw accuracy | `state_space_role` | **−5.3%** (4 of 5 folds improve) | **−1.4%** vs `ols_attempts_role`, season-level interval includes 0, **below the floor** | **−6.5%**, CI [−0.00446, −0.00130], both folds — first read | experimental |
+| True shooting | **`ols_history` (a benchmark)** | candidates −2.6% / −2.8% (5/5 folds) | −1.8% / **−2.1%** vs `ols_eb_role` — the state-space model holds up *best* here | **−1.9%**, CI [−0.00130, +0.00018] — **not confirmed**; and a *re-read* of a holdout R9.1 had read | benchmarked — **no improvement claimed** |
 
-Three-point and free-throw accuracy: a method that weights each season by the attempts behind it beats the best simple regression by about 3–6%, and
-the improvement holds on seasons that were reserved and never read. True shooting: the same idea helps in development but is **not** confirmed
-out of time at a convention-sized bar; R9.2 therefore does not claim it, and serves the regression. Neither of R9.1's ridge candidates (`ridge_history`, `ridge_boxscore`) cleared the rule for any of the three targets (the best, `ridge_boxscore` on free throws, is −2.6% with a season-level
-interval that includes zero); R9.1's empirical-Bayes shrinkage advanced only for three-point accuracy, where attempts vary most. The existing TEI, recalibrated onto each target's scale, is the
-*weakest* sensible forecaster of all three (8–65% worse than `ols_history`): TEI says little about these skills.
+**How to read it.** A method that weights each season by the attempts behind it beats the regression the protocol named by 3–6% for three-point and free-throw accuracy, and that holds on seasons that were reserved
+and never read. **But that regression ignores how much evidence each player has, so it was not the strongest simple baseline**: one that also knows each player's attempts captures most of the gain, leaving
+about **1.5%** for the state-space model on development folds — below the 2% practical floor R9.2 set for itself. The honest summary for three-point and free-throw accuracy is *"better than the baseline the
+protocol named, modestly better than an attempts-aware regression"*; the confirmations are against `ols_history` only (the holdout was not re-read for the stronger baselines). True shooting: the same idea helps in
+development and holds up best against the stronger baselines, but is **not confirmed** out of time at a convention-sized bar, so R9.2 does not claim it and serves the regression. R9.1's ridge candidates
+(`ridge_history`, `ridge_boxscore`) cleared the rule for none of the three targets (the best, `ridge_boxscore` on free throws, is −2.6% with a season-level interval that includes zero); R9.1's empirical-Bayes
+shrinkage advanced only for three-point accuracy, where attempts vary most. The existing TEI, recalibrated onto each target's scale, is the *weakest* sensible forecaster of all three (8–65% worse than
+`ols_history`): TEI says little about these skills.
 
 ## 2. Setup (what each number is)
 
@@ -63,6 +66,23 @@ three-point accuracy, two each for free-throw and true shooting. No correction i
 The FT gain in the last development fold is nil; with `state_space` it is −0.0003. Improvement is not uniform over seasons, and the 2019-20 and 2020-21
 (shortened) folds are in every column.
 
+### 3a. A stronger baseline: regressions that know how much evidence each player has (added after independent review)
+
+`ols_history` applies one slope to a 30-attempt and a 500-attempt player. The independent statistical review (QA round 1) asked for the regression the pre-registered hypothesis names, and R9.2 added it as opt-in
+diagnostics (`ols_attempts`: nine parameters, no tuning — log attempts and attempts × history interactions; `ols_eb`: OLS on empirical-Bayes-shrunk inputs with the constant tuned out of sample; each also with the four
+role covariates; amendment 5; `scripts/r9_2_baseline_challenge.py` → `results/baseline_challenge.json`; development folds only, the holdout was **not** re-read):
+
+| MAE (development) | `ols_history` | best attempts-aware baseline | served model | served vs best attempts-aware baseline |
+| --- | --- | --- | --- | --- |
+| Three-point | 0.03430 | `ols_eb` 0.03328 (−3.0%) | `state_space` 0.03279 | **−1.5%**, player CI below 0, fold CI below 0, 5/5 folds — fails the 2% floor |
+| Free-throw | 0.04424 | `ols_attempts_role` 0.04252 (−3.9%) | `state_space_role` 0.04191 | **−1.4%**, 4/5 folds, season-level interval includes 0 — fails the floor and the season-level interval |
+| True shooting | 0.03100 | `ols_eb_role` 0.03078 (−0.7%) | `state_space_role` 0.03014 | **−2.1%**, 5/5 folds — **would advance** |
+
+About 60–75% of the claimed three-point and free-throw gain is available to a regression that simply uses attempts. True shooting, the target R9.2 does *not* claim, is where the state-space model's advantage over a
+stronger baseline is clearest. None of this changes a recorded decision (the reference was fixed from development before any holdout read) — it changes what the results *mean*, and the registry now carries this
+caveat on the three-point and free-throw projections. A further diagnostic, `state_space_fixedvar`, has the same MAE as `state_space` with a sampling variance that does not depend on the observed rate, and removes the
+free-throw level bias (see the methodology §2); recommended first for the next iteration, to be evaluated on fresh data.
+
 **Is the gain "attempts-aware weighting" or just "more seasons of history"?** The state-space candidates read up to ten seasons; `ols_history` reads a
 three-season window — the asymmetry that made R9.1's first candidate rule advance 14 of 18 pairs it should not have. R9.2 checked it directly (development folds
 only, two opt-in diagnostics outside the rule; amendment 4; `results/history_ablation.json`):
@@ -94,6 +114,13 @@ The development *reference* (`ols_history`) was fixed from development; the hold
 pre-registered tie-break (lowest development MAE) selects the served one: `state_space` for three-point accuracy (0.03279 vs 0.03284 — `beta_binomial` is
 statistically indistinguishable, and slightly better on the holdout by 0.00006), `state_space_role` for free throws.
 
+**What "confirmed" does and does not mean here.** Five holdout confirmations were made (three-point accuracy: three advanced candidates; free-throw: two). Each is the pre-registered check — the player-cluster interval of the MAE
+difference vs `ols_history` lies below zero and both holdout folds improve — and none was corrected for multiplicity. The review's arithmetic: the three-point `state_space` interval's upper bound is −0.00010 (z ≈ 2.2), which would
+**not** survive a Bonferroni/Holm correction across five comparisons (one-sided α = 0.01, z ≈ 2.33–2.58); `beta_binomial` (z ≈ 2.5) would be borderline; both free-throw confirmations would survive (z ≈ 3.4 and 2.9). "Both holdout
+folds improve" is a sign test on two folds (p = 0.25 under the null), and the holdout bootstrap treats seasons as fixed while development showed large season-to-season variation in the three-point gain (per-fold
+differences from −0.00075 to −0.00285). Three-point accuracy is best described as **probable and small**; free-throw accuracy as **better supported**. The status label `holdout_confirmed` is the pre-registered rule's output,
+not a claim of certainty.
+
 **True shooting**: both folds improve and the point estimate is −1.9%, but the interval includes zero and the holdout is a re-read (R9.1 had read it for the
 baselines; amendment 2 caps any confirmation at `development_only` regardless). The honest summary is *"probably a small improvement; not established"*.
 The improvement also depends on who is evaluated: −1.7% at a 250-minute cut, −2.6% at 500, −4.4% at 1,000 minutes (sensitivity runs), and nil for players new
@@ -103,18 +130,21 @@ to the data (+0.1%).
 
 | | Three-point | Free-throw | True shooting |
 | --- | --- | --- | --- |
-| **Forecast interval** (R9.1 residual method, nominal 80%) — development coverage / holdout coverage | 0.790 / 0.810 | 0.801 / 0.809 | 0.772 / 0.803 |
-| **Model's own predictive interval** (nominal 80%, assumes recent-average attempts) — development / holdout | 0.794 / 0.803 | 0.842 / 0.853 | 0.780 / 0.813 |
-| **Posterior predictive check**, realised attempts, development: share of outcomes inside the 50 / 80 / 90% predictive interval | 0.48 / 0.78 / 0.88 | 0.53 / 0.83 / 0.91 | 0.48 / 0.78 / 0.88 |
+| **Forecast interval** (R9.1 residual method, nominal 80%) — development / holdout coverage of the served model (true shooting: `ols_history` 0.766 / 0.803; `state_space_role` 0.771 / 0.803) | 0.790 / 0.810 | 0.801 / 0.809 | 0.766 / 0.803 |
+| **Model's own predictive interval** (nominal 80%, assumes recent-average attempts) — development / holdout. Served model: three-point `state_space`; free-throw and true-shooting `state_space_role` | 0.794 / 0.803 | 0.842 / **0.853** | 0.778 / 0.807 |
+| **Posterior predictive check**, realised attempts, development (`state_space`, the model the analysis script uses for all three): share of outcomes inside the 50 / 80 / 90% predictive interval | 0.48 / 0.78 / 0.88 | 0.53 / 0.83 / 0.91 | 0.48 / 0.78 / 0.88 |
 | SD of the standardised error (1.0 = calibrated spread) | 1.04 | 0.97 | 1.04 |
 | Coverage of the 80% interval by fold (development) | 0.75–0.84 | 0.78–0.88 | 0.76–0.82 |
 
 What these support: the **forecast intervals of three-point and free-throw accuracy cover about the nominal 80% out of time** (0.81 on the holdout), and the
 state-space model's predictive distribution is well calibrated on the attempts actually taken (slightly conservative for free throws, slightly optimistic
 for true shooting at 78%). They do **not** support any statement about the credible interval for *ability*, which is for an unobserved quantity and carries no coverage claim.
+Two things to state plainly: **the free-throw model's own predictive interval covered 0.853 of holdout outcomes — outside the pre-registered band [0.75, 0.85]** (the band is applied to development coverage and to the
+shared residual-based interval, so no decision changes, but the "calibrated out of time" phrase would overstate it for free throws); and the coverage criterion in the advance rule is **nearly vacuous** — it tests the R9.1 residual
+interval, which every model shares (every model, good or bad, covers 0.76–0.81 in development), so it cannot distinguish models; the model's own interval is the informative one.
 
 **Ability vs future-observation uncertainty are different things.** Of the variance of a next-season forecast, ability uncertainty (plus drift) is only 18% for
-three-point accuracy, 49% for free throws and 41% for true shooting; the rest is the sampling noise of the season to be played. A good ability estimate cannot
+three-point accuracy, 48.5% for free throws and 41% for true shooting; the rest is the sampling noise of the season to be played. A good ability estimate cannot
 make next season's percentage predictable: that is why the forecast interval is wide (±0.05 three-point, ±0.07 free-throw at 80%).
 
 ## 6. Sample-size effects
@@ -124,7 +154,7 @@ make next season's percentage predictable: that is why the forecast interval is 
 | Attempts | 25 | 50 | 100 | 200 | 400 | 800 | 1,600 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Three-point | 0.06 | 0.11 | 0.20 | 0.33 | 0.49 | 0.66 | 0.80 |
-| Free-throw | 0.40 | 0.58 | 0.73 | 0.84 | 0.92 | 0.96 | 0.98 |
+| Free-throw | 0.40 | 0.57 | 0.73 | 0.84 | 0.92 | 0.96 | 0.98 |
 | True shooting (TSA) | 0.10 | 0.19 | 0.31 | 0.48 | 0.65 | 0.79 | 0.88 |
 
 The prior is worth about **412 three-point attempts**, 37 free-throw attempts and 220 true-shooting attempts: three-point accuracy needs ~400 attempts before a
@@ -135,7 +165,8 @@ it is now estimated, not fixed). A player at 42% on 30 attempts is estimated at 
 *Does the ability estimate rank next season better than last season's raw rate?* Yes, for all three quantities (mean over development folds): Spearman 0.41 vs 0.31 (3P), 0.78 vs 0.72 (FT), 0.60 vs 0.54 (TS).
 *Accuracy by next-season attempts bin* (80% predictive coverage): 0.73 (< 100 attempts) against 0.77–0.81 (≥ 100) for three-point accuracy — the thinnest outcomes are
 slightly under-covered. *Sensitivity to the attempt cut* (three-point / free-throw, evaluation only): 25 attempts −4.2% / −4.5%, 50 −4.4% / −4.1%, 100 −4.3% / −6.1% — the gain
-does not depend on where the line is drawn.
+is stable in size across the cuts; **whether the pre-registered rule is met is not**: at the 100-attempt cut the served three-point `state_space` fails the rule (its fold-level interval reaches +0.000016) and only
+`beta_binomial` advances (`sensitivity-development-evalexp100-fg3_pct/decisions.json`).
 
 ## 7. The selection effect, stated plainly
 
@@ -155,9 +186,12 @@ the evidence to be forecast.
   two free-throw) were confirmed on a holdout that no protocol had read. No multiple-comparison correction was applied (it was declared in advance). The two
   *confirmatory* targets are the ones whose holdout is clean; true shooting is exploratory.
 * **The primary bar is `ols_history`.** A candidate that beats it by 3–6% beats a four-parameter regression, not the best conceivable model.
+* **The leakage audit tests forecasts, not panel construction.** It destroys later seasons and requires every forecast to be bit-identical; it cannot see a leak built *into* the panel (e.g. a wrong-key merge of shot counts from the following season — the
+  review built one, and the audit passed it). I found no such leak (the merge is per player-season, validated one-to-one, and the as-of view excludes later seasons), and R9.2 adds structural guards: predictors are handed frames *without*
+  outcome columns, and a test shows the skill-panel build is unchanged when later seasons are removed from the database.
 * **Ten seasons, one provider, two COVID-shortened seasons in the development folds.**
 * **No improvement is claimed for true shooting.** If an owner needs a single recommendation: use `ols_history` for true-shooting projections until a later season
   can confirm the state-space candidate on data no one has read.
 * **Hyperparameter estimation is inside each fold's training window** (no use of later data), but model *design* (the choice to try a state-space model) was informed by
-  R9.1's results, which were read in full before R9.2 began. The pre-registration was committed before the first R9.2 run; its three amendments are recorded.
+  R9.1's results, which were read in full before R9.2 began. The pre-registration was committed before the first R9.2 run; its five amendments are recorded (#3–#5 after the evidence they respond to, each only lowering a claim or adding a diagnostic).
 * **Absolute accuracy is modest.** A 3–4 point average miss on three-point accuracy and a 4–5 point miss on free-throw accuracy is mostly sampling noise of the season being forecast.

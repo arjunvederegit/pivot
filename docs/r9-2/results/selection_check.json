@@ -1,0 +1,522 @@
+{
+  "development_origins": [
+    "2018-19",
+    "2019-20",
+    "2020-21",
+    "2021-22",
+    "2022-23"
+  ],
+  "note": "development folds only",
+  "protocol": "r9.2-prereg-1",
+  "quantities": {
+    "fg3_pct": {
+      "by_reliability_all_who_played": {
+        "[0.0, 0.1)": {
+          "bias_predicted_minus_realised": 0.031379402640940635,
+          "next_season_attempts": 4570.0,
+          "players": 150,
+          "predicted": 0.3480095995774833,
+          "realised_pooled": 0.31663019693654265
+        },
+        "[0.1, 0.2)": {
+          "bias_predicted_minus_realised": 0.011658247991108261,
+          "next_season_attempts": 11769.0,
+          "players": 173,
+          "predicted": 0.3471158059824414,
+          "realised_pooled": 0.33545755799133314
+        },
+        "[0.2, 0.3)": {
+          "bias_predicted_minus_realised": 0.0024087678180838568,
+          "next_season_attempts": 18468.0,
+          "players": 178,
+          "predicted": 0.34646334871477,
+          "realised_pooled": 0.34405458089668617
+        },
+        "[0.3, 0.5)": {
+          "bias_predicted_minus_realised": -0.005513228134067905,
+          "next_season_attempts": 52554.0,
+          "players": 376,
+          "predicted": 0.3503493132519351,
+          "realised_pooled": 0.355862541386003
+        },
+        "[0.5, 0.7)": {
+          "bias_predicted_minus_realised": -0.0016454340863745753,
+          "next_season_attempts": 113029.0,
+          "players": 580,
+          "predicted": 0.36071289873086704,
+          "realised_pooled": 0.3623583328172416
+        },
+        "[0.7, 1.0)": {
+          "bias_predicted_minus_realised": -0.0031824939800538243,
+          "next_season_attempts": 160617.0,
+          "players": 494,
+          "predicted": 0.36972946428090236,
+          "realised_pooled": 0.3729119582609562
+        }
+      },
+      "by_reliability_not_qualifying": {
+        "[0.0, 0.1)": {
+          "bias_predicted_minus_realised": 0.06405758572824666,
+          "next_season_attempts": 1550.0,
+          "players": 120,
+          "predicted": 0.34857371476050475,
+          "realised_pooled": 0.2845161290322581
+        },
+        "[0.1, 0.2)": {
+          "bias_predicted_minus_realised": 0.05331680366782787,
+          "next_season_attempts": 2447.0,
+          "players": 108,
+          "predicted": 0.3463286549142521,
+          "realised_pooled": 0.2930118512464242
+        },
+        "[0.2, 0.3)": {
+          "bias_predicted_minus_realised": 0.03370504677902225,
+          "next_season_attempts": 2097.0,
+          "players": 80,
+          "predicted": 0.342241050593996,
+          "realised_pooled": 0.30853600381497376
+        },
+        "[0.3, 0.5)": {
+          "bias_predicted_minus_realised": 0.03785948656461341,
+          "next_season_attempts": 3600.0,
+          "players": 127,
+          "predicted": 0.34619281989794676,
+          "realised_pooled": 0.30833333333333335
+        },
+        "[0.5, 0.7)": {
+          "bias_predicted_minus_realised": 0.034744884052958946,
+          "next_season_attempts": 3811.0,
+          "players": 115,
+          "predicted": 0.3517220553990623,
+          "realised_pooled": 0.31697717134610337
+        },
+        "[0.7, 1.0)": {
+          "bias_predicted_minus_realised": 0.030637444065842623,
+          "next_season_attempts": 1683.0,
+          "players": 34,
+          "predicted": 0.37228925630589016,
+          "realised_pooled": 0.34165181224004754
+        }
+      },
+      "by_reliability_qualifying_only": {
+        "[0.0, 0.1)": {
+          "bias_predicted_minus_realised": 0.014607487480237324,
+          "next_season_attempts": 3020.0,
+          "players": 30,
+          "predicted": 0.34772007026169427,
+          "realised_pooled": 0.33311258278145695
+        },
+        "[0.1, 0.2)": {
+          "bias_predicted_minus_realised": 0.0007229888470476897,
+          "next_season_attempts": 9322.0,
+          "players": 65,
+          "predicted": 0.3473224310268374,
+          "realised_pooled": 0.3465994421797897
+        },
+        "[0.2, 0.3)": {
+          "bias_predicted_minus_realised": -0.001600046364378327,
+          "next_season_attempts": 16371.0,
+          "players": 98,
+          "predicted": 0.34700419283909123,
+          "realised_pooled": 0.34860423920346956
+        },
+        "[0.3, 0.5)": {
+          "bias_predicted_minus_realised": -0.008702789210083217,
+          "next_season_attempts": 48954.0,
+          "players": 249,
+          "predicted": 0.3506549752218325,
+          "realised_pooled": 0.3593577644319157
+        },
+        "[0.5, 0.7)": {
+          "bias_predicted_minus_realised": -0.0029152202244562275,
+          "next_season_attempts": 109218.0,
+          "players": 465,
+          "predicted": 0.36102662086400905,
+          "realised_pooled": 0.3639418410884653
+        },
+        "[0.7, 1.0)": {
+          "bias_predicted_minus_realised": -0.003540623491242456,
+          "next_season_attempts": 158934.0,
+          "players": 460,
+          "predicted": 0.36970235787209077,
+          "realised_pooled": 0.3732429813633332
+        }
+      },
+      "model": "state_space",
+      "refit_on_all_observed_player_seasons": [
+        {
+          "league_mean_shift": -0.008392902469844421,
+          "n_all_observed": 630,
+          "n_eligible": 500,
+          "origin": "2018-19",
+          "tau_ratio": 1.3134297091383944
+        },
+        {
+          "league_mean_shift": -0.013866767089798893,
+          "n_all_observed": 959,
+          "n_eligible": 760,
+          "origin": "2019-20",
+          "tau_ratio": 1.6205439977450886
+        },
+        {
+          "league_mean_shift": -0.013516878567161827,
+          "n_all_observed": 1298,
+          "n_eligible": 1030,
+          "origin": "2020-21",
+          "tau_ratio": 1.4989213523080205
+        },
+        {
+          "league_mean_shift": -0.012777131925380991,
+          "n_all_observed": 1666,
+          "n_eligible": 1309,
+          "origin": "2021-22",
+          "tau_ratio": 1.4465668387260247
+        },
+        {
+          "league_mean_shift": -0.012354301254776934,
+          "n_all_observed": 2036,
+          "n_eligible": 1593,
+          "origin": "2022-23",
+          "tau_ratio": 1.4032039526210256
+        }
+      ]
+    },
+    "ft_pct": {
+      "by_reliability_all_who_played": {
+        "[0.0, 0.1)": {
+          "bias_predicted_minus_realised": 0.03178025850049826,
+          "next_season_attempts": 236.0,
+          "players": 8,
+          "predicted": 0.7690683940937186,
+          "realised_pooled": 0.7372881355932204
+        },
+        "[0.1, 0.2)": {
+          "bias_predicted_minus_realised": 0.0348175262957966,
+          "next_season_attempts": 1384.0,
+          "players": 50,
+          "predicted": 0.7689215725385712,
+          "realised_pooled": 0.7341040462427746
+        },
+        "[0.2, 0.3)": {
+          "bias_predicted_minus_realised": 0.0201067896698357,
+          "next_season_attempts": 2242.0,
+          "players": 68,
+          "predicted": 0.7591790465833058,
+          "realised_pooled": 0.7390722569134701
+        },
+        "[0.3, 0.5)": {
+          "bias_predicted_minus_realised": 0.0010371654507177475,
+          "next_season_attempts": 10952.0,
+          "players": 216,
+          "predicted": 0.7420890281242021,
+          "realised_pooled": 0.7410518626734843
+        },
+        "[0.5, 0.7)": {
+          "bias_predicted_minus_realised": -0.0008887420658102441,
+          "next_season_attempts": 33656.0,
+          "players": 538,
+          "predicted": 0.7493786693912851,
+          "realised_pooled": 0.7502674114570953
+        },
+        "[0.7, 1.0)": {
+          "bias_predicted_minus_realised": 0.0008551989367784341,
+          "next_season_attempts": 188334.0,
+          "players": 1116,
+          "predicted": 0.7926400067781666,
+          "realised_pooled": 0.7917848078413882
+        }
+      },
+      "by_reliability_not_qualifying": {
+        "[0.0, 0.1)": {
+          "bias_predicted_minus_realised": 0.04509664107599942,
+          "next_season_attempts": 171.0,
+          "players": 7,
+          "predicted": 0.7643948866900345,
+          "realised_pooled": 0.7192982456140351
+        },
+        "[0.1, 0.2)": {
+          "bias_predicted_minus_realised": 0.03740683339613737,
+          "next_season_attempts": 790.0,
+          "players": 42,
+          "predicted": 0.76398911187715,
+          "realised_pooled": 0.7265822784810126
+        },
+        "[0.2, 0.3)": {
+          "bias_predicted_minus_realised": 0.03012457447242145,
+          "next_season_attempts": 1046.0,
+          "players": 54,
+          "predicted": 0.7576580352754807,
+          "realised_pooled": 0.7275334608030593
+        },
+        "[0.3, 0.5)": {
+          "bias_predicted_minus_realised": 0.03332696989227424,
+          "next_season_attempts": 2624.0,
+          "players": 130,
+          "predicted": 0.7501714820873961,
+          "realised_pooled": 0.7168445121951219
+        },
+        "[0.5, 0.7)": {
+          "bias_predicted_minus_realised": 0.030081728362786442,
+          "next_season_attempts": 6726.0,
+          "players": 280,
+          "predicted": 0.7533942469473836,
+          "realised_pooled": 0.7233125185845971
+        },
+        "[0.7, 1.0)": {
+          "bias_predicted_minus_realised": 0.02454504012331815,
+          "next_season_attempts": 5631.0,
+          "players": 189,
+          "predicted": 0.7872870042504714,
+          "realised_pooled": 0.7627419641271532
+        }
+      },
+      "by_reliability_qualifying_only": {
+        "[0.0, 0.1)": {
+          "bias_predicted_minus_realised": -0.0032520710442819345,
+          "next_season_attempts": 65.0,
+          "players": 1,
+          "predicted": 0.7813633135711027,
+          "realised_pooled": 0.7846153846153846
+        },
+        "[0.1, 0.2)": {
+          "bias_predicted_minus_realised": 0.03137383503440039,
+          "next_season_attempts": 594.0,
+          "players": 8,
+          "predicted": 0.7754815791421446,
+          "realised_pooled": 0.7441077441077442
+        },
+        "[0.2, 0.3)": {
+          "bias_predicted_minus_realised": 0.011345416004697961,
+          "next_season_attempts": 1196.0,
+          "players": 14,
+          "predicted": 0.7605092956033601,
+          "realised_pooled": 0.7491638795986622
+        },
+        "[0.3, 0.5)": {
+          "bias_predicted_minus_realised": -0.00913675948379744,
+          "next_season_attempts": 8328.0,
+          "players": 86,
+          "predicted": 0.7395423951751843,
+          "realised_pooled": 0.7486791546589817
+        },
+        "[0.5, 0.7)": {
+          "bias_predicted_minus_realised": -0.008623884438730633,
+          "next_season_attempts": 26930.0,
+          "players": 258,
+          "predicted": 0.7483757442281835,
+          "realised_pooled": 0.7569996286669142
+        },
+        "[0.7, 1.0)": {
+          "bias_predicted_minus_realised": 0.00012506590272098883,
+          "next_season_attempts": 182703.0,
+          "players": 927,
+          "predicted": 0.7928049890566922,
+          "realised_pooled": 0.7926799231539712
+        }
+      },
+      "model": "state_space_role",
+      "refit_on_all_observed_player_seasons": [
+        {
+          "league_mean_shift": -0.005836268464830652,
+          "n_all_observed": 691,
+          "n_eligible": 527,
+          "origin": "2018-19",
+          "tau_ratio": 1.045896675045086
+        },
+        {
+          "league_mean_shift": -0.005518042816770152,
+          "n_all_observed": 1038,
+          "n_eligible": 771,
+          "origin": "2019-20",
+          "tau_ratio": 1.073559903043565
+        },
+        {
+          "league_mean_shift": -0.004027314624859946,
+          "n_all_observed": 1395,
+          "n_eligible": 1026,
+          "origin": "2020-21",
+          "tau_ratio": 1.043483782684691
+        },
+        {
+          "league_mean_shift": -0.0035697991318086597,
+          "n_all_observed": 1778,
+          "n_eligible": 1303,
+          "origin": "2021-22",
+          "tau_ratio": 1.0346448857973953
+        },
+        {
+          "league_mean_shift": -0.004805605545535774,
+          "n_all_observed": 2159,
+          "n_eligible": 1567,
+          "origin": "2022-23",
+          "tau_ratio": 1.0307081493561594
+        }
+      ]
+    },
+    "ts_pct": {
+      "by_reliability_all_who_played": {
+        "[0.0, 0.1)": {
+          "bias_predicted_minus_realised": 0.2005633914951659,
+          "next_season_attempts": 62.071999999999996,
+          "players": 3,
+          "predicted": 0.5737403472884383,
+          "realised_pooled": 0.37317695579327237
+        },
+        "[0.1, 0.2)": {
+          "bias_predicted_minus_realised": 0.0032810688005168176,
+          "next_season_attempts": 6189.968000000001,
+          "players": 47,
+          "predicted": 0.5604067379477563,
+          "realised_pooled": 0.5571256691472395
+        },
+        "[0.2, 0.3)": {
+          "bias_predicted_minus_realised": 0.005330281347893595,
+          "next_season_attempts": 13606.476,
+          "players": 87,
+          "predicted": 0.5610777283723839,
+          "realised_pooled": 0.5557474470244903
+        },
+        "[0.3, 0.5)": {
+          "bias_predicted_minus_realised": -0.005066861142431045,
+          "next_season_attempts": 59841.772,
+          "players": 252,
+          "predicted": 0.5555317343002306,
+          "realised_pooled": 0.5605985954426617
+        },
+        "[0.5, 0.7)": {
+          "bias_predicted_minus_realised": -0.0027904532766027668,
+          "next_season_attempts": 242258.49599999998,
+          "players": 696,
+          "predicted": 0.5639128449887345,
+          "realised_pooled": 0.5667032982653373
+        },
+        "[0.7, 1.0)": {
+          "bias_predicted_minus_realised": -0.005412228183006351,
+          "next_season_attempts": 706425.2479999999,
+          "players": 963,
+          "predicted": 0.5764622505105979,
+          "realised_pooled": 0.5818744786936042
+        }
+      },
+      "by_reliability_not_qualifying": {
+        "[0.0, 0.1)": {
+          "bias_predicted_minus_realised": 0.2005633914951659,
+          "next_season_attempts": 62.071999999999996,
+          "players": 3,
+          "predicted": 0.5737403472884383,
+          "realised_pooled": 0.37317695579327237
+        },
+        "[0.1, 0.2)": {
+          "bias_predicted_minus_realised": 0.034561333225713864,
+          "next_season_attempts": 1872.28,
+          "players": 32,
+          "predicted": 0.5569883441428843,
+          "realised_pooled": 0.5224270109171705
+        },
+        "[0.2, 0.3)": {
+          "bias_predicted_minus_realised": 0.008624285211697336,
+          "next_season_attempts": 2933.2679999999996,
+          "players": 51,
+          "predicted": 0.5626718062701209,
+          "realised_pooled": 0.5540475210584236
+        },
+        "[0.3, 0.5)": {
+          "bias_predicted_minus_realised": 0.03975700689094419,
+          "next_season_attempts": 7580.060000000002,
+          "players": 117,
+          "predicted": 0.5583918435545061,
+          "realised_pooled": 0.5186348366635619
+        },
+        "[0.5, 0.7)": {
+          "bias_predicted_minus_realised": 0.02265028625426413,
+          "next_season_attempts": 15294.712000000001,
+          "players": 189,
+          "predicted": 0.5634241973942712,
+          "realised_pooled": 0.5407739111400071
+        },
+        "[0.7, 1.0)": {
+          "bias_predicted_minus_realised": 0.03679109129878,
+          "next_season_attempts": 6675.183999999999,
+          "players": 65,
+          "predicted": 0.5722971441656374,
+          "realised_pooled": 0.5355060528668574
+        }
+      },
+      "by_reliability_qualifying_only": {
+        "[0.1, 0.2)": {
+          "bias_predicted_minus_realised": -0.01028299916317299,
+          "next_season_attempts": 4317.688,
+          "players": 15,
+          "predicted": 0.5618890568075224,
+          "realised_pooled": 0.5721720559706954
+        },
+        "[0.2, 0.3)": {
+          "bias_predicted_minus_realised": 0.0044250056214604205,
+          "next_season_attempts": 10673.208,
+          "players": 36,
+          "predicted": 0.5606396353747641,
+          "realised_pooled": 0.5562146297533037
+        },
+        "[0.3, 0.5)": {
+          "bias_predicted_minus_realised": -0.011568133223319954,
+          "next_season_attempts": 52261.712,
+          "players": 135,
+          "predicted": 0.5551169028887767,
+          "realised_pooled": 0.5666850361120966
+        },
+        "[0.5, 0.7)": {
+          "bias_predicted_minus_realised": -0.0045048624097869805,
+          "next_season_attempts": 226963.78399999999,
+          "players": 507,
+          "predicted": 0.563945774137584,
+          "realised_pooled": 0.5684506365473709
+        },
+        "[0.7, 1.0)": {
+          "bias_predicted_minus_realised": -0.0058148218195702706,
+          "next_season_attempts": 699750.064,
+          "players": 898,
+          "predicted": 0.576501983056063,
+          "realised_pooled": 0.5823168048756333
+        }
+      },
+      "model": "state_space_role",
+      "refit_on_all_observed_player_seasons": [
+        {
+          "league_mean_shift": -0.0023584006460378726,
+          "n_all_observed": 725,
+          "n_eligible": 607,
+          "origin": "2018-19",
+          "tau_ratio": 1.0170856510886825
+        },
+        {
+          "league_mean_shift": -0.0029597726816443792,
+          "n_all_observed": 1094,
+          "n_eligible": 906,
+          "origin": "2019-20",
+          "tau_ratio": 1.0419775769946107
+        },
+        {
+          "league_mean_shift": -0.003942085490640346,
+          "n_all_observed": 1478,
+          "n_eligible": 1220,
+          "origin": "2020-21",
+          "tau_ratio": 1.0453071241484866
+        },
+        {
+          "league_mean_shift": -0.004384636198862646,
+          "n_all_observed": 1898,
+          "n_eligible": 1550,
+          "origin": "2021-22",
+          "tau_ratio": 1.0371001073914956
+        },
+        {
+          "league_mean_shift": -0.004603381371914184,
+          "n_all_observed": 2313,
+          "n_eligible": 1880,
+          "origin": "2022-23",
+          "tau_ratio": 1.0539960990900996
+        }
+      ]
+    }
+  }
+}

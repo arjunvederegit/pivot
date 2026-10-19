@@ -14,7 +14,7 @@ E2E_DB ?= $(CURDIR)/backend/rosterlab-e2e.db
         import-draft-picks pick-ownership fetch-transactions import-transactions \
         transaction-coverage comparable-validation acquisition-validation lineup-availability \
         adversarial-validation \
-        backtest train-candidate candidates \
+        backtest train-candidate candidates materialise-skills \
         data-status season-status refresh link-balldontlie refresh-balldontlie balldontlie-plan balldontlie-preflight balldontlie-evaluate \
         assistant-setup assistant-models assistant-dev assistant-test assistant-eval \
         assistant-eval-selftest assistant-eval-retrieval assistant-eval-conversations
@@ -67,6 +67,9 @@ backtest: ## R9.1 rolling-origin backtest (read-only on the DB): make backtest B
 train-candidate: ## R9.1 candidate-only training (never changes an active model): make train-candidate CAND_MODEL=ridge_boxscore CAND_TARGET=impact_proxy [CAND_ORIGIN=2025-26] [CAND_EXPERIMENT=dir]
 	@test -n "$(CAND_MODEL)" -a -n "$(CAND_TARGET)" || (echo "usage: make train-candidate CAND_MODEL=<name> CAND_TARGET=<target> [CAND_ORIGIN=<season>] [CAND_EXPERIMENT=<dir>]"; exit 2)
 	cd $(BACKEND) && .venv/bin/python -m app.cli train-candidate --model $(CAND_MODEL) --target $(CAND_TARGET) $(if $(CAND_ORIGIN),--origin $(CAND_ORIGIN),) $(if $(CAND_EXPERIMENT),--experiment $(CAND_EXPERIMENT),)
+
+materialise-skills: ## R9.2 store the validation registry's recommended models as candidates (never promotes; run on a COPY): make materialise-skills [SKILL_ORIGIN=2025-26]
+	cd $(BACKEND) && .venv/bin/python -m app.cli materialise-skills $(if $(SKILL_ORIGIN),--origin $(SKILL_ORIGIN),)
 
 candidates: ## List candidate and rejected model versions
 	cd $(BACKEND) && .venv/bin/python -m app.cli candidates

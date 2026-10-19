@@ -27,6 +27,9 @@ coverage/
 *.tsbuildinfo
 next-env.d.ts
 
+# Pickled frames (derived from licensed statistics; never committed)
+*.pkl
+
 # Databases & local data snapshots (provider-backed data is not redistributed)
 *.db
 *.sqlite

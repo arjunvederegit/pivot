@@ -1,0 +1,5 @@
+{
+  "generated_at": "2026-10-19T06:56:53.278061+00:00",
+  "note": "metrics are deterministic; generated_at and runtime are the only fields that differ between identical runs",
+  "runtime_seconds": 82.87
+}

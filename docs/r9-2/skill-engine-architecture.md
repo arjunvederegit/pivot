@@ -19,10 +19,10 @@ R9.2 is built **on** R8 and R9.1, not beside them.
 | --- | --- | --- |
 | Data foundation (R8) | canonical seasons (`canonical.seasons`), `player_season_stats` regular-season rows, provider provenance (`source_retrieved_at`), identity crosswalk and its confidence levels | — (no schema change; **no migration**) |
 | Panel (R9.1) | `PlayerSeasonPanel` / `AsOfPanel` (a view that physically cannot contain a later season), unit validation, `replace_future` for the leakage audit | `player_intelligence.panel.build_skill_panel` = R9.1's panel + integer shot counts |
-| Evaluation (R9.1) | rolling-origin backtest, baselines (`ols_history` is the bar), paired player-cluster and season-level intervals, interval calibration, leakage audit, holdout ledger, pre-registered decision rule, artifacts, data fingerprint | targets `fg3_pct`, `ft_pct` (+ a sampling-variance model for `ts_pct`); candidates `state_space`, `state_space_role`, `beta_binomial`; `PREREGISTRATION_R92` (+3 amendments); `Protocol` now carries its pre-registration and prior ledgers |
+| Evaluation (R9.1) | rolling-origin backtest, baselines (`ols_history` is the bar), paired player-cluster and season-level intervals, interval calibration, leakage audit, holdout ledger, pre-registered decision rule, artifacts, data fingerprint | targets `fg3_pct`, `ft_pct` (+ a sampling-variance model for `ts_pct`); candidates `state_space`, `state_space_role`, `beta_binomial`; `PREREGISTRATION_R92` (+5 amendments, §8); `Protocol` now carries its pre-registration and prior ledgers |
 | Candidate lifecycle (R9.1) | `train_candidate` is **still the only write path**: protected-state fingerprint, read-only computation guard, isolation assertions, idempotent re-use | a model with a posterior of ability stores it as `inferred` rows beside its forecast (same version, same guarantees) |
 | Contract (R9.1) | `PlayerIntelligenceRecord`, `Interval`, `Calibration`, `ModelRef`, `Provenance` | `Reliability`, `conditioning` (required on projections), `Interval.kind` (`prediction` / `credible`), `EvaluationStatus.BENCHMARKED`, `Sample.makes/counts_quality/seasons_used`, `Provenance.reproducibility` |
-| Serving | FastAPI v1 conventions, `NotFoundError`/`DomainError` handlers, `Settings` flags | `PlayerIntelligenceService`, `/players/{id}/intelligence` + `/player-intelligence/catalog` (**off by default**) |
+| Serving | FastAPI v1 conventions, `NotFoundError`/`DomainError` handlers, `Settings` flags | `PlayerIntelligenceService`, `/players/{id}/intelligence` + `/player-intelligence/catalog` (**off by default**; whether the routes appear in the OpenAPI schema is decided when the process starts) |
 
 Not touched: the frontend's data flows, TEI, `domain.skills` / `IntelligenceService` (the legacy percentile skill vector), Cap Center,
 Trade Evaluator, Ask Pivot, any active model, any stored estimate. One deliberate, narrow correction was made elsewhere
@@ -90,8 +90,19 @@ PlayerIntelligenceService(db).catalog()                   # what is offered, wha
   *not materialised*.
 * **Gating (`serving_decision`, one rule, applied everywhere):** `active` + `holdout_confirmed` → served as validated (nothing qualifies
   in R9.2); `candidate` → only with `include_experimental=true`, and always labelled (`model.status = "candidate"`, `model.evaluation_status`);
-  `rejected`/`retired` → never; an evaluation that `failed` → never, even on request. The validation registry may additionally *withhold* an
-  output (e.g. an ability model that missed its serving rule).
+  `rejected`/`retired` → never. An evaluation that `failed` blocks the **projections** of that model, on request or not, and a *stale*
+  failure stays a failure (staleness can only lower a status). An **ability estimate** is governed by its own pre-registered serving rule
+  (its model's forecasts non-inferior to the baseline, its predictive interval calibrated), so a model whose *forecasts* were not
+  confirmed (true shooting) can still serve an ability estimate — labelled, with that fact stated in the record's limitations.
+* **The registry's evidence is attached only to the model it describes.** A stored model gets the registry's evaluation status, reference
+  and interval calibration only if it is the same method, was evaluated against one of the registry's source experiment runs, was
+  trained under the configuration that experiment used (window, minute floors, seed, interval level) on the same data fingerprint, and
+  is not stale. Any other stored model — trained on other data, never evaluated, or merely sharing a method name — is shown with its
+  *own* stored evaluation (default `unevaluated`), with no calibration, and a limitation saying so.
+* **Withheld means nobody.** If the registry withholds an (quantity, kind), no request returns it — naming a `model_version` does not change that.
+* **A reliability floor for inferred ability** (`INFERRED_MIN_RELIABILITY = 0.30`): below it the estimate would be mostly the league curve, which
+  over-predicts low-volume players (measured: +1.2 to +3.5 points, `results/selection_check.json`). The measured value is still returned. A player
+  with no attempts in any season the model saw gets nothing to infer from, not the league curve.
 * **Refusals are data:** `Unavailable(quantity, kind, reason, requirement)`; reasons include *no attempts, so the rate is undefined (it is not
   0%)*, *no statistics for this player in {season}*, *integrity check failed: …*, *not materialised*, *the player is not in the scored population*.
 * **Context** (player, the cutoff season's team, age, games, minutes, and the rule-based role descriptor *labelled as not a measure of
@@ -123,17 +134,20 @@ No new table and **no migration**. The R9.1 candidate store is the persistence l
 | --- | --- | --- |
 | a model version | `model_versions` (`status = 'candidate'`, `is_active = false`, `model_name = player_forecast_<quantity>`, version `cand-<method>-<quantity>-<hash12>`) | unique `(model_name, version)` |
 | a projection | `candidate_estimates`, `output_kind = 'projected'`, `target = <quantity>`, `season` = the cutoff, `target_season` = the following season | unique `(model_version_id, player_id, season, target)` |
-| an ability estimate | `candidate_estimates`, `output_kind = 'inferred'`, `target = <quantity>@ability`, `target_season = season` | same |
+| an ability estimate | `candidate_estimates`, `output_kind = 'inferred'`, `target = <quantity>@ability`, `target_season = season`; `exposure` = attempts across **every season the filter used** (the projection row keeps the three-season window) | same |
 | how the model fared | `model_versions.validation_metrics` (from the experiment artifacts) and `lineage` (data snapshot, environment, seed, fitted hyperparameters) | — |
 
 Append-only by construction: training adds a new version (its id is a hash of configuration *and* data fingerprint) and never updates or
 deletes another row; the isolation checks prove it before every commit. Re-training the same specification on the same data is idempotent,
-and refuses (loudly) if the code now produces different numbers under an unchanged id. Re-materialising after a data refresh creates a *new*
-version; older versions remain, so a past cutoff can be re-read exactly as it was served.
+and refuses (loudly) if the code now produces different numbers under an unchanged id — the forecast rows and the ability rows are compared *separately*, because they
+share player ids (R9.2's first implementation pooled them and could not be re-materialised; the independent review found it, and `test_pi_review_fixes::TestIdempotence` pins the fix).
+Re-materialising after a data refresh creates a *new* version; older versions remain, so a past cutoff can be re-read exactly as it was served **by naming its version**
+(by default the newest servable version for the cutoff is returned, and its version is on the record; measured records are not versioned — they are recomputed from the stored rows).
 
 ## 8. How the validation registry decides what is served
 
-`validation_registry.json` is generated from the experiment artifacts by fixed rules (see the script's docstring and the pre-registration):
+`validation_registry.json` is generated from the experiment artifacts by fixed rules (see the script's docstring and the pre-registration; five dated amendments are recorded in
+`PREREGISTRATION_R92` and `results/preregistration.json`):
 
 * **projected** — a candidate is recommended only if it advanced in development *and* was confirmed on the holdout (lowest development MAE
   among those); a holdout that was a re-read caps the status at `development_only`; otherwise the best baseline (`ols_history`) is the
@@ -148,7 +162,9 @@ Changing what the service serves therefore means changing a committed JSON that 
 TEI's `tei_low`/`tei_high` were presented as a 10–90% "likely range". R9.1 measured their out-of-time coverage at 60.8% / 57.2%. The
 smallest safe correction: the player-detail API serves `tei_range_calibration` beside the unchanged `tei_range_10_90`; the league reference
 states it; the UI calls it a *model range* and says it is not a calibrated 80% interval; the methodology page says the same. The TEI formula
-and every existing field are untouched. Regression tests pin the numbers to the R9.1 artifacts and the wording to the UI.
+and every existing field are untouched. Regression tests pin the numbers to the R9.1 artifacts and the wording to the UI. The Trade Evaluator draws each player's σ from the same band,
+so its simulated spread and P(deal helps) inherit the under-coverage: the evaluation payload now carries a `calibration_note` and the methodology page says so; the deal-level bands are
+**not** recalibrated (a recommendation for R9.3).
 
 ## 10. Extension points
 

@@ -23,7 +23,8 @@
         "evaluation_ref": "exp-development-fg3_pct-1bafdc35-56bff0c2",
         "evaluation_status": "development_only",
         "limitations": [
-          "ability is latent: the estimate is validated only by what it predicts"
+          "ability is latent: the estimate is validated only by what it predicts",
+          "attempts are treated only as precision; that volume is itself information about ability is not used, so players who shoot rarely lean on a league curve that is too high \u2014 inferred values below reliability 0.30 are withheld"
         ],
         "method": "state_space",
         "numbers": {
@@ -48,9 +49,10 @@
             "relative_to_reference": -0.03235094516227577,
             "reread": false
           },
-          "predictive_interval_coverage_development": 0.7937088514996342
+          "predictive_interval_coverage_development": 0.7937088514996342,
+          "predictive_interval_coverage_holdout": 0.8031634446397188
         },
-        "reason": "state_space carries a posterior of ability; its own forecasts are -4.4% vs the reference on development and its predictive interval is calibrated out of time. This is evidence of predictive validity, not a measurement of ability",
+        "reason": "state_space carries a posterior of ability; its own forecasts are -4.4% vs the reference on development and its predictive interval covered 79.4% of development outcomes (band (0.75, 0.85)). This is evidence of predictive validity on players who later qualify, not a measurement of ability",
         "tier": "experimental"
       },
       "projected": {
@@ -140,10 +142,19 @@
         "evaluation_ref": "exp-holdout-fg3_pct-c2587ccf-56bff0c2",
         "evaluation_status": "holdout_confirmed",
         "limitations": [
-          "a candidate model: experimental until a reviewed promotion"
+          "a candidate model: experimental until a reviewed promotion",
+          "exploratory, development folds only: a regression that also knows each player's attempts (ols_eb) captures most of this model's gain over ols_history \u2014 the model is only -1.5% against it (5/5 folds), below the pre-registered 2% floor"
         ],
         "method": "state_space",
         "numbers": {
+          "attempts_aware_baseline_challenge": {
+            "development_only": true,
+            "folds_improved": "5/5",
+            "relative_mae_vs_it": -0.014670872840081318,
+            "served_model": "state_space",
+            "strongest_baseline_in_the_set": "ols_eb",
+            "would_advance_against_it": false
+          },
           "attrition": {
             "evaluated": 1367,
             "scored": 2960,
@@ -193,7 +204,9 @@
         "evaluation_ref": "exp-development-ft_pct-5a5d4ad3-56bff0c2",
         "evaluation_status": "development_only",
         "limitations": [
-          "ability is latent: the estimate is validated only by what it predicts"
+          "ability is latent: the estimate is validated only by what it predicts",
+          "attempts are treated only as precision; that volume is itself information about ability is not used, so players who shoot rarely lean on a league curve that is too high \u2014 inferred values below reliability 0.30 are withheld",
+          "the model's own predictive interval covered 0.853 of holdout outcomes, outside the pre-registered band (0.75, 0.85)"
         ],
         "method": "state_space_role",
         "numbers": {
@@ -218,9 +231,10 @@
             "relative_to_reference": -0.06507791625010795,
             "reread": false
           },
-          "predictive_interval_coverage_development": 0.8415765069551777
+          "predictive_interval_coverage_development": 0.8415765069551777,
+          "predictive_interval_coverage_holdout": 0.8529411764705882
         },
-        "reason": "state_space_role carries a posterior of ability; its own forecasts are -5.3% vs the reference on development and its predictive interval is calibrated out of time. This is evidence of predictive validity, not a measurement of ability",
+        "reason": "state_space_role carries a posterior of ability; its own forecasts are -5.3% vs the reference on development and its predictive interval covered 84.2% of development outcomes (band (0.75, 0.85)). This is evidence of predictive validity on players who later qualify, not a measurement of ability",
         "tier": "experimental"
       },
       "projected": {
@@ -307,10 +321,19 @@
         "evaluation_ref": "exp-holdout-ft_pct-c0b58ebf-56bff0c2",
         "evaluation_status": "holdout_confirmed",
         "limitations": [
-          "a candidate model: experimental until a reviewed promotion"
+          "a candidate model: experimental until a reviewed promotion",
+          "exploratory, development folds only: a regression that also knows each player's attempts (ols_attempts_role) captures most of this model's gain over ols_history \u2014 the model is only -1.4% against it (4/5 folds), below the pre-registered 2% floor"
         ],
         "method": "state_space_role",
         "numbers": {
+          "attempts_aware_baseline_challenge": {
+            "development_only": true,
+            "folds_improved": "4/5",
+            "relative_mae_vs_it": -0.014366299455064348,
+            "served_model": "state_space_role",
+            "strongest_baseline_in_the_set": "ols_attempts_role",
+            "would_advance_against_it": false
+          },
           "attrition": {
             "evaluated": 1294,
             "scored": 2960,
@@ -360,7 +383,9 @@
         "evaluation_ref": "exp-development-ts_pct-80563995-56bff0c2",
         "evaluation_status": "development_only",
         "limitations": [
-          "ability is latent: the estimate is validated only by what it predicts"
+          "ability is latent: the estimate is validated only by what it predicts",
+          "attempts are treated only as precision; that volume is itself information about ability is not used, so players who shoot rarely lean on a league curve that is too high \u2014 inferred values below reliability 0.30 are withheld",
+          "this model's own forecasts were not confirmed against the baseline on the holdout (a re-read); the ability estimate is served on the development-only non-inferiority and calibration rule"
         ],
         "method": "state_space_role",
         "numbers": {
@@ -385,9 +410,10 @@
             "relative_to_reference": -0.019390788505796563,
             "reread": true
           },
-          "predictive_interval_coverage_development": 0.7781269641734758
+          "predictive_interval_coverage_development": 0.7781269641734758,
+          "predictive_interval_coverage_holdout": 0.8073394495412844
         },
-        "reason": "state_space_role carries a posterior of ability; its own forecasts are -2.8% vs the reference on development and its predictive interval is calibrated out of time. This is evidence of predictive validity, not a measurement of ability",
+        "reason": "state_space_role carries a posterior of ability; its own forecasts are -2.8% vs the reference on development and its predictive interval covered 77.8% of development outcomes (band (0.75, 0.85)). This is evidence of predictive validity on players who later qualify, not a measurement of ability",
         "tier": "experimental"
       },
       "projected": {

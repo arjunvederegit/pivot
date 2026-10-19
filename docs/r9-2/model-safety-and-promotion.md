@@ -10,10 +10,10 @@ what a future, reviewed promotion would have to do.
 | --- | --- | --- | --- |
 | 1 | Existing TEI ratings, estimates and model versions are untouched | no R9.2 code writes to `player_impact_estimates`, retires a model or sets `is_active`; the only write path is R9.1's `train_candidate` | `test_modeling_registry` (byte-identical active state), `test_pi_mutations::test_a_candidate_cannot_overwrite_an_active_model`; verified on copies of the real database: **19 model versions and 512 estimates hash-identical** before/after migration and candidate training, on SQLite and PostgreSQL |
 | 2 | Candidate training is non-destructive and proves it | `registry.train_candidate`: read-only computation guard, protected-state fingerprint of **every table** (incl. every other candidate) before and after, isolation assertions, rollback on any difference | R9.1's six sabotage tests still pass; R9.2 adds ability rows under the same checks |
-| 3 | A candidate cannot appear as validated | `service.serving_decision` (one rule); `ModelRef.status` and `evaluation_status` on every record; the validation registry can *withhold*; `failed` is never served | `test_pi_service::TestServingDecision`, `test_pi_mutations::test_serving_an_unvalidated_candidate_as_promoted_is_detected` |
+| 3 | A candidate cannot appear as validated, and cannot borrow evidence it does not have | `service.serving_decision` (one rule); `ModelRef.status` and `evaluation_status` on every record; the registry's evidence attaches only to the model whose experiment, configuration and data it describes (`_registry_applies`); the registry can *withhold* (for everyone, even when a version is named); a failed forecast evaluation blocks that model's projections and a *stale* failure stays failed | `test_pi_service::TestServingDecision`, `test_pi_review_fixes` (evidence not borrowed; stale cannot lift a failure; withheld means nobody), `test_pi_mutations::test_serving_a_candidate_without_the_opt_in_is_detected` |
 | 4 | Inferred/projected outputs are opt-in and labelled | `kinds=` default is `measured`; `include_experimental` required for any candidate; a notice is attached | `test_pi_service::TestModelOutputs`, `test_player_intelligence_api` |
 | 5 | A read never writes | the service issues only SELECTs; candidate outputs are *read from the store*, never computed in a request | `test_reading_never_writes` (fingerprint of all tables unchanged) |
-| 6 | Historical outputs are reproducible and never overwritten | version id = hash(configuration, data fingerprint); append-only; idempotent re-training; refuses if the same id would now give different numbers | `test_modeling_registry::TestReuse`; clean-environment re-run, see [qa-and-regression-report.md](qa-and-regression-report.md) |
+| 6 | Historical outputs are reproducible and never overwritten | version id = hash(configuration, data fingerprint); append-only; idempotent re-training and re-materialisation (forecast and ability rows compared separately); refuses if the same id would now give different numbers | `test_modeling_registry::TestReuse`, `test_pi_review_fixes::TestIdempotence`; clean-environment re-run and a PostgreSQL run, see [qa-and-regression-report.md](qa-and-regression-report.md) |
 | 7 | The holdout is not re-read to tune anything | hard-coded holdout origins; mandatory ledger; R9.1's ledger is loaded as a *prior* ledger, so a target read there needs an explicit `--acknowledge-reread` and is recorded as a re-read | `test_modeling_experiment`; the ledger in `results/holdout_ledger.json` shows `ts_pct` flagged `reread: true` |
 | 8 | The live TEI and existing consumers are unchanged | no consumer imports the new service; the route is off by default and absent from the OpenAPI schema; the TEI formula is untouched | `test_player_intelligence_api::test_the_preview_is_off_by_default…`, the three existing validation batteries (see QA report) |
 | 9 | No secrets, no raw licensed data | no provider call was made in R9.2; aggregates only are committed; databases are git-ignored | gitleaks allow-list unchanged; `git diff` reviewed |
@@ -29,18 +29,22 @@ what a future, reviewed promotion would have to do.
 | `withheld` | evidence does not support serving | nobody | any output whose method failed the rule |
 
 The registry that assigns these (`app/player_intelligence/validation_registry.json`) is *generated from the experiment artifacts*; the rules
-are written down in `app.modeling.experiment.PREREGISTRATION_R92` (with three dated amendments, each made before the evidence it affects
-was used, and each in the more conservative direction except amendment 1, which only fixes a tie-break).
+are written down in `app.modeling.experiment.PREREGISTRATION_R92` (with five dated amendments: #1 fixes a tie-break before any holdout read; #2 caps a re-read; #3–#5 were made after the evidence they respond to — the holdout reads, a self-found
+history confound, and the independent statistical review — and each only lowers what is claimed or served, or adds a diagnostic).
 
 ## 3. What the failure modes look like
 
 * A candidate is trained on bad data → `train_candidate` raises before any write (non-finite estimates, too few rows, no calibratable interval).
 * A write goes wrong halfway → the whole session rolls back; the protected-state fingerprint refuses to commit if anything but the new
   candidate's own rows changed.
-* A model fails its pre-registered evaluation → its status is stored as `failed`; the service never returns it, even with
-  `include_experimental=true`.
+* A model fails its pre-registered evaluation as a forecaster → its status is stored as `failed` (or `holdout_not_confirmed`); the service never returns **that model's projections**,
+  even with `include_experimental=true`, and a stale failure stays a failure. Its ability estimate, if any, is governed by its own pre-registered serving rule (non-inferior forecasts, a calibrated predictive
+  interval, and — added by the review — a reliability floor of 0.30) and is served only if that rule is met, with the fact that its forecasts were not confirmed stated on the record.
 * A model is rejected after the fact → `reject_candidate` marks that one row; the service stops returning it immediately.
 * The registry does not know a quantity → *unevaluated*, withheld; absence of evidence is never "assumed fine".
+* A stored model that merely shares a method name with a registry entry (trained on other data, under another configuration, or never evaluated) is **not** given the registry's evidence: it is shown
+  with its own stored status (default `unevaluated`), no calibration and a limitation saying so.
+* A holdout ledger declared as a prior ledger but missing refuses the holdout read (it cannot silently disable the re-read guard).
 
 ## 4. The reviewed promotion procedure (designed, not built, not run)
 
