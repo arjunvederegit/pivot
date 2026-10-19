@@ -49,7 +49,8 @@ from .quantities import QUANTITIES, get_quantity
 TS_RECONCILIATION_TOLERANCE = 0.0006  # published to 3 decimals: half a unit in the last place + slack
 MAX_GAMES = 90
 TS_MAX = 1.5  # three points on every attempt
-RECONSTRUCTION_NOTE_SHARE = 0.02  # mention reconstruction ambiguity only when it is >= 2% of the attempts
+MAX_MINUTES_PER_GAME = 53.0  # 48 plus overtime
+MAX_AST_TO = 60.0  # an assist-to-turnover ratio beyond this is a unit error, not a player
 
 
 @dataclass(frozen=True)
@@ -139,13 +140,20 @@ def _source(row: SeasonRow, dataset: str) -> SourceRef:
     return SourceRef(provider="nba_api", dataset=dataset, retrieved_at=row.retrieved_at)
 
 
+def _ambiguity_limitation(shown: float, low: int, high: int) -> str:
+    return (
+        f"the provider's rounding leaves the exact attempt count undetermined: between {low} and {high} "
+        f"(shown: {shown:.0f}, the nearest consistent count); the published three-decimal rate is shown because the counts are not exact"
+    )
+
+
 def _common_limitations(row: SeasonRow) -> list[str]:
     notes = []
     if row.team_count and row.team_count > 1:
         notes.append(
             f"the player appeared for {row.team_count} teams this season; the figures are season totals across all of them"
         )
-    if row.games < 10:
+    if 0 < row.games < 10:
         notes.append(f"only {row.games} games played: a very small sample")
     return notes
 
@@ -171,12 +179,12 @@ def _record(player_id: str, quantity: str, value: float, row: SeasonRow, sample:
 def measured_record(player_id: str, quantity: str, row: SeasonRow) -> PlayerIntelligenceRecord | Unavailable:
     """One measured record for one player-season — or the reason there is none."""
     get_quantity(quantity)  # an unknown quantity is a KeyError here, not a silent None
+    if row.games == 0 and quantity != "games_played":
+        return Unavailable(quantity, "measured", "the player played no games this season", season=row.season)
     rec = row.recon
     if quantity in ("ts_pct", "fg3_pct", "ft_pct"):
-        if row.games == 0:
-            return Unavailable(quantity, "measured", "the player played no games this season", season=row.season)
         if rec is None:
-            return Unavailable(quantity, "measured", "shot counts could not be recovered from the stored statistics", season=row.season)
+            return Unavailable(quantity, "measured", "shot counts could not be recovered from the stored statistics (missing, negative or inconsistent figures)", season=row.season)
         m: int | None
         a: float
         if quantity == "fg3_pct":
@@ -207,14 +215,12 @@ def measured_record(player_id: str, quantity: str, row: SeasonRow) -> PlayerInte
                 "integrity check failed: the stored per-game figures and published rates admit no consistent set of integer counts",
                 season=row.season,
             )
-        if rec.quality == "bounded":
-            spread = (rec.fg3a_max - rec.fg3a_min) if quantity == "fg3_pct" else (rec.fta_max - rec.fta_min)
-            # Material only when the unresolved attempts are a noticeable share of the sample.
-            if spread / a >= RECONSTRUCTION_NOTE_SHARE:
-                limits.append(
-                    f"the provider's rounding leaves the exact attempt count uncertain by up to {spread} of {a:.0f} "
-                    "(counts recovered by constraint reconstruction)"
-                )
+        a_min, a_max = (rec.fg3a_min, rec.fg3a_max) if quantity == "fg3_pct" else (rec.fta_min, rec.fta_max)
+        bounded = rec.quality == "bounded" and a_max > a_min
+        if bounded:
+            note = _ambiguity_limitation(a, a_min, a_max)
+            if note:
+                limits.append(note)
         if quantity == "ts_pct":
             published = _fraction(row.advanced.get("TS_PCT"))
             computed = rec.pts / (2 * a)
@@ -227,18 +233,22 @@ def measured_record(player_id: str, quantity: str, row: SeasonRow) -> PlayerInte
                     f"recomputed true shooting ({computed:.4f}) differs from the published value ({published:.4f}); the published value is shown"
                 )
                 value = published
+            elif bounded and published is not None:
+                value = published  # counts not exact: show the provider's own three-decimal figure
             else:
                 value = computed
         else:
             assert m is not None
             value = m / a
+            published_rate = _fraction(row.base.get("FG3_PCT" if quantity == "fg3_pct" else "FT_PCT"))
+            if bounded and published_rate is not None and 0.0 <= published_rate <= 1.0:
+                value = published_rate  # exact to 0.0005; the nearest-tuple ratio can be off by up to 0.001
             if not 0.0 <= value <= 1.0:
                 return Unavailable(quantity, "measured", f"integrity check failed: made/attempted = {value:.3f} is not a fraction of 1", season=row.season)
-        return _record(
-            player_id, quantity, float(value), row,
-            _sample(row, attempts=float(a), makes=float(m) if m is not None else None, unit=unit),
-            "leaguedashplayerstats/base+advanced", limits,
-        )
+        sample = _sample(row, attempts=float(a), makes=float(m) if m is not None else None, unit=unit)
+        if bounded:
+            sample = sample.model_copy(update={"attempts_min": float(a_min), "attempts_max": float(a_max)})
+        return _record(player_id, quantity, float(value), row, sample, "leaguedashplayerstats/base+advanced", limits)
 
     simple = {
         "ast_pct": ("AST_PCT", "advanced", True), "reb_pct": ("REB_PCT", "advanced", True),
@@ -256,8 +266,10 @@ def measured_record(player_id: str, quantity: str, row: SeasonRow) -> PlayerInte
             return Unavailable(quantity, "measured", f"the provider did not publish {key} for this season", season=row.season)
         if is_fraction and not 0.0 <= v <= 1.0:
             return Unavailable(quantity, "measured", f"integrity check failed: {key} = {v} is not a fraction of 1 (percentage points?)", season=row.season)
-        if quantity == "ast_to_ratio" and v < 0:
-            return Unavailable(quantity, "measured", "integrity check failed: a negative ratio", season=row.season)
+        if quantity == "ast_to_ratio" and not 0 <= v <= MAX_AST_TO:
+            return Unavailable(quantity, "measured", f"integrity check failed: an assist-to-turnover ratio of {v} is outside [0, {MAX_AST_TO}]", season=row.season)
+        if quantity == "minutes_per_game" and not 0 <= v <= MAX_MINUTES_PER_GAME:
+            return Unavailable(quantity, "measured", f"integrity check failed: {v} minutes per game is outside [0, {MAX_MINUTES_PER_GAME}] (a season total?)", season=row.season)
         limits = []
         if row.total_minutes is not None and row.total_minutes < 200 and is_fraction:
             limits.append(f"only {row.total_minutes:.0f} minutes: share statistics on this little playing time are unstable")

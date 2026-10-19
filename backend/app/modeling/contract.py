@@ -110,6 +110,10 @@ class Sample(BaseModel):
     #: (``exact`` / ``bounded`` / ``unconstrained``; see ``player_intelligence.components``).
     makes: float | None = Field(default=None, ge=0)
     counts_quality: str | None = None
+    #: When the counts are ``bounded`` (the provider's rounding leaves the exact attempt count undetermined), the range
+    #: of attempts consistent with everything the provider published. ``attempts`` is then the nearest feasible count.
+    attempts_min: float | None = Field(default=None, ge=0)
+    attempts_max: float | None = Field(default=None, ge=0)
     #: Seasons of evidence an inferred or projected value drew on.
     seasons_used: int | None = Field(default=None, ge=0)
 

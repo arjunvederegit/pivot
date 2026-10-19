@@ -1,16 +1,46 @@
 {
   "generated_from": {
     "fg3_pct": {
+      "config": {
+        "features": {
+          "decay": 0.7,
+          "min_origin_minutes": 200.0,
+          "min_target_minutes": 500.0,
+          "window": 3
+        },
+        "interval_level": 0.8,
+        "seed": 20260719
+      },
       "data_fingerprint": "56bff0c2e4a1856bd2caed6f7a46d700b24ecb89fc2ef29b4b0168caeaad5335",
       "development": "exp-development-fg3_pct-1bafdc35-56bff0c2",
       "holdout": "exp-holdout-fg3_pct-c2587ccf-56bff0c2"
     },
     "ft_pct": {
+      "config": {
+        "features": {
+          "decay": 0.7,
+          "min_origin_minutes": 200.0,
+          "min_target_minutes": 500.0,
+          "window": 3
+        },
+        "interval_level": 0.8,
+        "seed": 20260719
+      },
       "data_fingerprint": "56bff0c2e4a1856bd2caed6f7a46d700b24ecb89fc2ef29b4b0168caeaad5335",
       "development": "exp-development-ft_pct-5a5d4ad3-56bff0c2",
       "holdout": "exp-holdout-ft_pct-c0b58ebf-56bff0c2"
     },
     "ts_pct": {
+      "config": {
+        "features": {
+          "decay": 0.7,
+          "min_origin_minutes": 200.0,
+          "min_target_minutes": 500.0,
+          "window": 3
+        },
+        "interval_level": 0.8,
+        "seed": 20260719
+      },
       "data_fingerprint": "56bff0c2e4a1856bd2caed6f7a46d700b24ecb89fc2ef29b4b0168caeaad5335",
       "development": "exp-development-ts_pct-80563995-56bff0c2",
       "holdout": "exp-holdout-ts_pct-c3b64edc-56bff0c2"

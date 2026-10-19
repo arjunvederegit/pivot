@@ -148,15 +148,23 @@ def guard_the_credible_interval_is_the_stated_level():
     assert (hi - lo)[0] / 2 == pytest.approx(1.2815515655446004 * np.sqrt(post.var_now[0]), rel=1e-6), "an 80% interval must use the 80% quantile"
 
 
-def guard_rounding_ambiguity_is_disclosed(league):
-    # 2 three-point attempts over 82 games hide behind a published 0.0 per game
-    base, adv = provider_rows(gp=82, fgm=300, fga=700, fg3m=1, fg3a=40, ftm=100, fta=400)
-    rec = measured_module.reconstruct(base, adv, 82)
-    row = measured_module.SeasonRow(season="2024-25", games=82, minutes_per_game=20.0, team_id=None, team_count=1, base=base, advanced=adv, retrieved_at=None, recon=rec)
+def _a_bounded_row():
+    """A season whose provider rounding genuinely leaves the free-throw attempt count undetermined."""
+    for fta in range(6, 200):
+        base, adv = provider_rows(gp=82, fgm=300, fga=700, fg3m=1, fg3a=40, ftm=int(0.75 * fta), fta=fta)
+        rec = measured_module.reconstruct(base, adv, 82)
+        if rec.quality == "bounded" and rec.fta_max > rec.fta_min and rec.fta_min > 0 and rec.fta > 0:  # a rate is givable: zero attempts is ruled out
+            row = measured_module.SeasonRow(season="2024-25", games=82, minutes_per_game=20.0, team_id=None, team_count=1, base=base, advanced=adv, retrieved_at=None, recon=rec)
+            return row, rec
+    raise AssertionError("no ambiguous example found: the planted-defect test would be vacuous")
+
+
+def guard_rounding_ambiguity_is_disclosed():
+    row, rec = _a_bounded_row()
     out = measured_module.measured_record("p", "ft_pct", row)
-    spread = rec.fta_max - rec.fta_min
-    if spread / rec.fta >= measured_module.RECONSTRUCTION_NOTE_SHARE:
-        assert any("rounding leaves the exact attempt count uncertain" in lim for lim in out.limitations), "reconstruction ambiguity was not disclosed"
+    assert not isinstance(out, measured_module.Unavailable)
+    assert any("undetermined" in lim for lim in out.limitations), "reconstruction ambiguity was not disclosed"
+    assert out.sample.attempts_min == rec.fta_min and out.sample.attempts_max == rec.fta_max, "the attempt range was not served"
 
 
 # ----------------------------------------------------------- the guards pass on correct code
@@ -312,14 +320,11 @@ def test_dropping_the_traded_player_note_is_detected(monkeypatch, league):
         guard_a_traded_player_is_labelled(league)
 
 
-def test_suppressing_the_rounding_disclosure_is_detected(monkeypatch, league):
-    guard_rounding_ambiguity_is_disclosed(league)
-    monkeypatch.setattr(measured_module, "RECONSTRUCTION_NOTE_SHARE", 10.0)  # the planted defect: the note can never fire
-    base, adv = provider_rows(gp=82, fgm=300, fga=700, fg3m=1, fg3a=40, ftm=100, fta=400)
-    rec = measured_module.reconstruct(base, adv, 82)
-    if (rec.fta_max - rec.fta_min) / rec.fta >= 0.02:
-        with pytest.raises(AssertionError, match="was not disclosed"):
-            guard_rounding_ambiguity_is_disclosed(league)
+def test_suppressing_the_rounding_disclosure_is_detected(monkeypatch):
+    guard_rounding_ambiguity_is_disclosed()
+    monkeypatch.setattr(measured_module, "_ambiguity_limitation", lambda *a: "")  # the planted defect: the note can never fire
+    with pytest.raises(AssertionError, match="was not disclosed"):
+        guard_rounding_ambiguity_is_disclosed()
 
 
 def test_an_80_percent_interval_computed_at_50_percent_is_detected(monkeypatch):

@@ -123,16 +123,18 @@ def reconstruct(base: dict[str, Any], advanced: dict[str, Any], gp: int) -> Reco
     mf_pg, af_pg, pf = _num(base.get("FTM")), _num(base.get("FTA")), _num(base.get("FT_PCT"))
     pts_pg = _num(base.get("PTS"))
     efg, ts = _num(advanced.get("EFG_PCT")), _num(advanced.get("TS_PCT"))
-    if None in (m3_pg, a3_pg, mf_pg, af_pg):
+    if m3_pg is None or a3_pg is None or mf_pg is None or af_pg is None:
         return None
+    if min(m3_pg, a3_pg, mf_pg, af_pg) < 0:
+        return None  # a negative count is not a count: the row is unusable, not "no attempts"
 
     def point(m_pg: float, a_pg: float) -> Count:
         a = int(round(a_pg * gp))
         return Count(min(int(round(m_pg * gp)), a), a)
 
-    three = _pair_candidates(m3_pg, a3_pg, p3, gp)  # type: ignore[arg-type]
-    free = _pair_candidates(mf_pg, af_pg, pf, gp)  # type: ignore[arg-type]
-    point3, pointf = point(m3_pg, a3_pg), point(mf_pg, af_pg)  # type: ignore[arg-type]
+    three = _pair_candidates(m3_pg, a3_pg, p3, gp)
+    free = _pair_candidates(mf_pg, af_pg, pf, gp)
+    point3, pointf = point(m3_pg, a3_pg), point(mf_pg, af_pg)
 
     if three and exact_fg and fga > 0 and efg is not None:
         keep = [c for c in three if c.makes <= fgm and c.attempts <= fga and abs((fgm + 0.5 * c.makes) / fga - efg) <= PCT_HALF_ULP]

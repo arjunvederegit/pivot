@@ -145,13 +145,15 @@ evidence it affects was used or only lowering what is claimed or served.
 
 1. **Ability is latent.** Nothing here measures it; the state-space posterior is an estimate from box-score evidence, validated only through what it predicts.
 2. **Independent attempts**, with a fitted dispersion: shot quality, defence faced and role changes are not modelled (the `state_space_role` variant adds four role
-   covariates at the cutoff and nothing else).
+   covariates at the cutoff and nothing else). In particular the role covariates are those of the **cutoff season**, applied to every historical season (a returner's earlier roles are ignored),
+   and a player with no cutoff-season role row is imputed the league average (z = 0). Carrying the last observed role is an R9.3 refinement; the plain `state_space` model (the one served for three-point accuracy) does not use role.
 3. **Hyperparameters are estimated and then treated as known** — credible intervals ignore that uncertainty.
 4. **Selection and volume.** The league curve is fitted on players who *later qualify for evaluation*, and attempts are treated only as precision. Measured (`results/selection_check.json`, development folds): refitting
    on every observed player-season (≥ 10 attempts) moves the league mean by **−0.8 to −1.4 points and widens τ ×1.3–1.6 for three-point accuracy**, −0.4 to −0.6 points (×1.03–1.07) for free throws and −0.2 to −0.5 points
    (×1.02–1.05) for true shooting. More importantly, for *every* scored player who took any attempt the next season, the forecast over-predicts when evidence is thin: pooled bias +3.1 / +1.2 / +0.2 points
-   for three-point accuracy in the reliability bins [0, 0.1) / [0.1, 0.2) / [0.2, 0.3), and +3.2 / +3.5 / +2.0 for free throws; every bin at or above reliability 0.3 is within 0.6 points. (Players who later lose their
-   minutes are not a random subset, so this shows what happens to the people the model sees least, not an unbiased test of ability.) Volume carries information about ability — coaches let good shooters shoot — that
+   for three-point accuracy in the reliability bins [0, 0.1) / [0.1, 0.2) / [0.2, 0.3), and +3.2 / +3.5 / +2.0 for free throws; every bin at or above reliability 0.3 is within 0.6 points *in this all-who-played view*. The floor is a uniform line, not a
+   fix: among the players who did **not** later qualify for evaluation (they lost their minutes), the forecast stays over-predicted **above** the floor — +3.1 to +3.8 points for three-point accuracy and +2.5 to +3.3 for free throws
+   in every bin from 0.3 up (`by_reliability_not_qualifying`). That subset is selected on *future* minutes, so it is not an unbiased test of ability, and nothing observable at the cutoff separates it; it is why every projection is stated as conditional on playing. Volume carries information about ability — coaches let good shooters shoot — that
    the model does not use. **Inferred ability is therefore withheld below reliability 0.30** (the measured value is still returned), and every inferred record says the curve is too high for rare shooters.
 5. **Conditional on playing** (§4). 46–56% of scored players are not in the evaluated population the following season (31% do not appear at all).
 6. **Ten seasons, one provider, COVID-shortened seasons in the folds.** Results are about 2016-17…2025-26 and make no claim about later seasons.

@@ -29,6 +29,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sqlalchemy import event, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import Base, CandidateEstimate, ModelVersion, PlayerImpactEstimate, Standing
@@ -307,6 +308,92 @@ def _config_matches(experiment_dir: Path, config: dict) -> bool:
     )
 
 
+#: Evaluation fields that assert WHERE a model's evidence came from. Only `evaluation_from_experiment` may set them.
+PROVENANCE_KEYS = ("experiment", "config_matches", "experiment_data_fingerprint", "current_data_fingerprint")
+ARTIFACT_SCHEMA = "r9.2-3"
+#: Part of every candidate's configuration, hence of its version id. Bump it whenever what a candidate STORES changes
+#: (a column's meaning, a new input key): a store written by older code then gets a new version instead of being
+#: "reused" under an id that no longer describes the rows.
+
+_NUMERIC_COLUMNS = ("estimate", "interval_low", "interval_high", "interval_level", "exposure")
+
+
+def _estimate_rows(
+    model_id: str, scoring: pd.DataFrame, ability: pd.DataFrame | None, origin: str, target: str, target_season: str, level: float
+) -> list[CandidateEstimate]:
+    """Every row a candidate stores — the one place they are built, for writing AND for the reuse comparison, so the two
+    can never describe different things."""
+    rows = [
+        CandidateEstimate(
+            model_version_id=model_id,
+            player_id=str(r.player_id),
+            season=origin,
+            target_season=target_season,
+            target=target,
+            output_kind=get_target(target).output_kind,
+            estimate=float(r.pred),
+            interval_low=float(r.lo),
+            interval_high=float(r.hi),
+            interval_level=level,
+            exposure=float(r.window_exposure),
+            inputs={"x_t": _clean(r.x_t), "age": _clean(r.age), "window_minutes": _clean(r.window_minutes)}
+            | {k: _clean(getattr(r, k)) for k in ("history_exposure", "n_observed") if hasattr(r, k)},
+        )
+        for r in scoring.itertuples(index=False)
+    ]
+    if ability is not None:
+        # R9.2: a model that carries a posterior of ability stores it as `inferred`, beside (never instead of) its forecast.
+        rows += [
+            CandidateEstimate(
+                model_version_id=model_id,
+                player_id=str(r.player_id),
+                season=origin,
+                target_season=origin,
+                target=f"{target}{ABILITY_SUFFIX}",
+                output_kind="inferred",
+                estimate=float(r.ability),
+                interval_low=float(r.ability_lo),
+                interval_high=float(r.ability_hi),
+                interval_level=level,
+                exposure=float(r.history_exposure),
+                inputs={
+                    k: _clean(getattr(r, k))
+                    for k in ("ability_sd", "curve", "reliability", "weight_on_player_record", "effective_attempts", "n_observed", "window_exposure")
+                } | {"interval_kind": "credible"},
+            )
+            for r in ability.itertuples(index=False)
+        ]
+    return rows
+
+
+def _row_differences(stored: list[CandidateEstimate], expected: list[CandidateEstimate]) -> list[str]:
+    """Why a stored candidate's rows are not what retraining now produces (empty = identical, to 1e-9)."""
+    by_key = {(e.player_id, e.target): e for e in stored}
+    want = {(e.player_id, e.target): e for e in expected}
+    problems: list[str] = []
+    if by_key.keys() != want.keys():
+        problems.append(f"the set of stored rows differs ({len(by_key)} stored, {len(want)} expected)")
+        return problems
+    for key, new in want.items():
+        old = by_key[key]
+        for col in _NUMERIC_COLUMNS:
+            a, b = getattr(old, col), getattr(new, col)
+            if (a is None) != (b is None) or (a is not None and abs(float(a) - float(b)) > 1e-9):
+                problems.append(f"{key[1]} {col} differs for a player ({a} stored, {b} now)")
+        old_inputs, new_inputs = old.inputs or {}, new.inputs or {}
+        if old_inputs.keys() != new_inputs.keys():
+            problems.append(f"{key[1]} inputs keys differ ({sorted(set(old_inputs) ^ set(new_inputs))})")
+        else:
+            for k, v in new_inputs.items():
+                o = old_inputs[k]
+                same = (o is None and v is None) or (isinstance(v, (int, float)) and isinstance(o, (int, float)) and abs(float(o) - float(v)) <= 1e-9) or o == v
+                if not same:
+                    problems.append(f"{key[1]} input {k!r} differs for a player ({o} stored, {v} now)")
+        if len(problems) >= 5:
+            break
+    return problems
+
+
 def train_candidate(
     db: Session,
     spec: str,
@@ -323,8 +410,12 @@ def train_candidate(
     """Train a candidate and persist it — and nothing else — under ``status = 'candidate'``.
 
     ``experiment_dir`` (a development or holdout run) is read to record, truthfully, how the model
-    fared. ``evaluation`` is accepted for callers that already hold that record."""
+    fared. ``evaluation`` is accepted for callers that already hold that record — but the provenance
+    fields (which experiment, whether the configuration matched, the data fingerprints) are only ever
+    set from ``experiment_dir``; a caller-supplied dict cannot assert them."""
     features = features or FeatureConfig()
+    if evaluation is not None:
+        evaluation = {k: v for k, v in evaluation.items() if k not in PROVENANCE_KEYS}
     if spec not in PREDICTORS:
         raise CandidateError(f"unknown model {spec!r}; registered: {sorted(PREDICTORS)}")
     if db.new or db.deleted or any(db.is_modified(o) for o in db.dirty):
@@ -356,7 +447,7 @@ def train_candidate(
     config = {
         "spec": spec, "target": target, "origin": origin, "target_season": target_season,
         "seed": seed, "interval_level": level, "features": features.as_dict(),
-        "model_spec": PREDICTORS[spec].spec(),
+        "model_spec": PREDICTORS[spec].spec(), "artifact_schema": ARTIFACT_SCHEMA,
     }
     if experiment_dir is not None and evaluation is not None:
         # Whether the candidate was trained under the configuration the experiment evaluated (window, minute floors,
@@ -370,10 +461,7 @@ def train_candidate(
         select(ModelVersion).where(ModelVersion.model_name == model_name, ModelVersion.version == version)
     )
     if existing is not None:
-        ability_map = (
-            dict(zip(scoring["player_id"].astype(str), scoring["ability"].astype(float), strict=True)) if ability is not None else None
-        )
-        return _reuse(db, existing, estimates, evaluation, version, model_name, spec, target, origin, target_season, snapshot, ability_map)
+        return _reuse(db, existing, scoring, ability, evaluation, version, model_name, spec, target, origin, target_season, snapshot, level)
 
     active = db.scalars(
         select(ModelVersion).where(ModelVersion.model_name == "player_impact", ModelVersion.is_active)
@@ -410,60 +498,21 @@ def train_candidate(
         )
         db.add(model)
         db.flush()
-        db.add_all(
-            [
-                CandidateEstimate(
-                    model_version_id=model.id,
-                    player_id=str(r.player_id),
-                    season=origin,
-                    target_season=target_season,
-                    target=target,
-                    output_kind=get_target(target).output_kind,
-                    estimate=float(r.pred),
-                    interval_low=float(r.lo),
-                    interval_high=float(r.hi),
-                    interval_level=level,
-                    exposure=float(r.window_exposure),
-                    inputs={"x_t": _clean(r.x_t), "age": _clean(r.age), "window_minutes": _clean(r.window_minutes)}
-                    | {k: _clean(getattr(r, k)) for k in ("history_exposure", "n_observed") if hasattr(r, k)},
-                )
-                for r in scoring.itertuples(index=False)
-            ]
-        )
-        if ability is not None:
-            # R9.2: a model that carries a posterior of ability stores it as `inferred`, beside (never
-            # instead of) its forecast. Same candidate version, same isolation guarantees.
-            db.add_all(
-                [
-                    CandidateEstimate(
-                        model_version_id=model.id,
-                        player_id=str(r.player_id),
-                        season=origin,
-                        target_season=origin,
-                        target=f"{target}{ABILITY_SUFFIX}",
-                        output_kind="inferred",
-                        estimate=float(r.ability),
-                        interval_low=float(r.ability_lo),
-                        interval_high=float(r.ability_hi),
-                        interval_level=level,
-                        exposure=float(r.history_exposure),
-                        inputs={
-                            k: _clean(getattr(r, k))
-                            for k in (
-                                "ability_sd", "curve", "reliability", "weight_on_player_record",
-                                "effective_attempts", "n_observed", "window_exposure",
-                            )
-                        } | {"interval_kind": "credible"},
-                    )
-                    for r in ability.itertuples(index=False)
-                ]
-            )
+        db.add_all(_estimate_rows(model.id, scoring, ability, origin, target, target_season, level))
         db.flush()
         _assert_isolated(db, model)
         changed = diff_fingerprints(before, protected_fingerprint(db, exclude_model_id=model.id))
         if changed:
             raise ProtectedStateViolation("candidate training changed protected state: " + "; ".join(changed))
         db.commit()
+    except IntegrityError:
+        # Another process created the same version between our check and our write (the unique constraint caught it).
+        # Nothing of ours was kept: reuse the winner's candidate, after comparing every stored column.
+        db.rollback()
+        winner = db.scalar(select(ModelVersion).where(ModelVersion.model_name == model_name, ModelVersion.version == version))
+        if winner is None:
+            raise
+        return _reuse(db, winner, scoring, ability, evaluation, version, model_name, spec, target, origin, target_season, snapshot, level)
     except BaseException:
         db.rollback()
         raise
@@ -484,31 +533,22 @@ def _assert_isolated(db: Session, model: ModelVersion) -> None:
 
 
 def _reuse(
-    db: Session, existing: ModelVersion, estimates: dict[str, float], evaluation: dict | None,
+    db: Session, existing: ModelVersion, scoring: pd.DataFrame, ability: pd.DataFrame | None, evaluation: dict | None,
     version: str, model_name: str, spec: str, target: str, origin: str, target_season: str,
-    snapshot: DataSnapshot, ability: dict[str, float] | None = None,
+    snapshot: DataSnapshot, level: float,
 ) -> CandidateRecord:
     """The same specification on the same data is the same candidate — but only if it still produces
     the same numbers. If it does not (the code or a library changed), say so rather than return
-    stale estimates under an unchanged id. Nothing is deleted or rewritten except, when asked, this
-    candidate's own evaluation record.
-
-    The forecast rows (``target = <target>``) and the ability rows (``<target>@ability``) are compared
-    *separately*: they share player ids, so pooling them lets one overwrite the other."""
-    rows = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == existing.id)).all()
-    stored = {e.player_id: e.estimate for e in rows if e.target == target}
-    stored_ability = {e.player_id: e.estimate for e in rows if e.target == f"{target}{ABILITY_SUFFIX}"}
-    if stored.keys() != estimates.keys() or any(abs(stored[p] - estimates[p]) > 1e-9 for p in stored):
+    stale rows under an unchanged id. Nothing is deleted or rewritten except, when asked, this
+    candidate's own evaluation record — and that only after EVERY stored column (estimate, interval,
+    exposure, every input) has been compared with what retraining produces now."""
+    stored = list(db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == existing.id)).all())
+    problems = _row_differences(stored, _estimate_rows(existing.id, scoring, ability, origin, target, target_season, level))
+    if problems:
         raise CandidateError(
-            f"{version} exists but retraining now gives different estimates: the code or environment "
-            "changed since it was trained. Nothing was modified; change the seed or configuration to "
-            "create a new candidate, or investigate the difference."
-        )
-    expected_ability = ability or {}
-    if stored_ability.keys() != expected_ability.keys() or any(abs(stored_ability[p] - expected_ability[p]) > 1e-9 for p in stored_ability):
-        raise CandidateError(
-            f"{version} exists but retraining now gives different ability estimates: the code or environment "
-            "changed since it was trained. Nothing was modified."
+            f"{version} exists but retraining now gives different estimates: {'; '.join(problems)}. The code or environment "
+            "changed since it was trained. Nothing was modified; change the seed or configuration (or the artifact "
+            "schema) to create a new candidate, or investigate the difference."
         )
     if evaluation is not None and existing.validation_metrics != evaluation:
         before = protected_fingerprint(db, exclude_model_id=existing.id)
@@ -522,7 +562,7 @@ def _reuse(
         except BaseException:
             db.rollback()
             raise
-    return CandidateRecord(existing.id, version, model_name, spec, target, origin, target_season, len(stored), True, snapshot.snapshot_id)
+    return CandidateRecord(existing.id, version, model_name, spec, target, origin, target_season, len([e for e in stored if e.target == target]), True, snapshot.snapshot_id)
 
 
 def _clean(value) -> float | None:  # type: ignore[no-untyped-def]

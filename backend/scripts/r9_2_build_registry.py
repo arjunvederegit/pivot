@@ -121,7 +121,12 @@ def build(exp: Path, analysis: dict | None, challenge: dict | None = None) -> di
             continue
         dev_dec, dev_met = _load(dev_dir / "decisions.json"), _load(dev_dir / "metrics.json")
         data_fp = _load(dev_dir / "data_snapshot.json")["fingerprint"]
-        registry["generated_from"][q] = {"development": dev_dir.name, "holdout": hold_dir.name if hold_dir else None, "data_fingerprint": data_fp}
+        recorded = _load(dev_dir / "config.json")["backtest"]
+        registry["generated_from"][q] = {
+            "development": dev_dir.name, "holdout": hold_dir.name if hold_dir else None, "data_fingerprint": data_fp,
+            # the configuration the experiments ran under: a stored model gets this registry's evidence only if it was trained under it
+            "config": {"features": recorded["features"], "seed": recorded["seed"], "interval_level": recorded["interval_level"]},
+        }
         overall = dev_met["overall"]
         ref = dev_dec["reference_baseline"]
         advanced = list(dev_dec["advanced"])

@@ -41,13 +41,21 @@ def promotion_readiness(db: Session, version: str, registry: ValidationRegistry 
     quantity = (model.target or "").split("@")[0]
     spec = (model.config or {}).get("spec")
     kinds = [k for k in ("projected", "inferred") if registry.facts(quantity, k).method == spec]
+    applies = registry.applies_to(quantity, spec, model.config, model.validation_metrics)
     stored = status_from_stored((model.validation_metrics or {}).get("evaluation_status"))
     if not kinds:
         blockers.append(f"the validation registry does not recommend {spec!r} for {quantity!r}")
+    elif not applies:
+        blockers.append(
+            "the registry's evidence does not describe THIS stored model (it was not trained against the committed experiments, "
+            "under their configuration and data, or its evaluation is stale): it is unevaluated"
+        )
     for k in kinds:
         f = registry.facts(quantity, k)
         if f.tier == TIER_WITHHELD:
             blockers.append(f"the {k} output is withheld: {f.reason}")
+        elif not applies:
+            continue
         elif f.evaluation_status is not EvaluationStatus.HOLDOUT_CONFIRMED or k == "inferred":
             blockers.append(
                 f"the {k} output is {f.evaluation_status.value}, not holdout-confirmed"

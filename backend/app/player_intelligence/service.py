@@ -105,22 +105,32 @@ class IntelligenceResponse:
         }
 
 
-def serving_decision(model_status: str, evaluation: EvaluationStatus, include_experimental: bool) -> tuple[bool, str]:
+def serving_decision(
+    model_status: str, evaluation: EvaluationStatus, include_experimental: bool, is_active: bool | None = None
+) -> tuple[bool, str]:
     """May a stored model's output be returned, and on what terms? One rule, applied everywhere.
 
-    * ``active`` + ``holdout_confirmed``: returned as validated (nothing qualifies in R9.2: promotion is manual).
+    * ``active`` AND ``is_active`` + ``holdout_confirmed``: returned as validated (nothing qualifies in R9.2: promotion is
+      manual). ``status`` and ``is_active`` must agree: an ``active`` status without the flag, or a candidate carrying the
+      flag, is an inconsistent record and is not servable at all (a half-made promotion must not serve anyone).
+    * ``active`` with any other evaluation: only on request, labelled experimental.
     * ``candidate``: returned only on request, always labelled.
     * ``rejected`` / ``retired``: never.
     * an evaluation that ``failed``: never, even on request — an estimate whose method was shown not to
       meet the pre-registered bar is not served to anyone as intelligence.
     """
+    flag = (model_status == "active") if is_active is None else is_active
     if model_status in ("rejected", "retired"):
         return False, f"the model is {model_status}"
+    if model_status == "active" and not flag:
+        return False, "inconsistent model record (status 'active' but not flagged active): not servable"
+    if model_status == "candidate" and flag:
+        return False, "inconsistent model record (a candidate flagged active): not servable"
     if evaluation is EvaluationStatus.FAILED:
         return False, "the model failed its pre-registered evaluation"
     if model_status == "active" and evaluation is EvaluationStatus.HOLDOUT_CONFIRMED:
         return True, "validated"
-    if model_status == "candidate":
+    if model_status in ("active", "candidate"):
         if include_experimental:
             return True, "experimental"
         return False, "an experimental (candidate) model output; pass include_experimental=true to see it, labelled as such"
@@ -188,7 +198,7 @@ class PlayerIntelligenceService:
         wanted_kinds = self._kinds(kinds)
         if as_of is not None:
             try:
-                Season.parse(as_of)
+                as_of = Season.parse(as_of).label  # normalised: " 2025-26 " and look-alike digits are one season, not a different string
             except InvalidSeasonError as exc:
                 raise InvalidRequestError(f"as_of must be a season like '2024-25': {exc}") from exc
         cutoff = as_of or self.latest_season()
@@ -344,25 +354,9 @@ class PlayerIntelligenceService:
                 f"no stored {method or 'model'} output for cutoff {cutoff}: it has not been materialised "
                 "(a read never trains a model); run `make materialise-skills` for this cutoff on a copy of the database"
             )
-        return max(fits, key=lambda v: v.trained_at or datetime.min), None
-
-    def _registry_applies(self, version: ModelVersion, facts: KindFacts, quantity: str) -> bool:
-        """May the registry's evidence (evaluation status, reference, calibration) be attached to this stored model?
-
-        Only if it IS the model the experiments evaluated: same method, evaluated against one of the registry's source
-        runs, trained under the configuration the experiment used, on the data the experiment saw, and not stale. A
-        stored model that merely shares a method name — trained on other data, or never evaluated — gets its own
-        stored status, not borrowed evidence."""
-        vm = version.validation_metrics or {}
-        raw = vm.get("evaluation_status")
-        if isinstance(raw, str) and raw.startswith("stale:"):
-            return False
-        return bool(
-            facts.method == (version.config or {}).get("spec")
-            and vm.get("experiment") in self.registry.run_ids(quantity)
-            and vm.get("config_matches") is True
-            and vm.get("experiment_data_fingerprint") == self.registry.data_fingerprint(quantity)
-        )
+        # Prefer the model the registry's evidence describes (then the newest): a later, differently configured or never
+        # evaluated candidate must not silently become everyone's default answer.
+        return max(fits, key=lambda v: (self.registry.applies_to(quantity, method, v.config, v.validation_metrics), v.trained_at or datetime.min)), None
 
     def _model_record(
         self, player_id: str, quantity: str, kind: OutputKind, cutoff: str | None, rows: dict[str, SeasonRow],
@@ -388,7 +382,7 @@ class PlayerIntelligenceService:
             return
         stored_raw = (version.validation_metrics or {}).get("evaluation_status")
         stored_eval = status_from_stored(stored_raw)
-        applies = self._registry_applies(version, facts, quantity)
+        applies = self.registry.applies_to(quantity, facts.method, version.config, version.validation_metrics)
         evaluation = facts.evaluation_status if applies else stored_eval
         # A stored 'failed' (the candidate did not advance, or was not confirmed, as a FORECASTER) blocks its projections,
         # and a stale 'failed' stays failed. It does not block an ability estimate: that is governed by its own
@@ -396,7 +390,7 @@ class PlayerIntelligenceService:
         # calibration of its predictive interval).
         if stored_eval is EvaluationStatus.FAILED and kind is OutputKind.PROJECTED:
             evaluation = EvaluationStatus.FAILED
-        allowed, why = serving_decision(version.status, evaluation, include_experimental)
+        allowed, why = serving_decision(version.status, evaluation, include_experimental, version.is_active)
         if not allowed:
             unavailable.append(Unavailable(quantity, k, why, season=cutoff))
             return
@@ -431,7 +425,7 @@ class PlayerIntelligenceService:
         if kind is OutputKind.INFERRED and (inputs.get("reliability") or 0.0) < INFERRED_MIN_RELIABILITY:
             unavailable.append(Unavailable(
                 quantity, k,
-                f"reliability {(inputs.get('reliability') or 0.0):.2f} is below the serving floor of {INFERRED_MIN_RELIABILITY:.2f}: with this little "
+                f"reliability {(inputs.get('reliability') or 0.0):.3f} is below the serving floor of {INFERRED_MIN_RELIABILITY:.2f}: with this little "
                 "evidence the estimate would be mostly the league curve, and that curve over-predicts low-volume players "
                 "(docs/r9-2/shooting-intelligence-methodology.md §7). The measured value is still available",
                 requirement="more attempts (the estimate becomes servable as evidence accumulates)",

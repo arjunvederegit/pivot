@@ -25,7 +25,7 @@ def make_run(root: Path, stage: str, quantity: str, *, overall, decisions, by_fo
     write(d / "metrics.json", {"overall": overall, "by_fold": by_fold or {m: {"2018-19": {}, "2019-20": {}} for m in overall}})
     write(d / "attrition.json", attrition or [{"scored": 600, "target_observed": 420, "evaluated": 280}, {"scored": 600, "target_observed": 430, "evaluated": 290}])
     write(d / "data_snapshot.json", {"fingerprint": FP})
-    write(d / "config.json", {"stage": stage})
+    write(d / "config.json", {"stage": stage, "backtest": {"features": {"min_target_minutes": 500.0, "history_seasons": 3}, "seed": 20250101, "interval_level": 0.8}})
     return d
 
 
@@ -105,3 +105,16 @@ def test_participation_shares_come_from_the_attrition_artifacts(exp):
     reg = build(exp, None)["quantities"]["fg3_pct"]
     a = reg["projected"]["numbers"]["attrition"]
     assert a["share_evaluated_of_scored"] == pytest.approx((280 + 290) / 1200)
+
+
+def test_the_committed_registry_records_the_configuration_its_evidence_was_produced_under():
+    """Without this, registry evidence can never attach to a stored model (applies_to compares configurations)."""
+    import json
+
+    from app.player_intelligence.validation import REGISTRY_PATH
+
+    data = json.loads(Path(REGISTRY_PATH).read_text())
+    assert data["generated_from"], "empty registry"
+    for q, src in data["generated_from"].items():
+        assert set(src["config"]) == {"features", "seed", "interval_level"}, q
+        assert src["data_fingerprint"] and len(src["data_fingerprint"]) == 64, q

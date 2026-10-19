@@ -69,6 +69,34 @@ class ValidationRegistry:
             numbers=entry.get("numbers", {}), limitations=list(entry.get("limitations", [])),
         )
 
+    def experiment_config(self, quantity: str) -> dict | None:
+        """The configuration (features, seed, interval level) the registry's experiments were run under."""
+        return ((self.raw.get("generated_from", {}) or {}).get(quantity, {}) or {}).get("config")
+
+    def applies_to(self, quantity: str, method: str | None, version_config: dict | None, validation_metrics: dict | None) -> bool:
+        """May this registry's evidence (evaluation status, reference, calibration) be attached to a stored model?
+
+        Only if it IS the model the experiments evaluated. Checked from the stored model's OWN configuration against the
+        configuration the registry recorded, and from the evaluation record the (controlled) training path wrote: same
+        method; evaluated against one of the registry's source runs, on the registry's data fingerprint; trained under
+        the experiments' features / seed / interval level; and not stale. A model that merely shares a method name — trained
+        on other data, under another configuration, or never evaluated — gets its own stored status, not borrowed evidence."""
+        cfg, vm = version_config or {}, validation_metrics or {}
+        raw = vm.get("evaluation_status")
+        if isinstance(raw, str) and raw.strip().lower().startswith("stale:"):
+            return False
+        recorded = self.experiment_config(quantity)
+        if not method or cfg.get("spec") != method or not recorded:
+            return False
+        return bool(
+            vm.get("experiment") in self.run_ids(quantity)
+            and vm.get("config_matches") is True
+            and vm.get("experiment_data_fingerprint") == self.data_fingerprint(quantity)
+            and cfg.get("features") == recorded.get("features")
+            and cfg.get("seed") == recorded.get("seed")
+            and cfg.get("interval_level") == recorded.get("interval_level")
+        )
+
     def run_ids(self, quantity: str) -> list[str]:
         """The experiment runs (development, holdout) whose artifacts this registry's evidence for ``quantity`` came from."""
         src = (self.raw.get("generated_from", {}) or {}).get(quantity, {}) or {}
@@ -90,19 +118,32 @@ def load_registry(path: str | None = None) -> ValidationRegistry:
     return ValidationRegistry(json.loads(target.read_text()))
 
 
+_KNOWN_UNEVALUATED = frozenset({"unevaluated", "not_evaluated_as_candidate", "not_applicable"})
+
+
 def status_from_stored(stored: str | None) -> EvaluationStatus:
-    """Map a candidate's stored ``validation_metrics.evaluation_status`` onto the contract enum."""
-    if not stored:
+    """Map a candidate's stored ``validation_metrics.evaluation_status`` onto the contract enum.
+
+    **Fails closed:** a status this function does not recognise is ``FAILED`` (refused), never ``UNEVALUATED`` (servable
+    on request) — so a typo, a different casing or a value written by a future version cannot lift a model out of a refusal."""
+    if stored is None or (isinstance(stored, str) and not stored.strip()):
         return EvaluationStatus.UNEVALUATED
+    if not isinstance(stored, str):
+        return EvaluationStatus.FAILED
+    stored = stored.strip().lower()
     if stored.startswith("stale:"):
         # The data changed since the experiment ran, so its evidence no longer describes this model. That can only
         # LOWER a status: a stale 'passed' is unevaluated, but a stale 'failed' is still failed (staleness must never
         # lift a model out of a refusal).
         inner = status_from_stored(stored[len("stale:"):])
         return EvaluationStatus.FAILED if inner is EvaluationStatus.FAILED else EvaluationStatus.UNEVALUATED
+    if stored in _KNOWN_UNEVALUATED:
+        return EvaluationStatus.UNEVALUATED
     return {
         "development_only": EvaluationStatus.DEVELOPMENT_ONLY,
         "holdout_confirmed": EvaluationStatus.HOLDOUT_CONFIRMED,
+        "benchmarked": EvaluationStatus.BENCHMARKED,
+        "failed": EvaluationStatus.FAILED,
         "failed_development_rule": EvaluationStatus.FAILED,
         "holdout_not_confirmed": EvaluationStatus.FAILED,
-    }.get(stored, EvaluationStatus.UNEVALUATED)
+    }.get(stored, EvaluationStatus.FAILED)

@@ -83,13 +83,16 @@ PlayerIntelligenceService(db).catalog()                   # what is offered, wha
 * **Quantities** are ids from the registry (`ts_pct`, `fg3_pct`, `ft_pct`, `ast_pct`, `ast_to_ratio`, `reb_pct`, `oreb_pct`, `dreb_pct`,
   `usg_pct`, `minutes_per_game`, `games_played`). Asking for a dimension Pivot cannot see (`defensive_contribution`,
   `overall_skill_rating`, …) returns an `Unavailable` with the reason — it is never an error and never a number.
-* **`as_of`** is an information cutoff (a season label). Measured rows are filtered to `<= as_of`; stored models are selected by the cutoff
+* **`as_of`** is an information cutoff (a season label; whitespace and look-alike digits are normalised to the canonical label, so `" 2025-26 "` is `2025-26`). Measured rows are filtered to `<= as_of`; stored models are selected by the cutoff
   they were trained at; nothing later is read. Default: the latest ingested season.
 * **`kinds`**: `measured` (default), `inferred`, `projected`. Measured needs only data integrity.
+* **Measured values state what is known and no more.** Where NBA.com's rounding leaves a season's attempt count undetermined (996 of 5,483 player-seasons carry a range), the record serves the *published* rate
+  (exact to its precision), the attempt **range** (`sample.attempts_min/attempts_max`) and a limitation saying so; if zero attempts cannot be ruled out, there is no rate and the reason says "undetermined", never "no attempts".
+  Implausible values (minutes per game outside [0, 53], assist-to-turnover outside [0, 60], true shooting above 1.5, negative counts) are integrity failures, not data; a player with no games gets "played no games".
 * **Model outputs are read, never computed.** A request never trains or writes. A cutoff with no stored model is reported as
   *not materialised*.
-* **Gating (`serving_decision`, one rule, applied everywhere):** `active` + `holdout_confirmed` → served as validated (nothing qualifies
-  in R9.2); `candidate` → only with `include_experimental=true`, and always labelled (`model.status = "candidate"`, `model.evaluation_status`);
+* **Gating (`serving_decision`, one rule, applied everywhere):** validated requires **both** `status = 'active'` **and** `is_active = true` (plus `holdout_confirmed`; nothing qualifies
+  in R9.2) — an inconsistent pair (a half-made promotion) is unservable, as is any status string the code does not know; `candidate` → only with `include_experimental=true`, and always labelled (`model.status = "candidate"`, `model.evaluation_status`);
   `rejected`/`retired` → never. An evaluation that `failed` blocks the **projections** of that model, on request or not, and a *stale*
   failure stays a failure (staleness can only lower a status). An **ability estimate** is governed by its own pre-registered serving rule
   (its model's forecasts non-inferior to the baseline, its predictive interval calibrated), so a model whose *forecasts* were not
@@ -101,7 +104,7 @@ PlayerIntelligenceService(db).catalog()                   # what is offered, wha
   *own* stored evaluation (default `unevaluated`), with no calibration, and a limitation saying so.
 * **Withheld means nobody.** If the registry withholds an (quantity, kind), no request returns it — naming a `model_version` does not change that.
 * **A reliability floor for inferred ability** (`INFERRED_MIN_RELIABILITY = 0.30`): below it the estimate would be mostly the league curve, which
-  over-predicts low-volume players (measured: +1.2 to +3.5 points, `results/selection_check.json`). The measured value is still returned. A player
+  over-predicts low-volume players (measured, pooled over everyone who played next season: three-point +3.1 / +1.2 / +0.2 points in the reliability bins [0, 0.1) / [0.1, 0.2) / [0.2, 0.3) and free throws +3.2 / +3.5 / +2.0, against within 0.6 points from 0.3 up — `results/selection_check.json`; the floor is a single uniform line, and players selected on *not* playing next season remain over-predicted above it). The measured value is still returned. A player
   with no attempts in any season the model saw gets nothing to infer from, not the league curve.
 * **Refusals are data:** `Unavailable(quantity, kind, reason, requirement)`; reasons include *no attempts, so the rate is undefined (it is not
   0%)*, *no statistics for this player in {season}*, *integrity check failed: …*, *not materialised*, *the player is not in the scored population*.
@@ -138,11 +141,11 @@ No new table and **no migration**. The R9.1 candidate store is the persistence l
 | how the model fared | `model_versions.validation_metrics` (from the experiment artifacts) and `lineage` (data snapshot, environment, seed, fitted hyperparameters) | — |
 
 Append-only by construction: training adds a new version (its id is a hash of configuration *and* data fingerprint) and never updates or
-deletes another row; the isolation checks prove it before every commit. Re-training the same specification on the same data is idempotent,
-and refuses (loudly) if the code now produces different numbers under an unchanged id — the forecast rows and the ability rows are compared *separately*, because they
-share player ids (R9.2's first implementation pooled them and could not be re-materialised; the independent review found it, and `test_pi_review_fixes::TestIdempotence` pins the fix).
+deletes another row; the isolation checks prove it before every commit. The id also carries an **artifact schema tag** (`ARTIFACT_SCHEMA`, currently `r9.2-3`) in the stored configuration, so a store written by older code never shares an id with what today's code would write.
+Re-training the same specification on the same data is idempotent, and refuses (loudly) if the code now produces different numbers under an unchanged id: **every stored column** of the forecast rows and
+of the ability rows — estimate, interval, exposure and every key of `inputs` — is compared, separately for the two kinds because they share player ids. A refused reuse does not rewrite the version's evaluation record. (R9.2's first implementation pooled the rows and could not be re-materialised; a later version compared only the estimate and would have "reused" a store holding the defects fixed in review while upgrading its evidence label — `test_pi_review_fixes::TestIdempotence`, `TestReuseComparesEveryColumn`.) Two processes materialising at once are safe: the loser of the creation race hits the unique constraint and reuses the winner's version.
 Re-materialising after a data refresh creates a *new* version; older versions remain, so a past cutoff can be re-read exactly as it was served **by naming its version**
-(by default the newest servable version for the cutoff is returned, and its version is on the record; measured records are not versioned — they are recomputed from the stored rows).
+(by default the servable version for the cutoff to which the registry's evidence *applies* is preferred, then the newest — so a later, never-evaluated `make train-candidate` run cannot silently become everyone's default answer; its version is on the record; measured records are not versioned — they are recomputed from the stored rows).
 
 ## 8. How the validation registry decides what is served
 

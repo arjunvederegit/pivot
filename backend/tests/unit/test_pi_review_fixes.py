@@ -36,6 +36,8 @@ CUTOFF = "2023-24"
 @pytest.fixture(scope="module")
 def league(tmp_path_factory):
     info = build_league(tmp_path_factory, seed=21, n_players=120, cutoff=CUTOFF)
+    # a candidate that was never evaluated, at its own cutoff (tests must not depend on each other to create it)
+    train_candidate(info["db"], "state_space", "fg3_pct", "2022-23")
     yield info
     info["db"].close()
     info["engine"].dispose()
@@ -83,7 +85,7 @@ class TestIdempotence:
             db.flush()
             from app.modeling.registry import CandidateError
 
-            with pytest.raises(CandidateError, match="different ability estimates"):
+            with pytest.raises(CandidateError, match="@ability"):
                 train_candidate(db, "state_space", "fg3_pct", CUTOFF, experiment_dir=league["experiment_dir"])
         finally:
             db.rollback()
@@ -94,8 +96,6 @@ class TestIdempotence:
 
 class TestRegistryEvidenceIsNotBorrowed:
     def test_a_model_never_evaluated_gets_no_registry_label_calibration_or_reference(self, league):
-        db = league["db"]
-        train_candidate(db, "state_space", "fg3_pct", "2022-23")  # no experiment: unevaluated
         r = svc(league).get(top_player(league), ["fg3_pct"], as_of="2022-23", kinds=["projected"], include_experimental=True)
         rec = r.records[0]
         assert rec.model.evaluation_status is EvaluationStatus.UNEVALUATED
@@ -160,6 +160,7 @@ class TestWithheldMeansNobody:
 
     def test_a_named_version_from_another_cutoff_or_that_does_not_exist_says_so(self, league):
         other = league["db"].scalar(select(ModelVersion).where(ModelVersion.config["origin"].as_string() == "2022-23", ModelVersion.model_name == "player_forecast_fg3_pct"))
+        assert other is not None
         s = svc(league)
         r = s.get(top_player(league), ["fg3_pct"], as_of=CUTOFF, kinds=["projected"], model_version=other.version, include_experimental=True)
         assert "trained at cutoff 2022-23, not 2023-24" in r.unavailable[0].reason
@@ -425,3 +426,259 @@ def test_the_openapi_schema_reflects_the_flag_at_process_start_in_a_fresh_proces
 def test_registry_rejects_unknown_status_strings_safely():
     reg = ValidationRegistry({"version": "t", "quantities": {}})
     assert reg.facts("fg3_pct", "projected").tier == "withheld"
+
+
+# =============================================================== round 3 findings (independent adversarial review)
+
+
+class TestReuseComparesEveryColumn:
+    """N1: a store written by older code must not be 'reused' (and have its evaluation record upgraded) under an id that no longer describes it."""
+
+    def test_the_version_id_carries_the_artifact_schema(self, league):
+        from app.modeling.registry import ARTIFACT_SCHEMA
+
+        v = league["db"].scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        assert v.config["artifact_schema"] == ARTIFACT_SCHEMA
+
+    @pytest.mark.parametrize("column", ["interval_high", "exposure", "inputs_weight", "inputs_new_key"])
+    def test_a_difference_in_any_stored_column_is_refused(self, league, column):
+        from app.modeling.registry import CandidateError
+
+        db = league["db"]
+        v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        row = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct@ability")).first()
+        saved = (row.interval_high, row.exposure, dict(row.inputs))
+        try:
+            if column == "interval_high":
+                row.interval_high = saved[0] + 0.01
+            elif column == "exposure":
+                row.exposure = saved[1] + 7.0  # e.g. a three-season window where the filter's history is now stored
+            elif column == "inputs_weight":
+                row.inputs = {**saved[2], "weight_on_player_record": saved[2]["reliability"] + 0.2}  # weight = reliability, as the old code stored it
+            else:
+                row.inputs = {k: v_ for k, v_ in saved[2].items() if k != "window_exposure"}  # a key the old code did not store
+            db.flush()
+            before = dict(v.validation_metrics)
+            with pytest.raises(CandidateError, match="different estimates"):
+                train_candidate(db, "state_space", "fg3_pct", CUTOFF, experiment_dir=league["experiment_dir"])
+            assert v.validation_metrics == before  # a refused reuse does not rewrite the evaluation record
+        finally:
+            db.rollback()
+
+
+class TestEvidenceCannotBeInjectedOrBorrowedByName:
+    def test_a_caller_supplied_evaluation_cannot_assert_provenance(self, league):
+        db = league["db"]
+        injected = {"evaluation_status": "holdout_confirmed", "experiment": RUN_ID, "config_matches": True, "experiment_data_fingerprint": league["fingerprint"]}
+        train_candidate(db, "state_space", "fg3_pct", "2020-21", features=FeatureConfig(min_target_minutes=300), evaluation=injected)
+        v = db.scalar(select(ModelVersion).where(ModelVersion.config["origin"].as_string() == "2020-21", ModelVersion.model_name == "player_forecast_fg3_pct"))
+        assert "experiment" not in v.validation_metrics and "config_matches" not in v.validation_metrics
+        rec = svc(league).get(top_player(league), ["fg3_pct"], as_of="2020-21", kinds=["projected"], include_experimental=True).records[0]
+        assert rec.interval.calibration is None and rec.model.evaluation_ref is None
+
+    def test_the_registry_checks_the_models_own_configuration(self, league):
+        reg = make_registry(league["fingerprint"])
+        v = league["db"].scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        assert reg.applies_to("fg3_pct", "state_space", v.config, v.validation_metrics) is True
+        other_cfg = {**v.config, "features": {**v.config["features"], "min_target_minutes": 700}}
+        assert reg.applies_to("fg3_pct", "state_space", other_cfg, v.validation_metrics) is False  # a stored boolean cannot vouch for it
+        assert reg.applies_to("fg3_pct", "state_space", {**v.config, "seed": 1}, v.validation_metrics) is False
+        assert reg.applies_to("fg3_pct", "state_space", v.config, {**v.validation_metrics, "experiment_data_fingerprint": "0" * 64}) is False  # fingerprint comparison
+        assert reg.applies_to("fg3_pct", "ols_history", v.config, v.validation_metrics) is False
+
+    def test_promotion_readiness_does_not_credit_an_unevaluated_model(self, league):
+        from app.player_intelligence.promotion import promotion_readiness
+
+        db = league["db"]
+        reg = make_registry(league["fingerprint"])
+        never = db.scalar(select(ModelVersion).where(ModelVersion.config["origin"].as_string() == "2022-23", ModelVersion.model_name == "player_forecast_fg3_pct"))
+        r = promotion_readiness(db, never.version, reg)
+        assert any("does not describe THIS stored model" in b for b in r.blockers)
+        assert not any("confirmed on a holdout" in s_ for s_ in r.satisfied)
+
+    def test_a_newer_unevaluated_candidate_does_not_become_the_default(self, league):
+        db = league["db"]
+        train_candidate(db, "state_space", "fg3_pct", "2019-20", experiment_dir=league["experiment_dir"])
+        first = db.scalar(select(ModelVersion).where(ModelVersion.config["origin"].as_string() == "2019-20", ModelVersion.model_name == "player_forecast_fg3_pct"))
+        train_candidate(db, "state_space", "fg3_pct", "2019-20", features=FeatureConfig(min_target_minutes=300))  # newer, different configuration, unevaluated
+        chosen, _ = svc(league)._resolve_version("fg3_pct", OutputKind.PROJECTED, "2019-20", "state_space", None)
+        assert chosen.version == first.version
+
+
+class TestActiveRequiresBothFields:
+    @pytest.mark.parametrize(
+        ("status", "is_active", "evaluation", "include", "allowed", "why"),
+        [
+            ("active", True, EvaluationStatus.HOLDOUT_CONFIRMED, False, True, "validated"),
+            ("active", False, EvaluationStatus.HOLDOUT_CONFIRMED, False, False, "inconsistent"),
+            ("active", False, EvaluationStatus.HOLDOUT_CONFIRMED, True, False, "inconsistent"),
+            ("candidate", True, EvaluationStatus.DEVELOPMENT_ONLY, True, False, "inconsistent"),
+            ("active", True, EvaluationStatus.DEVELOPMENT_ONLY, False, False, "pass include_experimental"),
+            ("active", True, EvaluationStatus.DEVELOPMENT_ONLY, True, True, "experimental"),
+            ("candidate", False, EvaluationStatus.DEVELOPMENT_ONLY, False, False, "pass include_experimental"),
+            ("Active", False, EvaluationStatus.HOLDOUT_CONFIRMED, True, False, "not servable"),
+            ("approved", True, EvaluationStatus.HOLDOUT_CONFIRMED, True, False, "not servable"),
+        ],
+    )
+    def test_the_rule(self, status, is_active, evaluation, include, allowed, why):
+        from app.player_intelligence.service import serving_decision
+
+        ok, reason = serving_decision(status, evaluation, include, is_active)
+        assert ok is allowed and why in reason
+
+    def test_a_status_flip_alone_does_not_make_a_candidate_validated(self, league):
+        db = league["db"]
+        v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        confirmed = make_registry(league["fingerprint"], fg3_pct={
+            "projected": {"method": "state_space", "tier": "experimental", "evaluation_status": "holdout_confirmed", "evaluation_ref": RUN_ID, "reason": "r"},
+            "inferred": {"method": "state_space", "tier": "experimental", "evaluation_status": "development_only", "evaluation_ref": RUN_ID, "reason": "r"},
+        })
+        try:
+            v.status = "active"  # the half-made promotion: status flipped, is_active left false
+            db.flush()
+            r = PlayerIntelligenceService(db, confirmed).get(top_player(league), ["fg3_pct"], as_of=CUTOFF, kinds=["projected"])
+            assert r.records == [] and "inconsistent" in r.unavailable[0].reason
+        finally:
+            db.rollback()
+
+
+class TestMeasuredHonesty:
+    def _bounded_ft_row(self):
+        from .test_pi_mutations import _a_bounded_row
+
+        return _a_bounded_row()
+
+    def test_a_bounded_row_shows_the_published_rate_and_the_attempt_range(self):
+        row, rec = self._bounded_ft_row()
+        out = measured_for("p", ["ft_pct"], {"2024-25": row}, "2024-25")[0][0]
+        assert out.value == pytest.approx(row.base["FT_PCT"])  # exact to 0.0005, not the nearest-tuple ratio
+        assert (out.sample.attempts_min, out.sample.attempts_max) == (rec.fta_min, rec.fta_max)
+        assert out.sample.counts_quality == "bounded" and any("undetermined" in lim for lim in out.limitations)
+
+    @pytest.mark.parametrize(("column", "value", "quantity", "fragment"), [
+        ("MIN", 2289.0, "minutes_per_game", "outside [0, 53.0]"),
+        ("AST_TO", 400.0, "ast_to_ratio", "outside [0, 60.0]"),
+    ])
+    def test_implausible_values_are_refused(self, column, value, quantity, fragment):
+        from app.player_intelligence.measured import SeasonRow
+
+        base, adv = provider_rows(gp=60, fgm=300, fga=700, fg3m=80, fg3a=220, ftm=100, fta=140)
+        base["MIN"], adv["AST_TO"] = (value, adv.get("AST_TO", 2.0)) if column == "MIN" else (30.0, value)
+        row = SeasonRow(season="2024-25", games=60, minutes_per_game=base["MIN"], team_id=None, team_count=1, base=base, advanced=adv, retrieved_at=None, recon=reconstruct(base, adv, 60))
+        recs, missing = measured_for("p", [quantity], {"2024-25": row}, "2024-25")
+        assert recs == [] and fragment in missing[0].reason
+
+    def test_a_negative_count_is_an_integrity_failure_not_no_attempts(self):
+        from app.player_intelligence.measured import SeasonRow
+
+        base, adv = provider_rows(gp=60, fgm=300, fga=700, fg3m=80, fg3a=220, ftm=100, fta=140)
+        base["FG3A"] = -1.0
+        row = SeasonRow(season="2024-25", games=60, minutes_per_game=25.0, team_id=None, team_count=1, base=base, advanced=adv, retrieved_at=None, recon=reconstruct(base, adv, 60))
+        _, missing = measured_for("p", ["fg3_pct"], {"2024-25": row}, "2024-25")
+        assert "could not be recovered" in missing[0].reason and "no attempts" not in missing[0].reason
+
+    def test_a_player_with_no_games_gets_no_small_sample_note_and_a_clear_reason(self):
+        from app.player_intelligence.measured import SeasonRow
+
+        base, adv = provider_rows(gp=1, fgm=0, fga=0, fg3m=0, fg3a=0, ftm=0, fta=0)
+        row = SeasonRow(season="2024-25", games=0, minutes_per_game=0.0, team_id=None, team_count=None, base={**base, "GP": 0}, advanced=adv, retrieved_at=None, recon=None)
+        recs, missing = measured_for("p", ["usg_pct", "games_played"], {"2024-25": row}, "2024-25")
+        assert "played no games" in missing[0].reason
+        assert recs and recs[0].quantity == "games_played" and not any("very small sample" in lim for lim in recs[0].limitations)
+
+
+class TestRequestsAreNormalised:
+    def test_whitespace_and_lookalike_digits_in_as_of_are_one_season(self, league):
+        r = svc(league).get(top_player(league), ["usg_pct"], as_of=" 2023-24 ")
+        assert r.as_of == "2023-24" and r.records
+        r2 = svc(league).get(top_player(league), ["usg_pct"], as_of="２０２３-２４")  # full-width digits
+        assert r2.as_of == "2023-24" and r2.records
+
+
+class TestRaceAndCli:
+    def test_the_loser_of_a_creation_race_reuses_the_winner(self, league, monkeypatch):
+        """The existence check passes, then another process wins the insert: the unique constraint fires and the loser reuses."""
+        db = league["db"]
+        before = db.query(ModelVersion).count()
+        real_scalar = db.scalar
+        state = {"first": True}
+
+        def blind_first_lookup(stmt, *a, **k):
+            if state["first"] and "FROM model_versions" in str(stmt) and "version" in str(stmt):
+                state["first"] = False
+                return None  # "no such version yet" — although it exists: the race
+            return real_scalar(stmt, *a, **k)
+
+        monkeypatch.setattr(db, "scalar", blind_first_lookup)
+        record = train_candidate(db, "state_space", "fg3_pct", CUTOFF, experiment_dir=league["experiment_dir"])
+        assert record.reused_existing is True and db.query(ModelVersion).count() == before
+
+    def test_unknown_flags_write_nothing_and_help_prints_usage(self, tmp_path):
+        backend = Path(__file__).resolve().parents[2]
+        env = {**__import__("os").environ, "PYTHONPATH": str(backend), "DATABASE_URL": f"sqlite:///{tmp_path / 'x.db'}"}
+        for argv, code in ((["--help"], 0), (["--bogus"], 2), (["2025-26"], 2)):
+            out = subprocess.run([sys.executable, "-W", "ignore", "-m", "app.cli", "materialise-skills", *argv], env=env, capture_output=True, text=True, cwd=str(backend))
+            assert out.returncode == code, (argv, out.stdout, out.stderr)
+            assert "materialise-skills [--origin" in out.stdout
+        db_file = tmp_path / "x.db"
+        if db_file.exists():  # nothing was created or written beyond an empty file
+            import sqlite3
+
+            assert sqlite3.connect(str(db_file)).execute("select count(*) from sqlite_master").fetchone()[0] == 0
+
+
+class TestStatusParsingFailsClosed:
+    @pytest.mark.parametrize(
+        ("stored", "expected"),
+        [
+            ("failed", EvaluationStatus.FAILED), ("FAILED", EvaluationStatus.FAILED), ("STALE:failed_development_rule", EvaluationStatus.FAILED),
+            ("  stale:holdout_not_confirmed ", EvaluationStatus.FAILED), ("garbage", EvaluationStatus.FAILED), ("stale:garbage", EvaluationStatus.FAILED),
+            ("Unevaluated", EvaluationStatus.UNEVALUATED), ("", EvaluationStatus.UNEVALUATED), ("benchmarked", EvaluationStatus.BENCHMARKED),
+            ("holdout_confirmed", EvaluationStatus.HOLDOUT_CONFIRMED), ("stale:holdout_confirmed", EvaluationStatus.UNEVALUATED),
+        ],
+    )
+    def test_the_mapping(self, stored, expected):
+        assert status_from_stored(stored) is expected
+
+
+class TestSurvivingMutantsNowHaveTests:
+    def test_no_evidence_is_judged_on_the_history_the_model_used_not_the_window(self, league):
+        db = league["db"]
+        v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        row = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct@ability")).first()
+        saved = (row.exposure, dict(row.inputs))
+        try:
+            row.exposure, row.inputs = 0.0, {**saved[1], "history_exposure": 0.0, "n_observed": 1.0}  # window says some evidence, history says none
+            db.flush()
+            r = svc(league).get(row.player_id, ["fg3_pct"], as_of=CUTOFF, kinds=["inferred"], include_experimental=True)
+            assert r.records == [] and "nothing to infer from" in r.unavailable[0].reason
+        finally:
+            db.rollback()
+
+    def test_a_one_season_players_effective_attempts_equal_the_attempts_he_took(self):
+        from app.modeling.predictors import _StateSpaceFitted
+        from app.modeling.registry import ability_table
+
+        params = rm.StateSpaceParams(beta=(0.78, 0.0, 0.0), rho=0.95, tau2=0.005, phi=1.3, unit_variance=0.17)
+        for rate, attempts in ((0.92, 300.0), (0.60, 150.0), (0.78, 80.0)):
+            p = (rate * attempts + 0.5) / (attempts + 1)
+            frame = pd.DataFrame({"player_id": ["a"], "age": [27.0], "x_t": [rate], "exposure_t": [attempts], "sv_t": [p * (1 - p) / attempts], "window_exposure": [attempts]})
+            out = ability_table(_StateSpaceFitted(params, False, 50.0), frame, 0.8)
+            assert out["effective_attempts"].iloc[0] == pytest.approx(attempts, rel=1e-9)  # independent of the player's own rate
+
+    def test_the_batch_cache_is_cleared_so_a_later_read_sees_a_model_stored_meanwhile(self, league):
+        db = league["db"]
+        s = svc(league)
+        s.get_many([top_player(league)], ["fg3_pct"], as_of=CUTOFF)
+        assert s._cache is None
+        train_candidate(db, "state_space", "fg3_pct", "2018-19", experiment_dir=league["experiment_dir"])
+        r = s.get(top_player(league), ["fg3_pct"], as_of="2018-19", kinds=["projected"], include_experimental=True)
+        assert r.records or "not in this model's scored population" in r.unavailable[0].reason  # found the model, not "not materialised"
+
+    def test_stored_ability_exposure_covers_the_whole_history_not_the_three_season_window(self, league):
+        db = league["db"]
+        v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        rows = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct@ability")).all()
+        longer = [r for r in rows if r.exposure > r.inputs["window_exposure"] + 1.0]
+        assert len(longer) > 10, "players with more than three seasons of history must show more attempts than their window"
+        assert all(r.exposure >= r.inputs["window_exposure"] - 1e-6 for r in rows)

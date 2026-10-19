@@ -172,6 +172,7 @@ def build_league(tmp_path_factory, seed: int = 4, n_players: int = 130, cutoff: 
 
 def make_registry(fingerprint: str, **overrides):
     """A validation registry whose ``fg3_pct`` evidence names the fake experiment (so it applies to ``build_league`` models)."""
+    from app.modeling.pairs import FeatureConfig
     from app.player_intelligence.validation import ValidationRegistry
 
     entry = lambda method, tier, status, **kw: {  # noqa: E731
@@ -185,7 +186,7 @@ def make_registry(fingerprint: str, **overrides):
         "ts_pct": {"projected": entry("ols_history", "benchmarked", "benchmarked"), "inferred": entry("state_space", "withheld", "failed", reason="did not meet the serving rule")},
     }
     q.update(overrides)
-    return ValidationRegistry({"version": "test", "quantities": q, "generated_from": {"fg3_pct": {"development": RUN_ID, "holdout": None, "data_fingerprint": fingerprint}}})
+    return ValidationRegistry({"version": "test", "quantities": q, "generated_from": {"fg3_pct": {"development": RUN_ID, "holdout": None, "data_fingerprint": fingerprint, "config": {"features": FeatureConfig().as_dict(), "seed": 20260719, "interval_level": 0.8}}}})
 
 
 __all__ = ["RUN_ID", "build_league", "make_registry", "fake_experiment", "make_shooting_frame", "populate_shooting_db", "provider_rows", "pd", "make_test_engine"]
