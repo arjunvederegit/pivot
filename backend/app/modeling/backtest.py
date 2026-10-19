@@ -27,7 +27,7 @@ from .intervals import fit_interval, loto_residuals
 from .metrics import BOOTSTRAP_DRAWS, paired_cluster_bootstrap, summarise
 from .pairs import FeatureConfig, PairCache
 from .panel import PlayerSeasonPanel, replace_future, season_key, season_label
-from .predictors import FitContext, predictors_for
+from .predictors import FitContext, NotApplicable, predictors_for
 from .targets import TargetSpec, get_target
 from .team_gate import team_gate
 
@@ -76,6 +76,8 @@ class BacktestConfig:
     #: (``features.min_target_minutes``). Setting it changes the evaluation population only; training
     #: keeps its own rule, so a sensitivity run isolates the effect of the evaluation cut.
     eval_min_target_minutes: float | None = None
+    #: R9.2: the same, for the target-season exposure (attempts); ``None`` = the target's own minimum.
+    eval_min_target_exposure: float | None = None
     interval_level: float = 0.8
     bootstrap_draws: int = BOOTSTRAP_DRAWS
     seed: int = SEED
@@ -83,7 +85,7 @@ class BacktestConfig:
     features: FeatureConfig = field(default_factory=FeatureConfig)
 
     def as_dict(self) -> dict:
-        return {
+        out = {
             "target": self.target,
             "models": list(self.models) if self.models else None,
             "test_origins": list(self.test_origins) if self.test_origins else None,
@@ -95,6 +97,9 @@ class BacktestConfig:
             "reference_models": list(self.reference_models),
             "features": self.features.as_dict(),
         }
+        if self.eval_min_target_exposure is not None:  # absent when unset: R9.1 hashes are unchanged
+            out["eval_min_target_exposure"] = self.eval_min_target_exposure
+        return out
 
 
 @dataclass
@@ -120,7 +125,11 @@ def _fit_and_predict(
     if len(train) < MIN_TRAINING_ROWS:
         raise InsufficientDataError(f"{len(train)} training rows; at least {MIN_TRAINING_ROWS} are needed")
     for predictor in predictors:
-        fitted = predictor.fit(train, ctx)
+        try:
+            fitted = predictor.fit(train, ctx)
+        except NotApplicable as exc:
+            params[predictor.name] = {"skipped": str(exc)}
+            continue
         pred = fitted.predict(test)
         if not np.isfinite(pred).all():
             raise NonFiniteForecastError(f"{predictor.name} produced non-finite forecasts")
@@ -171,11 +180,18 @@ def run_backtest(
         assert (train_all["target_season"].map(season_key) <= season_key(fold.origin)).all()
         train = train_all[train_all["target_eligible"]].reset_index(drop=True)
         test = cache.pairs(fold.origin, target).reset_index(drop=True)
-        if config.eval_min_target_minutes is not None:
+        if config.eval_min_target_minutes is not None or config.eval_min_target_exposure is not None:
+            minutes_cut = (
+                config.eval_min_target_minutes if config.eval_min_target_minutes is not None else config.features.min_target_minutes
+            )
+            exposure_cut = (
+                config.eval_min_target_exposure if config.eval_min_target_exposure is not None else target.min_exposure
+            )
             test["target_eligible"] = (
                 test["target_observed"].astype(bool)
                 & test["y"].notna()
-                & (test["y_minutes"] >= config.eval_min_target_minutes)
+                & (test["y_minutes"] >= minutes_cut)
+                & (test["y_exposure"].fillna(0.0) >= exposure_cut)
             )
         frames, params = _fit_and_predict(predictors, train, test, ctx, config.interval_level)
         fitted_params[fold.origin] = params

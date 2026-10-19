@@ -20,6 +20,14 @@ Baselines (answer "is the candidate better than something trivial?"):
 
 Candidates (answer "does anything beat the baselines?"):
 
+* ``state_space``       — R9.2. Kalman filter over the player's whole history: separates the sampling
+  noise of each season's statistic from the player's ability and from drift in that ability (see
+  ``app.player_intelligence.rate_models``). Targets with a sampling-variance model only.
+* ``state_space_role``  — the same with role covariates (rebounding, three-point and free-throw rate,
+  usage at the cutoff) in the league curve.
+* ``beta_binomial``     — R9.2. Discounted conjugate beta-binomial on makes and attempts (three-point and
+  free-throw accuracy only).
+
 * ``eb_shrinkage``  — exposure-aware empirical-Bayes shrinkage of the player's windowed history
   toward an age-adjusted league mean, with a persistence slope.
 * ``ridge_history`` — ridge on the player's own history (lags, windowed mean, exposure, age).
@@ -35,6 +43,7 @@ import numpy as np
 import pandas as pd
 
 from app.analytics.impact import TEI_SCALE
+from app.player_intelligence import rate_models as rm
 
 from .pairs import Z_FEATURES
 from .targets import TargetSpec
@@ -42,6 +51,11 @@ from .targets import TargetSpec
 RIDGE_GRID = (0.1, 1.0, 10.0, 30.0, 100.0, 300.0, 1000.0)
 EB_K_MULTIPLIERS = (0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0)
 AGE_CENTRE = 27.0
+
+
+class NotApplicable(ValueError):
+    """A predictor cannot run on this panel (e.g. it needs shot counts the panel does not carry).
+    The backtest skips it and says so; it is never silently replaced by something else."""
 
 
 @dataclass(frozen=True)
@@ -471,6 +485,150 @@ class RidgeBoxscore(RidgeModel):
     )
 
 
+# ------------------------------------------------------------------------------- R9.2 candidates
+
+#: Role covariates (z-scores at the cutoff, mean-filled with 0 = league average when absent).
+ROLE_COLUMNS = ("z_REB_PCT", "z_fg3a_rate", "z_fta_rate", "z_USG_PCT")
+Z_HALF = 1.2815515655446004  # 80% two-sided normal quantile
+
+
+def history_length(frame: pd.DataFrame) -> int:
+    h = 1
+    while f"x_lag{h}" in frame.columns:
+        h += 1
+    return h
+
+
+def _stack(frame: pd.DataFrame, stem_t: str, stem_lag: str, h: int) -> np.ndarray:
+    cols = [frame[stem_t] if stem_t in frame else pd.Series(np.nan, index=frame.index)]
+    for j in range(1, h):
+        name = f"{stem_lag}{j}"
+        cols.append(frame[name] if name in frame else pd.Series(np.nan, index=frame.index))
+    return np.column_stack([pd.to_numeric(c, errors="coerce").to_numpy(dtype=float) for c in cols])
+
+
+def history_arrays(frame: pd.DataFrame, role: bool) -> rm.HistoryArrays:
+    """Stack a feature frame's lag columns into ``(n, H)`` arrays for the rate models."""
+    h = history_length(frame)
+    y = _stack(frame, "x_t", "x_lag", h)
+    s2 = _stack(frame, "sv_t", "sv_lag", h)
+    e = _stack(frame, "exposure_t", "exposure_lag", h)
+    age = frame["age"].astype(float).fillna(AGE_CENTRE).to_numpy()
+    cov = None
+    if role:
+        cov = np.column_stack(
+            [pd.to_numeric(frame[c], errors="coerce").fillna(0.0).to_numpy(dtype=float) if c in frame else np.zeros(len(frame)) for c in ROLE_COLUMNS]
+        )
+    return rm.HistoryArrays(y=y, s2=s2, exposure=e, age=age, covariates=cov)
+
+
+class _StateSpaceFitted(Fitted):
+    def __init__(self, params: rm.StateSpaceParams, role: bool, min_exposure: float) -> None:
+        self.p = params
+        self.role = role
+        self.min_exposure = min_exposure
+        self.params = params.as_dict()
+
+    def posterior(self, frame: pd.DataFrame) -> rm.Posterior:
+        h = history_arrays(frame, self.role)
+        return rm.filter_histories(h.y, h.s2, h.age, h.covariates, self.p)
+
+    def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        return self.posterior(frame).level_next
+
+    def expected_sampling_variance(self, frame: pd.DataFrame) -> np.ndarray:
+        """Sampling variance of next season's statistic if the player takes about as many attempts as lately."""
+        h = history_arrays(frame, self.role)
+        unit = np.nanmean(np.where(np.isfinite(h.s2) & np.isfinite(h.exposure), h.s2 * h.exposure, np.nan), axis=1)
+        unit = np.where(np.isfinite(unit), unit, self.p.unit_variance)
+        recent = h.exposure[:, :3]
+        with np.errstate(all="ignore"):
+            attempts = np.nanmean(np.where(recent > 0, recent, np.nan), axis=1)
+        floor = max(self.min_exposure, 1.0)
+        attempts = np.where(np.isfinite(attempts), np.maximum(attempts, floor), floor)
+        return unit / attempts
+
+    def native_interval(self, frame: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+        post = self.posterior(frame)
+        half = Z_HALF * np.sqrt(post.var_next + self.p.phi * self.expected_sampling_variance(frame))
+        return post.level_next - half, post.level_next + half
+
+
+class StateSpaceRate(Predictor):
+    name = "state_space"
+    family = "candidate"
+    inputs = ("x_t", "x_lag*", "sv_t", "sv_lag*", "exposure_t", "exposure_lag*", "age")
+    description = (
+        "Gaussian state-space (Kalman) model: observed rate = ability + sampling noise with a known "
+        "attempts-based variance; ability = age curve + AR(1) deviation. Hyperparameters by one-step-ahead "
+        "predictive likelihood; forecast = posterior mean of next season's ability"
+    )
+    role = False
+
+    def applies_to(self, target: TargetSpec) -> bool:
+        return target.sampling_variance is not None
+
+    def fit(self, train: pd.DataFrame, ctx: FitContext) -> Fitted:
+        h = history_arrays(train, self.role)
+        if not np.isfinite(h.s2[:, 0]).any() and not np.isfinite(h.s2).any():
+            raise NotApplicable("this panel has no shot-count columns; build it with build_skill_panel")
+        params = rm.fit_state_space(
+            h.y, h.s2, h.exposure, h.age, h.covariates,
+            train["y"].to_numpy(dtype=float), train["y_sv"].to_numpy(dtype=float),
+        )
+        return _StateSpaceFitted(params, self.role, ctx.target.min_exposure)
+
+
+class StateSpaceRateRole(StateSpaceRate):
+    name = "state_space_role"
+    role = True
+    inputs = StateSpaceRate.inputs + ROLE_COLUMNS
+    description = StateSpaceRate.description + "; the league curve also depends on rebounding, three-point rate, free-throw rate and usage at the cutoff"
+
+
+class _BetaBinomialFitted(Fitted):
+    def __init__(self, params: rm.BetaBinomialParams, role: bool) -> None:
+        self.p = params
+        self.role = role
+        self.params = params.as_dict()
+
+    def _arrays(self, frame: pd.DataFrame):
+        h = history_arrays(frame, self.role)
+        attempts = np.where(np.isfinite(h.exposure) & np.isfinite(h.y), h.exposure, 0.0)
+        makes = np.where(attempts > 0, np.nan_to_num(h.y) * attempts, 0.0)
+        return makes, attempts, h
+
+    def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        makes, attempts, h = self._arrays(frame)
+        alpha, beta = rm.beta_binomial_posterior(makes, attempts, h.age, h.covariates, self.p, ahead=1)
+        return alpha / (alpha + beta)
+
+
+class BetaBinomialRate(Predictor):
+    name = "beta_binomial"
+    family = "candidate"
+    inputs = ("x_t", "x_lag*", "exposure_t", "exposure_lag*", "age")
+    description = (
+        "Discounted beta-binomial: Beta prior (mean = age curve, strength kappa) updated with the player's "
+        "makes and attempts, each older season counted at a fitted fraction of the next; forecast = posterior mean"
+    )
+    role = False
+
+    def applies_to(self, target: TargetSpec) -> bool:
+        return target.name in ("fg3_pct", "ft_pct")
+
+    def fit(self, train: pd.DataFrame, ctx: FitContext) -> Fitted:
+        h = history_arrays(train, self.role)
+        attempts = np.where(np.isfinite(h.exposure) & np.isfinite(h.y), h.exposure, 0.0)
+        makes = np.where(attempts > 0, np.nan_to_num(h.y) * attempts, 0.0)
+        ny = train["y_exposure"].to_numpy(dtype=float)
+        params = rm.fit_beta_binomial(
+            makes, attempts, h.age, h.covariates,
+            train["y"].to_numpy(dtype=float) * ny, ny,
+        )
+        return _BetaBinomialFitted(params, self.role)
+
+
 ALL_PREDICTORS: tuple[Predictor, ...] = (
     LeagueMean(),
     Persistence(),
@@ -482,6 +640,9 @@ ALL_PREDICTORS: tuple[Predictor, ...] = (
     EmpiricalBayesShrinkage(),
     RidgeHistory(),
     RidgeBoxscore(),
+    StateSpaceRate(),
+    StateSpaceRateRole(),
+    BetaBinomialRate(),
 )
 PREDICTORS: dict[str, Predictor] = {p.name: p for p in ALL_PREDICTORS}
 

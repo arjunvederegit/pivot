@@ -29,7 +29,7 @@ from __future__ import annotations
 import gzip
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -119,6 +119,78 @@ PREREGISTRATION = {
     ],
 }
 
+PROTOCOL_VERSION_R92 = "r9.2-prereg-1"
+
+#: R9.2's protocol, written and committed BEFORE any R9.2 development run (see docs/r9-2). It reuses
+#: R9.1's folds, holdout origins, advance rule and decision code unchanged; what it adds is two new
+#: targets with an attempts floor, the R9.2 candidates, and the rule that governs *serving*.
+PREREGISTRATION_R92 = {
+    "version": PROTOCOL_VERSION_R92,
+    "extends": PROTOCOL_VERSION,
+    "confirmatory_targets": ["fg3_pct", "ft_pct"],
+    "exploratory_targets": ["ts_pct"],
+    "multiplicity": (
+        "three targets x six candidates (R9.1's eb_shrinkage, ridge_history, ridge_boxscore and R9.2's state_space, "
+        "state_space_role, beta_binomial where applicable) are examined. fg3_pct and ft_pct are confirmatory: their "
+        "holdout has never been read by any protocol and the hypothesis (a method that weights each season by the "
+        "attempts behind it beats a regression whose slope is the same for 30 and 500 attempts) is stated here. "
+        "ts_pct is exploratory: R9.1 already read its holdout (baselines only; no candidate advanced), so any "
+        "ts_pct holdout read in R9.2 is a RE-READ, is recorded as one, and is weaker evidence. No correction for multiple comparisons is applied"
+    ),
+    "hypothesis": (
+        "H1: on three-point and free-throw accuracy, an attempts-aware state-space or beta-binomial forecaster has lower "
+        "out-of-time MAE than ols_history. H0 is the default: the best simple baseline stays the recommended forecaster"
+    ),
+    "population": {
+        "scored": "players with >= 200 minutes over the last 3 seasons ending at the cutoff (R9.1, unchanged)",
+        "evaluated": (
+            "scored players who played >= 500 minutes in the target season AND, for fg3_pct and ft_pct, took >= 50 "
+            "attempts of that type (same rows for every model); training uses the same rule. ts_pct: R9.1's rule unchanged"
+        ),
+        "sensitivity": "evaluation-only attempt cuts at 25 and 100 for fg3_pct and ft_pct, training unchanged",
+        "unit": "a player-season rate on fewer than 50 attempts is not an outcome worth scoring; its sampling SD exceeds 7 points",
+    },
+    "folds": (
+        "rolling origin; >= 2 training transitions; development = origins 2018-19..2022-23; "
+        "locked holdout = origins 2023-24 and 2024-25 (R9.1's hard-coded split, unchanged)"
+    ),
+    "reference_baseline": "the baseline with the lowest pooled development MAE for that target (ols_history is expected)",
+    "advance_if_all": {
+        "player_ci": PREREGISTRATION["advance_if_all"]["player_ci"],
+        "season_ci": PREREGISTRATION["advance_if_all"]["season_ci"],
+        "folds": PREREGISTRATION["advance_if_all"]["folds"],
+        "practical": PREREGISTRATION["advance_if_all"]["practical"],
+        "interval_coverage": PREREGISTRATION["advance_if_all"]["interval_coverage"],
+        "team_gate": "not applicable: no R9.2 target is a team-level contribution measure",
+    },
+    "confirm_on_holdout_if": PREREGISTRATION["confirm_on_holdout_if"],
+    "serving_rules": {
+        "measured": "served when the data-integrity checks pass (counts reconstructed and reconciled to the published rates); no model is involved",
+        "inferred": (
+            "an ability estimate is served as 'experimental' only if its own next-season forecast is not worse than the reference "
+            "baseline's MAE by more than 2% on the development folds AND its model-based predictive interval covered between 75% and 85% "
+            "of development outcomes. Otherwise it is withheld. Meeting this is evidence of predictive validity, never a claim that "
+            "ability has been measured"
+        ),
+        "projected": (
+            "the recommended projection is the best-validated method: a candidate only if it advanced under the rule above and was "
+            "confirmed on the holdout; otherwise the reference baseline, labelled a benchmark, never an improvement"
+        ),
+        "promotion": "no R9.2 output is promoted; serving status is 'experimental' or 'benchmarked' at most (see docs/r9-2/model-safety-and-promotion.md)",
+    },
+    "claims_not_made": [
+        "that any model measures underlying ability",
+        "that results hold for seasons after 2025-26",
+        "that any candidate should be promoted",
+        "that a forecast conditional on playing is a forecast of a player's total future contribution",
+    ],
+    "disclosures": [
+        "the 2025-26 totals CSV used to validate the shot-count reconstruction is not used in any model",
+        "the ts_pct holdout was read once in R9.1 (baselines); R9.1's ledger is loaded as a prior ledger so a second read is refused unless acknowledged",
+    ],
+    "amendments": [],
+}
+
 #: Origins whose outcomes development may never see. Hard-coded: ingesting 2026-27 must not turn them
 #: into development data.
 HOLDOUT_ORIGINS = ("2023-24", "2024-25")
@@ -132,9 +204,18 @@ MIN_TEAM_SEASONS = 30
 @dataclass(frozen=True)
 class Protocol:
     holdout_origins: tuple[str, ...] = HOLDOUT_ORIGINS
+    #: The pre-registration this protocol's runs are bound to; copied verbatim into every artifact.
+    preregistration: dict = field(default_factory=lambda: PREREGISTRATION)
+    #: Ledgers of earlier protocols whose holdout reads still count: a target read there is a re-read here.
+    prior_ledgers: tuple[Path, ...] = ()
+
+    @property
+    def version(self) -> str:
+        return str(self.preregistration["version"])
 
 
 DEFAULT_PROTOCOL = Protocol()
+R92_PROTOCOL = Protocol(preregistration=PREREGISTRATION_R92)
 
 
 class HoldoutReadRefused(RuntimeError):
@@ -173,8 +254,15 @@ class StageOutcome:
 # ------------------------------------------------------------------------------ decisions
 
 
-def decide(result: BacktestResult, target_name: str) -> dict:
+def _confirmatory(prereg: dict) -> tuple[str, ...]:
+    declared = prereg.get("confirmatory_targets") or (prereg.get("confirmatory_target"),)
+    return tuple(t for t in declared if t)
+
+
+
+def decide(result: BacktestResult, target_name: str, prereg: dict | None = None) -> dict:
     """Apply the pre-registered advance rule to a development run."""
+    prereg = prereg or PREREGISTRATION
     rows = result.eval_rows()
     overall = result.summary["overall"]
     baselines = [m for m in overall if PREDICTORS[m].family == "baseline"]
@@ -217,7 +305,7 @@ def decide(result: BacktestResult, target_name: str) -> dict:
         }
     return {
         "target": target_name,
-        "family": "confirmatory" if target_name == PREREGISTRATION["confirmatory_target"] else "exploratory",
+        "family": "confirmatory" if target_name in _confirmatory(prereg) else "exploratory",
         "reference_baseline": reference,
         "reference_pooled_mae": overall[reference]["mae"],
         "candidates": verdicts,
@@ -257,10 +345,11 @@ def write_artifacts(
     snapshot: DataSnapshot,
     decisions: dict | None,
     audit: list[dict],
+    prereg: dict | None = None,
 ) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     cfg = result.config
-    _write_json(directory / "config.json", {"stage": stage, "backtest": cfg.as_dict(), "preregistration": PREREGISTRATION})
+    _write_json(directory / "config.json", {"stage": stage, "backtest": cfg.as_dict(), "preregistration": prereg or PREREGISTRATION})
     _write_json(directory / "environment.json", environment())
     _write_json(directory / "data_snapshot.json", snapshot.as_dict())
     _write_json(directory / "target.json", result.target.describe())
@@ -288,7 +377,9 @@ def write_artifacts(
         result.predictions.to_csv(handle, index=False, float_format="%.10g")
 
 
-def load_development_decisions(directory: Path, snapshot: DataSnapshot, target: str) -> dict:
+def load_development_decisions(
+    directory: Path, snapshot: DataSnapshot, target: str, version: str = PROTOCOL_VERSION
+) -> dict:
     """Read and verify the development run a holdout stage is confirming."""
     try:
         decisions = json.loads((directory / "decisions.json").read_text())
@@ -298,7 +389,7 @@ def load_development_decisions(directory: Path, snapshot: DataSnapshot, target: 
         raise HoldoutPrerequisiteError(f"cannot read the development artifacts in {directory}: {exc}") from exc
     if config.get("stage") != "development":
         raise HoldoutPrerequisiteError(f"{directory} is not a development run (stage = {config.get('stage')!r})")
-    if config["preregistration"].get("version") != PROTOCOL_VERSION:
+    if config["preregistration"].get("version") != version:
         raise HoldoutPrerequisiteError("the development run was made under a different protocol version")
     if decisions.get("target") != target:
         raise HoldoutPrerequisiteError(f"the development run is for {decisions.get('target')!r}, not {target!r}")
@@ -342,7 +433,7 @@ def run_stage(
             raise ValueError("a holdout read must be recorded: out_dir is required")
         if development_dir is None:
             raise ValueError("a holdout run needs the development run it confirms (development_dir)")
-        dev_decisions = load_development_decisions(development_dir, snapshot, target_name)
+        dev_decisions = load_development_decisions(development_dir, snapshot, target_name, protocol.version)
         models = tuple(
             sorted(
                 {m for m in PREDICTORS if PREDICTORS[m].family == "baseline"}
@@ -353,7 +444,8 @@ def run_stage(
         origins = tuple(hold)
         ledger = out_dir / "holdout_ledger.json"
         entries = json.loads(ledger.read_text()) if ledger.exists() else []
-        if any(e["target"] == target_name for e in entries) and not acknowledge_reread:
+        earlier = [e for path in protocol.prior_ledgers if path.exists() for e in json.loads(path.read_text())]
+        if any(e["target"] == target_name for e in entries + earlier) and not acknowledge_reread:
             raise HoldoutReadRefused(
                 f"the {target_name} holdout was already read; pass acknowledge_reread=True to read it again "
                 "(the re-read will be recorded)"
@@ -378,7 +470,7 @@ def run_stage(
         raise AssertionError(f"leakage audit failed: {[a for a in audits if not a['passed']]}")
 
     if stage == "development":
-        decisions = decide(result, target_name)
+        decisions = decide(result, target_name, protocol.preregistration)
     else:
         assert dev_decisions is not None
         decisions = _confirm(result, dev_decisions)
@@ -388,7 +480,7 @@ def run_stage(
         out_dir.mkdir(parents=True, exist_ok=True)
         label = stage + (f"-evalmin{int(eval_min_target_minutes)}" if eval_min_target_minutes is not None else "")
         directory = out_dir / experiment_id(label, target_name, config, snapshot)
-        write_artifacts(directory, stage, result, snapshot, decisions, audits)
+        write_artifacts(directory, stage, result, snapshot, decisions, audits, protocol.preregistration)
         if stage == "holdout":
             ledger = out_dir / "holdout_ledger.json"
             entries = json.loads(ledger.read_text()) if ledger.exists() else []
@@ -401,7 +493,8 @@ def run_stage(
                     "data_fingerprint": snapshot.fingerprint,
                     "development_run": development_dir.name if development_dir else None,
                     "read_at": datetime.now(UTC).isoformat(),
-                    "reread": any(e["target"] == target_name for e in entries),
+                    "reread": any(e["target"] == target_name for e in entries + earlier),
+                    "protocol": protocol.version,
                 }
             )
             _write_json(ledger, entries)

@@ -32,15 +32,27 @@ Z_FEATURES = (
 )
 
 
+DEFAULT_HISTORY = 10
+
+
 @dataclass(frozen=True)
 class FeatureConfig:
     window: int = 3
     decay: float = 0.7
     min_origin_minutes: float = 200.0
     min_target_minutes: float = 500.0
+    #: R9.2. Seasons of per-player history (counting the cutoff season) exposed as ``x_lag*`` /
+    #: ``exposure_lag*`` / ``sv_lag*`` columns for models that read more than the population window.
+    #: It does NOT change who is scored or how ``x_bar`` is built, so R9.1 models are unaffected.
+    history: int = DEFAULT_HISTORY
 
     def as_dict(self) -> dict:
-        return asdict(self)
+        out = asdict(self)
+        # ``history`` only adds columns that R9.1 models never read; leaving the default out keeps every
+        # R9.1 configuration hash (and so every stored candidate version id) exactly as it was.
+        if out["history"] == DEFAULT_HISTORY:
+            del out["history"]
+        return out
 
 
 def _legacy_view(frame: pd.DataFrame) -> pd.DataFrame:
@@ -112,6 +124,29 @@ def origin_features(
         series = per_season.get(lag)
         feats[f"x_lag{lag}"] = series["value"].reindex(feats.index) if series is not None else np.nan
 
+    # R9.2: a longer per-player history for models that opt in (lags 0..history-1). Who is scored,
+    # and x_bar / window_exposure below, still come from the ``window`` seasons only.
+    hist_seasons = asof.window(max(cfg.window, cfg.history))
+    for season in hist_seasons:
+        lag = o_key - season_key(season)
+        if lag >= cfg.history:
+            continue
+        rows_s = frame[frame["season"] == season]
+        series = per_season[lag] if lag in per_season else measure_by_player(target, rows_s).set_index("player_id")
+        if lag >= 3:
+            feats[f"x_lag{lag}"] = series["value"].reindex(feats.index)
+        if lag >= 1:
+            feats[f"exposure_lag{lag}"] = series["exposure"].reindex(feats.index)
+        if target.sampling_variance is not None and _has_columns(rows_s, target):
+            sv = pd.Series(target.sampling_variance(rows_s).to_numpy(dtype=float), index=rows_s["player_id"].to_numpy())
+            feats["sv_t" if lag == 0 else f"sv_lag{lag}"] = sv.reindex(feats.index)
+    for lag in range(1, cfg.history):
+        for col in (f"x_lag{lag}", f"exposure_lag{lag}", f"sv_lag{lag}"):
+            if col not in feats:
+                feats[col] = np.nan
+    if "sv_t" not in feats:
+        feats["sv_t"] = np.nan
+
     # Recency- and exposure-weighted window mean, and the total evidence behind it.
     num = pd.Series(0.0, index=feats.index)
     den = pd.Series(0.0, index=feats.index)
@@ -160,6 +195,12 @@ def origin_features(
     return out[out["window_minutes"] >= cfg.min_origin_minutes].reset_index(drop=True)
 
 
+def _has_columns(rows: pd.DataFrame, target: TargetSpec) -> bool:
+    """A sampling-variance model needs the shot-count columns; a panel without them (R9.1's) has none."""
+    needed = {"ts_pct": ("fg2m", "fg2a", "fg3m", "fg3a", "ftm", "fta", "tsa"), "fg3_pct": ("fg3m", "fg3a"), "ft_pct": ("ftm", "fta")}
+    return all(c in rows.columns for c in needed.get(target.name, ()))
+
+
 def attach_outcomes(
     features: pd.DataFrame, target_rows: pd.DataFrame, target: TargetSpec, cfg: FeatureConfig
 ) -> pd.DataFrame:
@@ -171,11 +212,21 @@ def attach_outcomes(
     pid = out["player_id"]
     out["y"] = measured["value"].reindex(pid).to_numpy()
     out["y_exposure"] = measured["exposure"].reindex(pid).to_numpy()
+    # R9.2: the sampling variance of the outcome itself (outcome side only; used to fit and score
+    # models that separate sampling noise from change in ability, never as a feature).
+    if target.sampling_variance is not None and _has_columns(target_rows, target):
+        sv = pd.Series(target.sampling_variance(target_rows).to_numpy(dtype=float), index=target_rows["player_id"].to_numpy())
+        out["y_sv"] = sv.reindex(pid).to_numpy()
+    else:
+        out["y_sv"] = np.nan
     out["y_minutes"] = minutes.reindex(pid).to_numpy()
     out["y_team"] = team.reindex(pid).to_numpy()
     out["target_observed"] = out["y_minutes"].notna()
     out["target_eligible"] = (
-        out["target_observed"] & out["y"].notna() & (out["y_minutes"] >= cfg.min_target_minutes)
+        out["target_observed"]
+        & out["y"].notna()
+        & (out["y_minutes"] >= cfg.min_target_minutes)
+        & (out["y_exposure"].fillna(0.0) >= target.min_exposure)
     )
     return out
 
@@ -208,7 +259,7 @@ class PairCache:
                 self._pairs[key] = attach_outcomes(feats, self.panel.season_rows(nxt), target, self.cfg)
             else:
                 self._pairs[key] = feats.assign(
-                    y=np.nan, y_exposure=np.nan, y_minutes=np.nan, y_team=None,
+                    y=np.nan, y_exposure=np.nan, y_minutes=np.nan, y_team=None, y_sv=np.nan,
                     target_observed=False, target_eligible=False,
                 )
         return self._pairs[key]
