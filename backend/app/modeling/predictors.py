@@ -559,7 +559,7 @@ class _StateSpaceFitted(Fitted):
 class StateSpaceRate(Predictor):
     name = "state_space"
     family = "candidate"
-    inputs = ("x_t", "x_lag*", "sv_t", "sv_lag*", "exposure_t", "exposure_lag*", "age")
+    inputs: tuple[str, ...] = ("x_t", "x_lag*", "sv_t", "sv_lag*", "exposure_t", "exposure_lag*", "age")
     description = (
         "Gaussian state-space (Kalman) model: observed rate = ability + sampling noise with a known "
         "attempts-based variance; ability = age curve + AR(1) deviation. Hyperparameters by one-step-ahead "
@@ -584,7 +584,7 @@ class StateSpaceRate(Predictor):
 class StateSpaceRateRole(StateSpaceRate):
     name = "state_space_role"
     role = True
-    inputs = StateSpaceRate.inputs + ROLE_COLUMNS
+    inputs: tuple[str, ...] = (*StateSpaceRate.inputs, *ROLE_COLUMNS)
     description = StateSpaceRate.description + "; the league curve also depends on rebounding, three-point rate, free-throw rate and usage at the cutoff"
 
 

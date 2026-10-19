@@ -18,22 +18,7 @@ from app.player_intelligence.components import (
     reconstruct,
 )
 
-
-def provider_rows(gp, fgm, fga, fg3m, fg3a, ftm, fta):
-    """The rounded fields NBA.com would publish for these integer season totals."""
-    pts = 2 * fgm + fg3m + ftm
-    pg = lambda x: round(x / gp, 1)  # noqa: E731
-    rate = lambda m, a: round(m / a, 3) if a else 0.0  # noqa: E731
-    tsa = fga + 0.44 * fta
-    base = {
-        "GP": gp, "FG3M": pg(fg3m), "FG3A": pg(fg3a), "FG3_PCT": rate(fg3m, fg3a),
-        "FTM": pg(ftm), "FTA": pg(fta), "FT_PCT": rate(ftm, fta), "PTS": pg(pts), "FGM": pg(fgm), "FGA": pg(fga),
-    }
-    adv = {
-        "FGM": fgm, "FGA": fga, "EFG_PCT": round((fgm + 0.5 * fg3m) / fga, 3) if fga else 0.0,
-        "TS_PCT": round(pts / (2 * tsa), 3) if tsa else 0.0,
-    }
-    return base, adv
+from .pi_support import provider_rows
 
 
 def test_a_typical_season_is_recovered_exactly():

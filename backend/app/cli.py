@@ -24,6 +24,10 @@ Commands
                    [--origin SEASON] [--experiment DIR]. Writes a candidate model_versions row and
                    candidate_estimates only; refuses to change anything else.
   candidates       List candidate and rejected model versions (read-only).
+  materialise-skills
+                   R9.2: store, as candidates, the models the validation registry recommends for a
+                   cutoff: materialise-skills [--origin SEASON] [--evidence-dir DIR]. Same isolation
+                   guarantees as train-candidate; promotes nothing.
   validate-data    Run data-quality checks
   index-assets     Index local player photos / team logos into the media manifest
   import-stats-csv <path> [season]  Import the user-supplied season-totals CSV (default season 2025-26; default
@@ -478,6 +482,14 @@ def _modeling_command(command: str, args: list[str]) -> int:
             if command == "candidates":
                 print(json.dumps(registry.list_candidates(db), indent=2, default=str))
                 return 0
+            if command == "materialise-skills":
+                from app.player_intelligence.materialise import materialise_recommended
+
+                skill_origin = option("--origin") or PlayerSeasonPanel.from_db(db).seasons[-1]
+                evidence = option("--evidence-dir")
+                done = materialise_recommended(db, skill_origin, Path(evidence) if evidence else None)
+                print(json.dumps(done, indent=2, default=str))
+                return 0
             if command == "train-candidate":
                 model, target = option("--model"), option("--target")
                 if not model or not target:
@@ -851,7 +863,7 @@ def main() -> None:
         with SessionLocal() as db:
             summary = train_all(db, preserve_history="--preserve-history" in sys.argv[2:])
         print(json.dumps(summary, indent=2, default=str))
-    elif command in ("backtest", "train-candidate", "candidates"):
+    elif command in ("backtest", "train-candidate", "candidates", "materialise-skills"):
         code = _modeling_command(command, sys.argv[2:])
         if code:
             sys.exit(code)

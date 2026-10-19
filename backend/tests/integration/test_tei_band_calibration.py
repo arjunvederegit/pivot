@@ -5,6 +5,7 @@ R9.1 measured the ``tei_low`` / ``tei_high`` band's out-of-time coverage at 60.8
 leaving the TEI formula and every existing field exactly as they were."""
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,8 @@ from fastapi.testclient import TestClient
 
 from app.analytics.impact import TEI_BAND_CALIBRATION
 from app.db.base import get_db
-from app.services.impact_reference import impact_reference
+from app.db.models import ModelVersion, PlayerImpactEstimate
+from tests.conftest import make_player, make_team
 
 R91_RESULTS = Path(__file__).resolve().parents[3] / "docs" / "r9-1" / "results"
 
@@ -37,33 +39,32 @@ def test_the_stated_coverage_is_what_the_r91_artifacts_measured():
     assert TEI_BAND_CALIBRATION["status"] == "uncalibrated"
 
 
-def test_the_player_detail_serves_the_band_with_its_calibration_and_keeps_the_old_field(db, client):
-    from app.ingestion.demo_seed import seed_demo
+@pytest.fixture()
+def scored_player(db):
+    team = make_team(db, 1, "AAA")
+    active = ModelVersion(
+        model_name="player_impact", version="active-v", algorithm="weighted z-score index (test fixture)",
+        training_period="2023-24..2025-26", trained_at=datetime(2026, 8, 25, tzinfo=UTC), is_active=True,
+    )
+    db.add(active)
+    db.flush()
+    player = make_player(db, 100, "Fixture Scored", team)
+    db.add(PlayerImpactEstimate(player_id=player.id, season="2025-26", model_version_id=active.id, tei=1.5, tei_low=0.5, tei_high=2.5))
+    db.commit()
+    return player
 
-    seed_demo(db, seasons=("2025-26",))
-    teams = client.get("/api/v1/teams").json()
-    scored = None
-    for team in teams[:6]:
-        for entry in client.get(f"/api/v1/teams/{team['id']}/roster").json()["roster"]:
-            detail = client.get(f"/api/v1/players/{entry['player_id']}").json()
-            if detail["impact"].get("tei_range_10_90"):
-                scored = detail
-                break
-        if scored:
-            break
-    assert scored is not None, "the demo league should score at least one player"
-    impact = scored["impact"]
-    assert len(impact["tei_range_10_90"]) == 2  # the existing key is unchanged
+
+def test_the_player_detail_serves_the_band_with_its_calibration_and_keeps_the_old_field(client, scored_player):
+    impact = client.get(f"/api/v1/players/{scored_player.id}").json()["impact"]
+    assert impact["tei_range_10_90"] == [0.5, 2.5]  # the existing key and values are unchanged
     cal = impact["tei_range_calibration"]
     assert cal["status"] == "uncalibrated" and cal["nominal_level"] == 0.8
     assert cal["measured_coverage"]["holdout"] < 0.65  # visibly short of 0.8
-    assert "not odds" in cal["reading"]
+    assert "not as odds" in cal["reading"]
 
 
-def test_the_league_reference_no_longer_describes_the_band_as_a_plain_10_90_range(db):
-    from app.ingestion.demo_seed import seed_demo
-
-    seed_demo(db, seasons=("2025-26",))
-    ref = impact_reference(db)
-    text = " ".join(ref["limitations"])
+def test_the_league_reference_no_longer_describes_the_band_as_a_plain_10_90_range(client, scored_player):
+    body = client.get("/api/v1/players/impact-distribution").json()
+    text = " ".join(body["limitations"])
     assert "uncalibrated" in text and "not odds" in text
+    assert "57" in text and "61" in text

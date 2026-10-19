@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from app.modeling.contract import OutputKind
 
-M, I, P = OutputKind.MEASURED, OutputKind.INFERRED, OutputKind.PROJECTED
+MEASURED, INFERRED, PROJECTED = OutputKind.MEASURED, OutputKind.INFERRED, OutputKind.PROJECTED
 
 
 @dataclass(frozen=True)
@@ -37,24 +37,24 @@ QUANTITIES: dict[str, QuantitySpec] = {
         QuantitySpec(
             "ts_pct", "True shooting %", "shooting", "fraction of 1",
             "points per 2 true-shooting attempts: PTS / (2 * (FGA + 0.44 * FTA)). A ratio estimator, not made/attempted",
-            (M, I, P), "NBA.com season tables (base + advanced); integer counts recovered by constraint reconstruction",
+            (MEASURED, INFERRED, PROJECTED), "NBA.com season tables (base + advanced); integer counts recovered by constraint reconstruction",
             undefined_without_attempts=True,
         ),
         QuantitySpec(
             "fg3_pct", "Three-point accuracy", "shooting", "fraction of 1",
-            "three-pointers made / attempted", (M, I, P),
+            "three-pointers made / attempted", (MEASURED, INFERRED, PROJECTED),
             "NBA.com season tables (base + advanced); integer counts recovered by constraint reconstruction",
             undefined_without_attempts=True,
         ),
         QuantitySpec(
             "ft_pct", "Free-throw accuracy", "shooting", "fraction of 1",
-            "free throws made / attempted", (M, I, P),
+            "free throws made / attempted", (MEASURED, INFERRED, PROJECTED),
             "NBA.com season tables (base + advanced); integer counts recovered by constraint reconstruction",
             undefined_without_attempts=True,
         ),
         QuantitySpec(
             "ast_pct", "Assist percentage", "playmaking", "fraction of 1",
-            "share of teammates' field goals assisted while the player is on the floor (NBA.com AST_PCT)", (M,),
+            "share of teammates' field goals assisted while the player is on the floor (NBA.com AST_PCT)", (MEASURED,),
             "NBA.com advanced table",
             {"inferred": "year-over-year correlation is ~0.90 among rotation players: the measurement is already close to the best estimate, "
                          "and a latent playmaking model has not been shown to add value; assists depend on role and teammates as much as skill",
@@ -62,42 +62,42 @@ QUANTITIES: dict[str, QuantitySpec] = {
         ),
         QuantitySpec(
             "ast_to_ratio", "Assist-to-turnover ratio", "playmaking", "ratio",
-            "assists per turnover (NBA.com AST_TO)", (M,), "NBA.com advanced table",
+            "assists per turnover (NBA.com AST_TO)", (MEASURED,), "NBA.com advanced table",
             {"inferred": "a ratio of two counts with unmodelled sampling error; not estimated", "projected": "not validated"},
         ),
         QuantitySpec(
             "reb_pct", "Total rebound %", "rebounding", "fraction of 1",
-            "share of available rebounds secured while the player is on the floor (NBA.com REB_PCT)", (M,),
+            "share of available rebounds secured while the player is on the floor (NBA.com REB_PCT)", (MEASURED,),
             "NBA.com advanced table",
             {"inferred": "year-over-year correlation ~0.95; strongly position- and scheme-dependent, so volume does not isolate ability",
              "projected": "not validated"},
         ),
         QuantitySpec(
             "oreb_pct", "Offensive rebound %", "rebounding", "fraction of 1",
-            "share of available offensive rebounds secured (NBA.com OREB_PCT)", (M,), "NBA.com advanced table",
+            "share of available offensive rebounds secured (NBA.com OREB_PCT)", (MEASURED,), "NBA.com advanced table",
             {"inferred": "position- and scheme-dependent", "projected": "not validated"},
         ),
         QuantitySpec(
             "dreb_pct", "Defensive rebound %", "rebounding", "fraction of 1",
-            "share of available defensive rebounds secured (NBA.com DREB_PCT)", (M,), "NBA.com advanced table",
+            "share of available defensive rebounds secured (NBA.com DREB_PCT)", (MEASURED,), "NBA.com advanced table",
             {"inferred": "position- and scheme-dependent", "projected": "not validated"},
         ),
         QuantitySpec(
             "usg_pct", "Usage %", "offensive_role", "fraction of 1",
             "share of team possessions ended by the player (shot, free-throw trip or turnover) while on the floor (NBA.com USG_PCT)",
-            (M,), "NBA.com advanced table",
+            (MEASURED,), "NBA.com advanced table",
             {"inferred": "usage is a role a coach assigns, not an ability; a high-usage player is not thereby a better player",
              "projected": "not validated"},
         ),
         QuantitySpec(
             "minutes_per_game", "Minutes per game", "offensive_role", "minutes",
-            "average minutes per game played (NBA.com MIN)", (M,), "NBA.com base table",
+            "average minutes per game played (NBA.com MIN)", (MEASURED,), "NBA.com base table",
             {"inferred": "a coaching decision, not an ability", "projected": "not validated"},
         ),
         QuantitySpec(
             "games_played", "Games played", "availability", "games",
             "regular-season games the player appeared in (NBA.com GP). Season length varies (shortened 2019-20 and 2020-21 seasons)",
-            (M,), "NBA.com base table",
+            (MEASURED,), "NBA.com base table",
             {"inferred": "an availability model (appearance and games-played propensity) is the recommended next step: see docs/r9-2/multidimensional-skill-coverage.md",
              "projected": "see above; injury records are current-only, so history cannot be reconstructed from them without hindsight"},
         ),

@@ -114,3 +114,35 @@ def test_the_record_is_immutable_so_a_tool_cannot_quietly_relabel_it():
     r = record()
     with pytest.raises(ValidationError):
         r.output_kind = OutputKind.INFERRED
+
+
+# ----------------------------------------------------------------------------- R9.2 additions
+
+
+def test_a_credible_interval_cannot_borrow_an_empirical_coverage_claim():
+    from app.modeling.contract import Calibration
+
+    cal = Calibration(folds=5, n=100, empirical_coverage=0.8, evaluation_ref="x")
+    with pytest.raises(ValidationError, match="credible interval"):
+        Interval(low=0.3, high=0.4, nominal_level=0.8, method="posterior", kind="credible", calibration=cal)
+    ok = Interval(low=0.3, high=0.4, nominal_level=0.8, method="posterior", kind="credible")
+    r = record(output_kind=OutputKind.INFERRED, model=MODEL, interval=ok)
+    assert "frequentist coverage is not claimed" in r.reliability_statement()
+
+
+def test_only_an_inferred_record_carries_reliability_and_only_a_projection_a_condition():
+    from app.modeling.contract import Reliability
+
+    rel = Reliability(reliability=0.4, weight_on_player_record=0.4, prior_mean=0.35, interpretation="x")
+    assert record(output_kind=OutputKind.INFERRED, model=MODEL, reliability=rel).reliability.reliability == 0.4
+    with pytest.raises(ValidationError, match="describes an inferred value"):
+        record(reliability=rel)
+    with pytest.raises(ValidationError, match="only a projected record carries a conditioning"):
+        record(output_kind=OutputKind.INFERRED, model=MODEL, conditioning="x")
+    with pytest.raises(ValidationError):
+        Reliability(reliability=1.4, weight_on_player_record=0.4, prior_mean=0.3, interpretation="x")
+
+
+def test_the_benchmarked_status_exists_and_is_not_confirmation():
+    assert EvaluationStatus.BENCHMARKED.value == "benchmarked"
+    assert EvaluationStatus.BENCHMARKED is not EvaluationStatus.HOLDOUT_CONFIRMED

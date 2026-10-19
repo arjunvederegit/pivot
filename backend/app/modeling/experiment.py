@@ -32,6 +32,7 @@ import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -52,7 +53,7 @@ from .team_gate import r2_difference
 
 PROTOCOL_VERSION = "r9.1-prereg-2"
 
-PREREGISTRATION = {
+PREREGISTRATION: dict[str, Any] = {
     "version": PROTOCOL_VERSION,
     "confirmatory_target": "impact_proxy",
     "exploratory_targets": ["pie", "ts_pct", "ast_pct", "reb_pct", "usg_pct"],
@@ -124,7 +125,7 @@ PROTOCOL_VERSION_R92 = "r9.2-prereg-1"
 #: R9.2's protocol, written and committed BEFORE any R9.2 development run (see docs/r9-2). It reuses
 #: R9.1's folds, holdout origins, advance rule and decision code unchanged; what it adds is two new
 #: targets with an attempts floor, the R9.2 candidates, and the rule that governs *serving*.
-PREREGISTRATION_R92 = {
+PREREGISTRATION_R92: dict[str, Any] = {
     "version": PROTOCOL_VERSION_R92,
     "extends": PROTOCOL_VERSION,
     "confirmatory_targets": ["fg3_pct", "ft_pct"],
@@ -205,6 +206,12 @@ PREREGISTRATION_R92 = {
             "change": "a holdout that is a RE-READ (ts_pct, already read once in R9.1) cannot raise a candidate's status above 'development_only'; it can only lower it to 'failed' if the candidate is not confirmed",
             "reason": "R9.1's baseline results on that holdout were published before R9.2's candidates were designed, so a confirmation there is not independent confirmation",
             "direction": "more conservative",
+        },
+        {
+            "id": 3, "when": "after the R9.2 holdout reads (fg3_pct, ft_pct first reads; ts_pct re-read), before any status was served",
+            "change": "an inferred (ability) record's evaluation status is capped at 'development_only' however its model's forecasts fared on the holdout",
+            "reason": "latent ability is never observed, so 'holdout_confirmed' on an ability estimate would read as definitive validation of ability; the forecast skill of the same model is reported on the projected record instead",
+            "direction": "more conservative: a cap applied after seeing the holdout results, and it lowers what is claimed",
         },
     ],
 }

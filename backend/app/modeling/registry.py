@@ -188,11 +188,20 @@ def _forward_estimates(
     seed: int, level: float,
 ) -> tuple[pd.DataFrame, dict, dict]:
     ff = forward_fit(panel, spec, target_name, origin, features, seed, level)
-    return ff.scoring.assign(pred=ff.pred, lo=ff.lo, hi=ff.hi), ff.params, ff.counts
+    out = ff.scoring.assign(pred=ff.pred, lo=ff.lo, hi=ff.hi)
+    ability = ability_table(ff.fitted, ff.scoring, level)
+    if ability is not None:
+        # R9.2: a model with a posterior of ability carries it as extra columns on the same frame.
+        out = out.assign(**{c: ability[c].to_numpy() for c in ABILITY_COLUMNS})
+    return out, ff.params, ff.counts
 
 
 #: Suffix of the ``target`` under which a model's posterior of ability (``inferred``) is stored.
 ABILITY_SUFFIX = "@ability"
+ABILITY_COLUMNS = (
+    "ability", "ability_sd", "ability_lo", "ability_hi", "curve", "reliability", "weight_on_player_record",
+    "effective_attempts", "n_observed",
+)
 
 
 def ability_table(fitted: object, scoring: pd.DataFrame, level: float) -> pd.DataFrame | None:
@@ -260,9 +269,12 @@ def evaluation_from_experiment(experiment_dir: Path, spec: str, target: str, dat
         status = "development_only" if entry.get("advance") else "failed_development_rule"
     if recorded.get("fingerprint") != data_fingerprint:
         status = f"stale:{status}"
+    # R9.2: a committed aggregate copy of a run keeps the run's real id in ``run_id.txt``.
+    run_id = experiment_dir / "run_id.txt"
+    experiment_id = run_id.read_text().strip() if run_id.exists() else experiment_dir.name
     return {
         "evaluation_status": status,
-        "experiment": experiment_dir.name,
+        "experiment": experiment_id,
         "stage": stage,
         "family": decisions.get("family"),
         "decision": entry,
@@ -302,9 +314,8 @@ def train_candidate(
             panel = panel_for(db, spec, target)
             if origin not in panel.seasons:
                 raise CandidateError(f"no statistics for {origin}; ingested seasons: {panel.seasons}")
-            ff = forward_fit(panel, spec, target, origin, features, seed, level)
-            scoring, params, counts = ff.scoring.assign(pred=ff.pred, lo=ff.lo, hi=ff.hi), ff.params, ff.counts
-            ability = ability_table(ff.fitted, ff.scoring, level)
+            scoring, params, counts = _forward_estimates(panel, spec, target, origin, features, seed, level)
+            ability = scoring if "ability" in scoring.columns else None
             snapshot = DataSnapshot.of_panel(panel.as_of(origin).frame)
             target_season = season_label(season_key(origin) + 1)
             if experiment_dir is not None:

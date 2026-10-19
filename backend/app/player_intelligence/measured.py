@@ -112,7 +112,8 @@ def load_season_rows(db: Session, player_id: str, as_of: str | None = None) -> d
         base_row = slot.get("base")
         if base_row is None or base_row.games_played is None:
             continue
-        base, adv = base_row.stats or {}, (slot.get("advanced").stats if slot.get("advanced") else {}) or {}
+        advanced_row = slot.get("advanced")
+        base, adv = base_row.stats or {}, (advanced_row.stats if advanced_row is not None else None) or {}
         gp = int(base_row.games_played)
         recon = reconstruct(base, adv, gp) if gp > 0 else None
         retrieved = max((x.source_retrieved_at for x in slot.values() if x.source_retrieved_at), default=None)
@@ -168,15 +169,17 @@ def _record(player_id: str, quantity: str, value: float, row: SeasonRow, sample:
 
 def measured_record(player_id: str, quantity: str, row: SeasonRow) -> PlayerIntelligenceRecord | Unavailable:
     """One measured record for one player-season — or the reason there is none."""
-    spec = get_quantity(quantity)
+    get_quantity(quantity)  # an unknown quantity is a KeyError here, not a silent None
     rec = row.recon
     if quantity in ("ts_pct", "fg3_pct", "ft_pct"):
         if rec is None:
             return Unavailable(quantity, "measured", "shot counts could not be recovered from the stored statistics", season=row.season)
+        m: int | None
+        a: float
         if quantity == "fg3_pct":
-            m, a, unit = rec.fg3m, rec.fg3a, "three-point attempts"
+            m, a, unit = rec.fg3m, float(rec.fg3a), "three-point attempts"
         elif quantity == "ft_pct":
-            m, a, unit = rec.ftm, rec.fta, "free-throw attempts"
+            m, a, unit = rec.ftm, float(rec.fta), "free-throw attempts"
         else:
             m, a, unit = None, rec.fga + 0.44 * rec.fta, "true shooting attempts (FGA + 0.44 FTA)"
         if a <= 0:
@@ -275,7 +278,10 @@ def measured_for(
             missing.append(Unavailable(q, "measured", f"no statistics for this player in {season}{hint}", season=season))
             continue
         out = measured_record(player_id, q, row)
-        (missing if isinstance(out, Unavailable) else records).append(out)
+        if isinstance(out, Unavailable):
+            missing.append(out)
+        else:
+            records.append(out)
     return records, missing
 
 

@@ -202,7 +202,7 @@ def components_frame(rows: pd.DataFrame, base_col: str = "base_json", adv_col: s
     for r in rows.itertuples(index=False):
         rec = reconstruct(getattr(r, base_col) or {}, getattr(r, adv_col) or {}, int(r.GP) if pd.notna(r.GP) else 0)
         if rec is None:
-            out.append({c: np.nan for c in COMPONENT_COLUMNS} | {"player_id": r.player_id, "season": r.season, "shooting_counts_quality": "missing"})
+            out.append(dict.fromkeys(COMPONENT_COLUMNS, np.nan) | {"player_id": r.player_id, "season": r.season, "shooting_counts_quality": "missing"})
             continue
         tsa = rec.fga + 0.44 * rec.fta
         out.append(

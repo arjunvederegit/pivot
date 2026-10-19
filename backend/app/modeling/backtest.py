@@ -121,7 +121,8 @@ class BacktestResult:
 def _fit_and_predict(
     predictors, train: pd.DataFrame, test: pd.DataFrame, ctx: FitContext, level: float
 ) -> tuple[list[pd.DataFrame], dict]:
-    frames, params = [], {}
+    frames: list[pd.DataFrame] = []
+    params: dict[str, dict] = {}
     if len(train) < MIN_TRAINING_ROWS:
         raise InsufficientDataError(f"{len(train)} training rows; at least {MIN_TRAINING_ROWS} are needed")
     for predictor in predictors:

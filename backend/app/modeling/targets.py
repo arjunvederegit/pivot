@@ -52,7 +52,7 @@ class TargetSpec:
     evidence: str = "NBA.com season tables"
 
     def describe(self) -> dict:
-        out = {
+        out: dict = {
             "name": self.name,
             "description": self.description,
             "unit": self.unit,

@@ -33,7 +33,13 @@ from sqlalchemy.orm import Session
 
 from app.canonical.seasons import InvalidSeasonError, Season
 from app.core.errors import DomainError, NotFoundError
-from app.db.models import CandidateEstimate, ModelVersion, Player, PlayerArchetype, PlayerSeasonStats
+from app.db.models import (
+    CandidateEstimate,
+    ModelVersion,
+    Player,
+    PlayerArchetype,
+    PlayerSeasonStats,
+)
 from app.modeling.contract import (
     EvaluationStatus,
     Interval,
@@ -53,7 +59,6 @@ from app.modeling.targets import get_target
 from .measured import SeasonRow, Unavailable, load_season_rows, measured_for
 from .quantities import DIMENSIONS, QUANTITIES, UNAVAILABLE_DIMENSIONS
 from .validation import (
-    TIER_EXPERIMENTAL,
     TIER_WITHHELD,
     KindFacts,
     ValidationRegistry,
@@ -130,7 +135,7 @@ class PlayerIntelligenceService:
             quantities = []
             for qid in dim["quantities"]:
                 spec = QUANTITIES[qid]
-                kinds = {}
+                kinds: dict[str, dict[str, Any]] = {}
                 for kind in spec.kinds:
                     if kind is OutputKind.MEASURED:
                         kinds[kind.value] = {"tier": "measured"}
@@ -216,6 +221,26 @@ class PlayerIntelligenceService:
             notices=notices,
         )
 
+    def get_many(
+        self,
+        player_ids: list[str],
+        quantities: list[str] | None = None,
+        as_of: str | None = None,
+        kinds: list[str] | tuple[str, ...] | None = None,
+        model_version: str | None = None,
+        include_experimental: bool = False,
+    ) -> dict[str, IntelligenceResponse]:
+        """The same question for several players (a roster, a trade's assets): one answer per player.
+
+        Deliberately a loop over ``get``: every consumer, one player or fifteen, goes through the same code, so
+        a roster view and a player view can never disagree about a number. ``as_of`` is resolved once so the
+        whole batch shares one information cutoff."""
+        cutoff = as_of or self.latest_season()
+        return {
+            pid: self.get(pid, quantities, cutoff, kinds, model_version, include_experimental)
+            for pid in dict.fromkeys(player_ids)
+        }
+
     # ------------------------------------------------------------------ internals
 
     @staticmethod
@@ -259,12 +284,13 @@ class PlayerIntelligenceService:
         return max(fits, key=lambda v: v.trained_at or datetime.min, default=None)
 
     def _has_ability(self, version_id: str, quantity: str, cutoff: str) -> bool:
-        return self.db.scalar(
+        found = self.db.scalar(
             select(func.count()).select_from(CandidateEstimate).where(
                 CandidateEstimate.model_version_id == version_id, CandidateEstimate.season == cutoff,
                 CandidateEstimate.target == f"{quantity}{ABILITY_SUFFIX}",
             ).limit(1)
-        ) > 0
+        )
+        return bool(found)
 
     def _model_record(
         self, player_id: str, quantity: str, kind: OutputKind, cutoff: str | None, rows: dict[str, SeasonRow],

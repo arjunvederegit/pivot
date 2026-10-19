@@ -27,13 +27,18 @@ def simulate(n=2500, T=8, rho=0.85, tau=0.035, mu=0.36, seed=3, H=6):
         ys[:, t], ex[:, t] = m / a, a
         pt = (m + 0.5) / (a + 1)
         s2[:, t] = pt * (1 - pt) / a
-    parts = {k: [] for k in ("Y", "S", "E", "A", "yn", "sn")}
-    for t in range(1, T - 1):
-        def lag(arr, fill):
-            return np.stack([arr[:, t - j] if t - j >= 0 else np.full(n, fill) for j in range(H)], axis=1)
-        parts["Y"].append(lag(ys, np.nan)); parts["S"].append(lag(s2, np.nan)); parts["E"].append(lag(ex, 0.0))
-        parts["A"].append(ages + t); parts["yn"].append(ys[:, t + 1]); parts["sn"].append(s2[:, t + 1])
-    return {k: (np.vstack(v) if k in ("Y", "S", "E") else np.concatenate(v)) for k, v in parts.items()}
+    def lag(arr, t, fill):
+        return np.stack([arr[:, t - j] if t - j >= 0 else np.full(n, fill) for j in range(H)], axis=1)
+
+    ts = range(1, T - 1)
+    return {
+        "Y": np.vstack([lag(ys, t, np.nan) for t in ts]),
+        "S": np.vstack([lag(s2, t, np.nan) for t in ts]),
+        "E": np.vstack([lag(ex, t, 0.0) for t in ts]),
+        "A": np.concatenate([ages + t for t in ts]),
+        "yn": np.concatenate([ys[:, t + 1] for t in ts]),
+        "sn": np.concatenate([s2[:, t + 1] for t in ts]),
+    }
 
 
 @pytest.fixture(scope="module")
