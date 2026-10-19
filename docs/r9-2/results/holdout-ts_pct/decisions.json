@@ -1,0 +1,58 @@
+{
+  "candidates": {
+    "state_space": {
+      "confirmed": false,
+      "vs_reference": {
+        "ci95": [
+          -0.0012950350654979041,
+          0.00018249471120944217
+        ],
+        "excludes_zero": false,
+        "fold_level": null,
+        "folds": 2,
+        "folds_improved": 2,
+        "mean_diff": -0.0005686076601713531,
+        "metric": "MAE difference (model - reference); negative = model better",
+        "model": "state_space",
+        "n": 654,
+        "n_clusters": 407,
+        "per_fold_mean_diff": {
+          "2023-24": -0.00025130398517155304,
+          "2024-25": -0.000882053539730426
+        },
+        "reference": "ols_history",
+        "reference_mae": 0.02973306018257561,
+        "relative_diff": -0.019123751698608298
+      }
+    },
+    "state_space_role": {
+      "confirmed": false,
+      "vs_reference": {
+        "ci95": [
+          -0.0014343628708551326,
+          0.0003452093116263726
+        ],
+        "excludes_zero": false,
+        "fold_level": null,
+        "folds": 2,
+        "folds_improved": 2,
+        "mean_diff": -0.0005765474816304458,
+        "metric": "MAE difference (model - reference); negative = model better",
+        "model": "state_space_role",
+        "n": 654,
+        "n_clusters": 407,
+        "per_fold_mean_diff": {
+          "2023-24": -0.00014957459572173553,
+          "2024-25": -0.0009983292078320591
+        },
+        "reference": "ols_history",
+        "reference_mae": 0.02973306018257561,
+        "relative_diff": -0.0193907885057966
+      }
+    }
+  },
+  "confirmed": [],
+  "family": "exploratory",
+  "reference_baseline_from_development": "ols_history",
+  "target": "ts_pct"
+}

@@ -67,6 +67,8 @@ from .validation import (
 )
 
 ALL_KINDS = (OutputKind.MEASURED, OutputKind.INFERRED, OutputKind.PROJECTED)
+#: Below this reliability an ability estimate is flagged as mostly the league curve (it is still served, with its reliability).
+LOW_RELIABILITY = 0.20
 
 
 class InvalidRequestError(DomainError):
@@ -318,11 +320,19 @@ class PlayerIntelligenceService:
                 season=cutoff,
             ))
             return
-        stored_eval = status_from_stored((version.validation_metrics or {}).get("evaluation_status"))
+        stored_raw = (version.validation_metrics or {}).get("evaluation_status")
+        stored_eval = status_from_stored(stored_raw)
         # The registry (built from committed experiment artifacts) is authoritative when it covers this
-        # method; a stored 'failed' always blocks.
+        # method. A stored 'failed' always blocks, and a stored 'stale:*' (the data changed since the
+        # experiment ran, so its evidence describes other data) always downgrades to unevaluated.
         evaluation = facts.evaluation_status if facts.method == (version.config or {}).get("spec") else stored_eval
-        if stored_eval is EvaluationStatus.FAILED:
+        stale = isinstance(stored_raw, str) and stored_raw.startswith("stale:")
+        if stale:
+            evaluation = EvaluationStatus.UNEVALUATED
+        # A stored 'failed' (the candidate did not advance, or was not confirmed, as a FORECASTER) blocks its projections.
+        # It does not block an ability estimate: that is governed by its own pre-registered serving rule, already applied
+        # by the registry (non-inferiority of the model's forecasts and calibration of its predictive interval).
+        if stored_eval is EvaluationStatus.FAILED and kind is OutputKind.PROJECTED:
             evaluation = EvaluationStatus.FAILED
         allowed, why = serving_decision(version.status, evaluation, include_experimental)
         if not allowed:
@@ -340,6 +350,18 @@ class PlayerIntelligenceService:
                 quantity, k,
                 "the player is not in this model's scored population at the cutoff "
                 "(at least 200 minutes over the three seasons ending at the cutoff)",
+                season=cutoff,
+            ))
+            return
+        evidence = est.exposure or 0.0
+        observed = (est.inputs or {}).get("n_observed")
+        if evidence <= 0 or (observed is not None and observed <= 0):
+            # No attempts in the evidence window: the stored value is the league curve, which is not an estimate of
+            # *this* player. Returning it as one (even with reliability 0) would invent a rating from nothing.
+            unavailable.append(Unavailable(
+                quantity, k,
+                f"no {get_target(quantity).exposure_unit} in the three-season evidence window, so there is nothing to infer from "
+                "(the league curve is not an estimate of this player)",
                 season=cutoff,
             ))
             return
@@ -398,7 +420,7 @@ class PlayerIntelligenceService:
                 period=Period(season=cutoff, as_of_season=cutoff),
                 interval=Interval(
                     low=low, high=high, nominal_level=est.interval_level, kind="credible",
-                    method="posterior under a Gaussian state-space model (empirical Bayes: hyperparameters estimated from data and treated as known)",
+                    method="a Gaussian state-space model (empirical Bayes)",
                     interpretation=f"a range for the player's underlying {spec.label.lower()} at the end of {cutoff}, not for a future observed value",
                 ),
                 sample=sample, model=model, provenance=provenance,
@@ -413,7 +435,14 @@ class PlayerIntelligenceService:
                 ],
                 limitations=[
                     "ability is latent and was never observed: this is an estimate from box-score evidence, not a measurement",
-                    "no role or opponent adjustment beyond the age curve",
+                    "no role or opponent adjustment beyond the age curve (and, for models that use them, the role covariates listed in the methodology)",
+                    "the league curve the estimate is pulled toward was fitted on players who later qualified for evaluation "
+                    f"(at least {int(cfg.get('features', {}).get('min_target_minutes', 500))} minutes"
+                    + (f" and {int(target.min_exposure)} {target.exposure_unit}" if target.min_exposure else "")
+                    + " in a following season); a player far outside that group is pulled toward a rotation-level average, "
+                    "so a low-reliability estimate should be read as 'little is known', not as a measurement",
+                    *( [f"reliability {rel:.2f} is below {LOW_RELIABILITY:.2f}: the estimate is mostly the league curve, so read it as 'little is known'"]
+                       if rel is not None and rel < LOW_RELIABILITY else [] ),
                     *facts.limitations,
                 ],
             )

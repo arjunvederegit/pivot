@@ -208,6 +208,7 @@ def main() -> None:
     ap.add_argument("--analysis")
     ap.add_argument("--results-out", required=True)
     ap.add_argument("--registry-out", required=True)
+    ap.add_argument("--sensitivity-dir", help="runs made with --eval-min-target-* (copied as sensitivity-*; not used by the registry)")
     args = ap.parse_args()
     exp = Path(args.exp_dir)
     analysis = json.loads(Path(args.analysis).read_text()) if args.analysis else None
@@ -215,12 +216,13 @@ def main() -> None:
     Path(args.registry_out).write_text(json.dumps(registry, indent=2, sort_keys=True) + "\n")
     out = Path(args.results_out)
     out.mkdir(parents=True, exist_ok=True)
-    for run in sorted(exp.glob("exp-*")):
-        parts = run.name.split("-")  # exp-<stage[-label]>-<quantity>-<hash>-<fp>
-        stage = parts[1]
+    runs = [(run, "") for run in sorted(exp.glob("exp-*"))]
+    if args.sensitivity_dir:
+        runs += [(run, "sensitivity-") for run in sorted(Path(args.sensitivity_dir).glob("exp-*"))]
+    for run, prefix in runs:
         quantity = next((p for p in QUANTITIES if f"-{p}-" in run.name), None)
-        label = run.name[len("exp-"):].rsplit(f"-{quantity}-", 1)[0] if quantity else stage
-        target = out / f"{label}-{quantity}"
+        label = run.name[len("exp-"):].rsplit(f"-{quantity}-", 1)[0] if quantity else run.name
+        target = out / f"{prefix}{label}-{quantity}"
         target.mkdir(parents=True, exist_ok=True)
         for name in COPY:
             if (run / name).exists():

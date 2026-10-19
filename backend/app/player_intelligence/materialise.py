@@ -43,7 +43,7 @@ def materialise_recommended(db: Session, origin: str, evidence_root: Path | None
                 methods.append(f.method)
         for method in methods:
             record = train_candidate(
-                db, method, quantity, origin, features=FeatureConfig(), experiment_dir=_evidence_dir(root, quantity)
+                db, method, quantity, origin, features=FeatureConfig(), experiment_dir=_evidence_dir(root, quantity), skill_panel=True
             )
             done.append({"quantity": quantity, "method": method, "version": record.version, "estimates": record.estimates_written, "reused_existing": record.reused_existing})
     return done

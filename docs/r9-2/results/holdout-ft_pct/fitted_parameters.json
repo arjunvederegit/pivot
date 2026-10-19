@@ -1,0 +1,296 @@
+{
+  "2023-24": {
+    "incumbent_tei_recalibrated": {
+      "fitted": {
+        "intercept": 0.7720308172468335,
+        "slope_per_tei_point": 0.004818320671591871
+      },
+      "interval": {
+        "a": 0.008970984132200753,
+        "b": 0.0,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.14470964528746,
+        "residuals_used": 1821
+      }
+    },
+    "league_mean": {
+      "fitted": {
+        "mean": 0.7725104518148735
+      },
+      "interval": {
+        "a": 0.008979377932687093,
+        "b": 0.0,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1536797829581678,
+        "residuals_used": 1821
+      }
+    },
+    "ols_history": {
+      "fitted": {
+        "age": -0.0008107026587540715,
+        "age_sq": 5.477915050739363e-05,
+        "intercept": 0.1599456863005048,
+        "last_season": -0.048053320021870356,
+        "windowed_history": 0.8457594686205036
+      },
+      "interval": {
+        "a": 0.00215916181623902,
+        "b": 0.25164492728631505,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1588582731773598,
+        "residuals_used": 1821
+      }
+    },
+    "persistence": {
+      "fitted": {
+        "fallback_mean": 0.7725104518148735
+      },
+      "interval": {
+        "a": 0.0028267349885171965,
+        "b": 0.3872369449240744,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1667799799280012,
+        "residuals_used": 1821
+      }
+    },
+    "regressed_persistence": {
+      "fitted": {
+        "intercept": 0.24284485206832,
+        "slope_last_season": 0.6902427311225239
+      },
+      "interval": {
+        "a": 0.0030062446475861786,
+        "b": 0.19606922727400689,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1488620577272834,
+        "residuals_used": 1821
+      }
+    },
+    "regressed_persistence_age": {
+      "fitted": {
+        "age": -4.477163014354329e-06,
+        "age_sq": 2.2864356778256498e-05,
+        "intercept": 0.24231678173568136,
+        "slope_last_season": 0.6904303410390513
+      },
+      "interval": {
+        "a": 0.0030157740059833624,
+        "b": 0.1968389062765484,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1460821762990285,
+        "residuals_used": 1821
+      }
+    },
+    "state_space": {
+      "fitted": {
+        "beta": [
+          0.7961627106641039,
+          0.0018968872039826414,
+          -0.00026694897962024504
+        ],
+        "converged": true,
+        "loglik": 2753.388059098443,
+        "n_covariates": 0,
+        "n_pairs": 1821,
+        "omega2": 0.0003643703916055084,
+        "phi": 1.32785226186894,
+        "rho": 0.9680789405750208,
+        "tau": 0.07615731676683928,
+        "tau2": 0.005799936897124698,
+        "unit_variance": 0.17114381026543476
+      },
+      "interval": {
+        "a": 0.0022837340453970264,
+        "b": 0.19261879996525244,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.173803679589594,
+        "residuals_used": 1821
+      }
+    },
+    "state_space_role": {
+      "fitted": {
+        "beta": [
+          0.7952168640650422,
+          0.0015646970439316822,
+          -0.0002271708425879824,
+          -0.020649082536497353,
+          0.022217068728057558,
+          -0.005877924743618294,
+          0.025171570621753993
+        ],
+        "converged": true,
+        "loglik": 2786.710875394022,
+        "n_covariates": 4,
+        "n_pairs": 1821,
+        "omega2": 0.00035347770773832236,
+        "phi": 1.3568433561974562,
+        "rho": 0.9455698782349535,
+        "tau": 0.05777473274021869,
+        "tau2": 0.003337919743203697,
+        "unit_variance": 0.17114381026543476
+      },
+      "interval": {
+        "a": 0.00230559264157221,
+        "b": 0.1739389531903478,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1716956668706253,
+        "residuals_used": 1821
+      }
+    }
+  },
+  "2024-25": {
+    "incumbent_tei_recalibrated": {
+      "fitted": {
+        "intercept": 0.7727308528593191,
+        "slope_per_tei_point": 0.005050445331879982
+      },
+      "interval": {
+        "a": 0.008759274984087594,
+        "b": 0.0,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1525025435388716,
+        "residuals_used": 2085
+      }
+    },
+    "league_mean": {
+      "fitted": {
+        "mean": 0.7732556699619241
+      },
+      "interval": {
+        "a": 0.008777240266217129,
+        "b": 0.0,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1653279068941165,
+        "residuals_used": 2085
+      }
+    },
+    "ols_history": {
+      "fitted": {
+        "age": -0.0007906386745641223,
+        "age_sq": 7.805286806360448e-05,
+        "intercept": 0.15558232314397638,
+        "last_season": -0.04260299156586254,
+        "windowed_history": 0.8453732703782295
+      },
+      "interval": {
+        "a": 0.0020334074576472175,
+        "b": 0.27232344120171914,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1681815326681106,
+        "residuals_used": 2085
+      }
+    },
+    "persistence": {
+      "fitted": {
+        "fallback_mean": 0.7732556699619241
+      },
+      "interval": {
+        "a": 0.0029161615308961786,
+        "b": 0.3876855166622195,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1572204275246813,
+        "residuals_used": 2085
+      }
+    },
+    "regressed_persistence": {
+      "fitted": {
+        "intercept": 0.24586896967470484,
+        "slope_last_season": 0.6864044759846722
+      },
+      "interval": {
+        "a": 0.0030063746713511036,
+        "b": 0.20535239301858105,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1574514070894566,
+        "residuals_used": 2085
+      }
+    },
+    "regressed_persistence_age": {
+      "fitted": {
+        "age": 1.601176316489513e-05,
+        "age_sq": 2.2506294466059762e-05,
+        "intercept": 0.2455138026844337,
+        "slope_last_season": 0.6863945666215163
+      },
+      "interval": {
+        "a": 0.003013234146188042,
+        "b": 0.20587728537940703,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1551261219426625,
+        "residuals_used": 2085
+      }
+    },
+    "state_space": {
+      "fitted": {
+        "beta": [
+          0.7955717497585917,
+          0.0017830836387661155,
+          -0.00023943600406551796
+        ],
+        "converged": true,
+        "loglik": 3168.166894867663,
+        "n_covariates": 0,
+        "n_pairs": 2085,
+        "omega2": 0.000343508244960243,
+        "phi": 1.3325589692471265,
+        "rho": 0.9700495896874998,
+        "tau": 0.07630071635826167,
+        "tau2": 0.005821799316783901,
+        "unit_variance": 0.1706285979118098
+      },
+      "interval": {
+        "a": 0.002168301837343048,
+        "b": 0.2122313586752006,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1744810952250575,
+        "residuals_used": 2085
+      }
+    },
+    "state_space_role": {
+      "fitted": {
+        "beta": [
+          0.7949175946294491,
+          0.0015115030729671885,
+          -0.00020221760775589566,
+          -0.020247208850899607,
+          0.022722734122024957,
+          -0.005732603871387583,
+          0.02428684574996785
+        ],
+        "converged": true,
+        "loglik": 3204.419882956393,
+        "n_covariates": 4,
+        "n_pairs": 2085,
+        "omega2": 0.0003333036389784368,
+        "phi": 1.3618522331401122,
+        "rho": 0.9489589651781402,
+        "tau": 0.05788405461212024,
+        "tau2": 0.0033505637783389185,
+        "unit_variance": 0.1706285979118098
+      },
+      "interval": {
+        "a": 0.0022015541406490424,
+        "b": 0.1903956055496818,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1774415135742515,
+        "residuals_used": 2085
+      }
+    }
+  }
+}

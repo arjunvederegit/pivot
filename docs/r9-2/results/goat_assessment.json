@@ -1,0 +1,77 @@
+{
+  "attempt_totals_note": "zone totals are per-game averages (one decimal) times games played: each is within 0.05*GP of the true count",
+  "corner_vs_above_break_three_point_accuracy": {
+    "bootstrap_ci95": [
+      0.5003525505819739,
+      1.6929949315605703
+    ],
+    "bootstrap_draws_usable": 1993,
+    "min_attempts_each_zone": 40,
+    "n": 237,
+    "noise_corrected_correlation": 0.8697862042087843,
+    "observed_correlation": 0.28710603649353555,
+    "reliability_x": 0.3911928421553978,
+    "reliability_y": 0.2785279084207882,
+    "true_sd_x": 0.04622701657253139,
+    "true_sd_y": 0.02492206927745304
+  },
+  "free_throw_vs_above_break_three_point_accuracy": {
+    "bootstrap_ci95": [
+      0.18305530104346396,
+      0.837178396718686
+    ],
+    "bootstrap_draws_usable": 1999,
+    "min_attempts": 100,
+    "n": 151,
+    "noise_corrected_correlation": 0.48059148147788416,
+    "observed_correlation": 0.2566527951256668,
+    "reliability_x": 0.7876614253887002,
+    "reliability_y": 0.3620764532675255,
+    "true_sd_x": 0.05528462212610506,
+    "true_sd_y": 0.024294239401243773
+  },
+  "free_throw_vs_mid_range_accuracy": {
+    "bootstrap_ci95": [
+      -0.09296323817934352,
+      0.6528290659003249
+    ],
+    "bootstrap_draws_usable": 1993,
+    "min_attempts_mid_range": 40,
+    "n": 117,
+    "noise_corrected_correlation": 0.2911289699319345,
+    "observed_correlation": 0.15484314875888178,
+    "reliability_x": 0.8089569597639503,
+    "reliability_y": 0.3496936330346518,
+    "true_sd_x": 0.05364688653284005,
+    "true_sd_y": 0.03785689133932857
+  },
+  "median_season_attempts_by_zone": {
+    "above_the_break_3": 76.80000000000001,
+    "corner_3": 33.0,
+    "in_the_paint_(non-ra)": 45.0,
+    "mid-range": 14.0,
+    "restricted_area": 78.39999999999999
+  },
+  "medium_link_corroboration": {
+    "applied": false,
+    "corroborated": 14,
+    "links": 15,
+    "note": "reported, not applied: promotion is an explicit, owner-reviewed write",
+    "rule": "promote a medium link to 'verified' only if games played agree exactly and minutes per game agree to the provider's rounding (0.05) in a season where both providers carry the player"
+  },
+  "restricted_area_accuracy_spread": {
+    "expected_sampling_sd": 0.0351451096594831,
+    "n": 235,
+    "observed_sd": 0.060783639022913005,
+    "true_sd": 0.049593064433352985
+  },
+  "season": "2025-26",
+  "trusted_population": 555,
+  "zone_coverage": {
+    "by_link_confidence": {
+      "high": 556,
+      "medium": 14
+    },
+    "zone_rows": 570
+  }
+}

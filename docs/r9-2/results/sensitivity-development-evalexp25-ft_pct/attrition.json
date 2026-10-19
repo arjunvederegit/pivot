@@ -1,0 +1,52 @@
+[
+  {
+    "evaluated": 286,
+    "origin": "2018-19",
+    "scored": 583,
+    "share_evaluated_of_scored": 0.49056603773584906,
+    "target_observed": 376,
+    "target_season": "2019-20",
+    "train_origins": 2,
+    "train_pairs": 527
+  },
+  {
+    "evaluated": 299,
+    "origin": "2019-20",
+    "scored": 582,
+    "share_evaluated_of_scored": 0.5137457044673539,
+    "target_observed": 393,
+    "target_season": "2020-21",
+    "train_origins": 3,
+    "train_pairs": 771
+  },
+  {
+    "evaluated": 315,
+    "origin": "2020-21",
+    "scored": 598,
+    "share_evaluated_of_scored": 0.5267558528428093,
+    "target_observed": 434,
+    "target_season": "2021-22",
+    "train_origins": 4,
+    "train_pairs": 1026
+  },
+  {
+    "evaluated": 316,
+    "origin": "2021-22",
+    "scored": 606,
+    "share_evaluated_of_scored": 0.5214521452145214,
+    "target_observed": 424,
+    "target_season": "2022-23",
+    "train_origins": 5,
+    "train_pairs": 1303
+  },
+  {
+    "evaluated": 302,
+    "origin": "2022-23",
+    "scored": 591,
+    "share_evaluated_of_scored": 0.5109983079526227,
+    "target_observed": 426,
+    "target_season": "2023-24",
+    "train_origins": 6,
+    "train_pairs": 1567
+  }
+]

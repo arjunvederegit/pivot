@@ -1,0 +1,516 @@
+{
+  "generated_from": {
+    "fg3_pct": {
+      "data_fingerprint": "56bff0c2e4a1856bd2caed6f7a46d700b24ecb89fc2ef29b4b0168caeaad5335",
+      "development": "exp-development-fg3_pct-1bafdc35-56bff0c2",
+      "holdout": "exp-holdout-fg3_pct-c2587ccf-56bff0c2"
+    },
+    "ft_pct": {
+      "data_fingerprint": "56bff0c2e4a1856bd2caed6f7a46d700b24ecb89fc2ef29b4b0168caeaad5335",
+      "development": "exp-development-ft_pct-5a5d4ad3-56bff0c2",
+      "holdout": "exp-holdout-ft_pct-c0b58ebf-56bff0c2"
+    },
+    "ts_pct": {
+      "data_fingerprint": "56bff0c2e4a1856bd2caed6f7a46d700b24ecb89fc2ef29b4b0168caeaad5335",
+      "development": "exp-development-ts_pct-80563995-56bff0c2",
+      "holdout": "exp-holdout-ts_pct-c3b64edc-56bff0c2"
+    }
+  },
+  "protocol": "r9.2-prereg-1",
+  "quantities": {
+    "fg3_pct": {
+      "inferred": {
+        "evaluation_ref": "exp-development-fg3_pct-1bafdc35-56bff0c2",
+        "evaluation_status": "development_only",
+        "limitations": [
+          "ability is latent: the estimate is validated only by what it predicts"
+        ],
+        "method": "state_space",
+        "numbers": {
+          "attrition": {
+            "evaluated": 1367,
+            "scored": 2960,
+            "share_evaluated_of_scored": 0.4618243243243243,
+            "share_observed_of_scored": 0.6935810810810811,
+            "target_observed": 2053
+          },
+          "development": {
+            "mae": 0.03278749964877981,
+            "n": 1367,
+            "reference": "ols_history",
+            "reference_mae": 0.03429647212010581,
+            "relative_to_reference": -0.04399789185434566
+          },
+          "holdout": {
+            "mae": 0.030621887115295572,
+            "n": 569,
+            "reference_mae": 0.03164565393021636,
+            "relative_to_reference": -0.03235094516227577,
+            "reread": false
+          },
+          "predictive_interval_coverage_development": 0.7937088514996342
+        },
+        "reason": "state_space carries a posterior of ability; its own forecasts are -4.4% vs the reference on development and its predictive interval is calibrated out of time. This is evidence of predictive validity, not a measurement of ability",
+        "tier": "experimental"
+      },
+      "projected": {
+        "calibration": {
+          "empirical_coverage": 0.8101933216168717,
+          "evaluation_ref": "exp-holdout-fg3_pct-c2587ccf-56bff0c2",
+          "folds": 2,
+          "n": 569
+        },
+        "candidate_comparisons": {
+          "beta_binomial": {
+            "advanced_in_development": true,
+            "confirmed_on_holdout": true,
+            "development_player_ci95": [
+              -0.002047686301648652,
+              -0.0008973478107056959
+            ],
+            "development_relative_mae_vs_reference": -0.042580973704184795,
+            "holdout_player_ci95": [
+              -0.001915385633151269,
+              -0.00022734888445577787
+            ],
+            "holdout_relative_mae_vs_reference": -0.0344215839727078
+          },
+          "eb_shrinkage": {
+            "advanced_in_development": true,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.00173281878095909,
+              -0.0006760387936703535
+            ],
+            "development_relative_mae_vs_reference": -0.034879090377869355,
+            "holdout_player_ci95": [
+              -0.001485277427703993,
+              6.003752265206342e-05
+            ],
+            "holdout_relative_mae_vs_reference": -0.022866754085602625
+          },
+          "ridge_boxscore": {
+            "advanced_in_development": false,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.0007752032462301363,
+              0.0002366385149295926
+            ],
+            "development_relative_mae_vs_reference": -0.007784702444997481,
+            "holdout_player_ci95": null,
+            "holdout_relative_mae_vs_reference": null
+          },
+          "ridge_history": {
+            "advanced_in_development": false,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.00019572063207693298,
+              0.0004137918320127698
+            ],
+            "development_relative_mae_vs_reference": 0.00307254980667109,
+            "holdout_player_ci95": null,
+            "holdout_relative_mae_vs_reference": null
+          },
+          "state_space": {
+            "advanced_in_development": true,
+            "confirmed_on_holdout": true,
+            "development_player_ci95": [
+              -0.0021218868091422887,
+              -0.0009286546151640638
+            ],
+            "development_relative_mae_vs_reference": -0.04399789185434567,
+            "holdout_player_ci95": [
+              -0.0019517298074582343,
+              -0.00010288762745817004
+            ],
+            "holdout_relative_mae_vs_reference": -0.032350945162275775
+          },
+          "state_space_role": {
+            "advanced_in_development": false,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.0020827090050379747,
+              -0.000808028992842235
+            ],
+            "development_relative_mae_vs_reference": -0.04202701082941983,
+            "holdout_player_ci95": null,
+            "holdout_relative_mae_vs_reference": null
+          }
+        },
+        "evaluation_ref": "exp-holdout-fg3_pct-c2587ccf-56bff0c2",
+        "evaluation_status": "holdout_confirmed",
+        "limitations": [
+          "a candidate model: experimental until a reviewed promotion"
+        ],
+        "method": "state_space",
+        "numbers": {
+          "attrition": {
+            "evaluated": 1367,
+            "scored": 2960,
+            "share_evaluated_of_scored": 0.4618243243243243,
+            "share_observed_of_scored": 0.6935810810810811,
+            "target_observed": 2053
+          },
+          "development": {
+            "mae": 0.03278749964877981,
+            "n": 1367,
+            "reference": "ols_history",
+            "reference_mae": 0.03429647212010581,
+            "relative_to_reference": -0.04399789185434566
+          },
+          "holdout": {
+            "mae": 0.030621887115295572,
+            "n": 569,
+            "reference_mae": 0.03164565393021636,
+            "relative_to_reference": -0.03235094516227577,
+            "reread": false
+          }
+        },
+        "reason": "state_space advanced under the pre-registered rule in development and was confirmed on the holdout",
+        "tier": "experimental"
+      },
+      "supplementary": {
+        "participation": {
+          "appears_next_season": 0.6935810810810811,
+          "meets_evaluation_condition": 0.4618243243243243,
+          "scored": 2960
+        },
+        "posterior_predictive_coverage": {
+          "0.5": 0.47622531089978054,
+          "0.8": 0.7820043891733723,
+          "0.9": 0.8814923189465984
+        },
+        "stability_of_measured_rate": {
+          "min_attempts_both_seasons": 100.0,
+          "n_pairs": 1860,
+          "pearson_year_over_year": 0.35133074364294453,
+          "spearman_year_over_year": 0.33438756024867156
+        }
+      }
+    },
+    "ft_pct": {
+      "inferred": {
+        "evaluation_ref": "exp-development-ft_pct-5a5d4ad3-56bff0c2",
+        "evaluation_status": "development_only",
+        "limitations": [
+          "ability is latent: the estimate is validated only by what it predicts"
+        ],
+        "method": "state_space_role",
+        "numbers": {
+          "attrition": {
+            "evaluated": 1294,
+            "scored": 2960,
+            "share_evaluated_of_scored": 0.43716216216216214,
+            "share_observed_of_scored": 0.6935810810810811,
+            "target_observed": 2053
+          },
+          "development": {
+            "mae": 0.04191336856223545,
+            "n": 1294,
+            "reference": "ols_history",
+            "reference_mae": 0.044236667139846204,
+            "relative_to_reference": -0.0525197472555079
+          },
+          "holdout": {
+            "mae": 0.03988520720141327,
+            "n": 544,
+            "reference_mae": 0.04266153072503875,
+            "relative_to_reference": -0.06507791625010795,
+            "reread": false
+          },
+          "predictive_interval_coverage_development": 0.8415765069551777
+        },
+        "reason": "state_space_role carries a posterior of ability; its own forecasts are -5.3% vs the reference on development and its predictive interval is calibrated out of time. This is evidence of predictive validity, not a measurement of ability",
+        "tier": "experimental"
+      },
+      "projected": {
+        "calibration": {
+          "empirical_coverage": 0.8088235294117647,
+          "evaluation_ref": "exp-holdout-ft_pct-c0b58ebf-56bff0c2",
+          "folds": 2,
+          "n": 544
+        },
+        "candidate_comparisons": {
+          "beta_binomial": {
+            "advanced_in_development": false,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.002094915261725715,
+              -0.0003694093188746375
+            ],
+            "development_relative_mae_vs_reference": -0.02752608366296203,
+            "holdout_player_ci95": null,
+            "holdout_relative_mae_vs_reference": null
+          },
+          "eb_shrinkage": {
+            "advanced_in_development": false,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.0018981385417816308,
+              -0.00030506484719730826
+            ],
+            "development_relative_mae_vs_reference": -0.02452741667027636,
+            "holdout_player_ci95": null,
+            "holdout_relative_mae_vs_reference": null
+          },
+          "ridge_boxscore": {
+            "advanced_in_development": false,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.002324247433610996,
+              -7.194819533531575e-05
+            ],
+            "development_relative_mae_vs_reference": -0.025954963299247204,
+            "holdout_player_ci95": null,
+            "holdout_relative_mae_vs_reference": null
+          },
+          "ridge_history": {
+            "advanced_in_development": false,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.0012737696867084229,
+              2.025470457248551e-05
+            ],
+            "development_relative_mae_vs_reference": -0.013625281520521865,
+            "holdout_player_ci95": null,
+            "holdout_relative_mae_vs_reference": null
+          },
+          "state_space": {
+            "advanced_in_development": true,
+            "confirmed_on_holdout": true,
+            "development_player_ci95": [
+              -0.0026626712692492333,
+              -0.0010133325241011455
+            ],
+            "development_relative_mae_vs_reference": -0.041014042676773055,
+            "holdout_player_ci95": [
+              -0.0035614354259071554,
+              -0.0007680227895099548
+            ],
+            "holdout_relative_mae_vs_reference": -0.0488628735878907
+          },
+          "state_space_role": {
+            "advanced_in_development": true,
+            "confirmed_on_holdout": true,
+            "development_player_ci95": [
+              -0.003255837968887214,
+              -0.0013890540289790256
+            ],
+            "development_relative_mae_vs_reference": -0.05251974725550805,
+            "holdout_player_ci95": [
+              -0.004464768054750006,
+              -0.0013025842457158236
+            ],
+            "holdout_relative_mae_vs_reference": -0.06507791625010781
+          }
+        },
+        "evaluation_ref": "exp-holdout-ft_pct-c0b58ebf-56bff0c2",
+        "evaluation_status": "holdout_confirmed",
+        "limitations": [
+          "a candidate model: experimental until a reviewed promotion"
+        ],
+        "method": "state_space_role",
+        "numbers": {
+          "attrition": {
+            "evaluated": 1294,
+            "scored": 2960,
+            "share_evaluated_of_scored": 0.43716216216216214,
+            "share_observed_of_scored": 0.6935810810810811,
+            "target_observed": 2053
+          },
+          "development": {
+            "mae": 0.04191336856223545,
+            "n": 1294,
+            "reference": "ols_history",
+            "reference_mae": 0.044236667139846204,
+            "relative_to_reference": -0.0525197472555079
+          },
+          "holdout": {
+            "mae": 0.03988520720141327,
+            "n": 544,
+            "reference_mae": 0.04266153072503875,
+            "relative_to_reference": -0.06507791625010795,
+            "reread": false
+          }
+        },
+        "reason": "state_space_role advanced under the pre-registered rule in development and was confirmed on the holdout",
+        "tier": "experimental"
+      },
+      "supplementary": {
+        "participation": {
+          "appears_next_season": 0.6935810810810811,
+          "meets_evaluation_condition": 0.43716216216216214,
+          "scored": 2960
+        },
+        "posterior_predictive_coverage": {
+          "0.5": 0.527047913446677,
+          "0.8": 0.8268933539412674,
+          "0.9": 0.910355486862442
+        },
+        "stability_of_measured_rate": {
+          "min_attempts_both_seasons": 100.0,
+          "n_pairs": 1211,
+          "pearson_year_over_year": 0.8232289300664769,
+          "spearman_year_over_year": 0.8114432444200741
+        }
+      }
+    },
+    "ts_pct": {
+      "inferred": {
+        "evaluation_ref": "exp-development-ts_pct-80563995-56bff0c2",
+        "evaluation_status": "development_only",
+        "limitations": [
+          "ability is latent: the estimate is validated only by what it predicts"
+        ],
+        "method": "state_space_role",
+        "numbers": {
+          "attrition": {
+            "evaluated": 1591,
+            "scored": 2960,
+            "share_evaluated_of_scored": 0.5375,
+            "share_observed_of_scored": 0.6935810810810811,
+            "target_observed": 2053
+          },
+          "development": {
+            "mae": 0.030142990188130846,
+            "n": 1591,
+            "reference": "ols_history",
+            "reference_mae": 0.031001325045958216,
+            "relative_to_reference": -0.027687037781608526
+          },
+          "holdout": {
+            "mae": 0.029156512700945166,
+            "n": 654,
+            "reference_mae": 0.02973306018257561,
+            "relative_to_reference": -0.019390788505796563,
+            "reread": true
+          },
+          "predictive_interval_coverage_development": 0.7781269641734758
+        },
+        "reason": "state_space_role carries a posterior of ability; its own forecasts are -2.8% vs the reference on development and its predictive interval is calibrated out of time. This is evidence of predictive validity, not a measurement of ability",
+        "tier": "experimental"
+      },
+      "projected": {
+        "calibration": {
+          "empirical_coverage": 0.8027522935779816,
+          "evaluation_ref": "exp-holdout-ts_pct-c3b64edc-56bff0c2",
+          "folds": 2,
+          "n": 654
+        },
+        "candidate_comparisons": {
+          "eb_shrinkage": {
+            "advanced_in_development": false,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.00028430221751468183,
+              0.0009154706828419554
+            ],
+            "development_relative_mae_vs_reference": 0.009563686230543395,
+            "holdout_player_ci95": null,
+            "holdout_relative_mae_vs_reference": null
+          },
+          "ridge_boxscore": {
+            "advanced_in_development": false,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.0006376286285259252,
+              0.0005132455786617252
+            ],
+            "development_relative_mae_vs_reference": -0.001551439704529538,
+            "holdout_player_ci95": null,
+            "holdout_relative_mae_vs_reference": null
+          },
+          "ridge_history": {
+            "advanced_in_development": false,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.00022197000730909288,
+              0.0003512860100444907
+            ],
+            "development_relative_mae_vs_reference": 0.0026416486201858397,
+            "holdout_player_ci95": null,
+            "holdout_relative_mae_vs_reference": null
+          },
+          "state_space": {
+            "advanced_in_development": true,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.0012725801057988703,
+              -0.00033852859923541703
+            ],
+            "development_relative_mae_vs_reference": -0.025516815318485205,
+            "holdout_player_ci95": [
+              -0.0012950350654979041,
+              0.00018249471120944217
+            ],
+            "holdout_relative_mae_vs_reference": -0.019123751698608298
+          },
+          "state_space_role": {
+            "advanced_in_development": true,
+            "confirmed_on_holdout": false,
+            "development_player_ci95": [
+              -0.0014256790420378869,
+              -0.0003231402851239469
+            ],
+            "development_relative_mae_vs_reference": -0.027687037781608442,
+            "holdout_player_ci95": [
+              -0.0014343628708551326,
+              0.0003452093116263726
+            ],
+            "holdout_relative_mae_vs_reference": -0.0193907885057966
+          }
+        },
+        "evaluation_ref": "exp-holdout-ts_pct-c3b64edc-56bff0c2",
+        "evaluation_status": "benchmarked",
+        "limitations": [
+          "a benchmark (a regression on the player's own history), not an improvement over anything"
+        ],
+        "method": "ols_history",
+        "numbers": {
+          "attrition": {
+            "evaluated": 1591,
+            "scored": 2960,
+            "share_evaluated_of_scored": 0.5375,
+            "share_observed_of_scored": 0.6935810810810811,
+            "target_observed": 2053
+          },
+          "development": {
+            "mae": 0.031001325045958216,
+            "n": 1591,
+            "reference": "ols_history",
+            "reference_mae": 0.031001325045958216,
+            "relative_to_reference": 0.0
+          },
+          "holdout": {
+            "mae": 0.02973306018257561,
+            "n": 654,
+            "reference_mae": 0.02973306018257561,
+            "relative_to_reference": 0.0,
+            "reread": true
+          }
+        },
+        "reason": "candidates ['state_space', 'state_space_role'] advanced in development but none was confirmed on the holdout; the reference baseline ols_history is the recommended forecaster",
+        "tier": "benchmarked"
+      },
+      "supplementary": {
+        "participation": {
+          "appears_next_season": 0.6935810810810811,
+          "meets_evaluation_condition": 0.5375,
+          "scored": 2960
+        },
+        "posterior_predictive_coverage": {
+          "0.5": 0.48271527341294784,
+          "0.8": 0.7806411062225016,
+          "0.9": 0.8818353236957888
+        },
+        "stability_of_measured_rate": {
+          "min_attempts_both_seasons": 300.0,
+          "n_pairs": 1933,
+          "pearson_year_over_year": 0.636216254357363,
+          "spearman_year_over_year": 0.5984734558208405
+        }
+      }
+    }
+  },
+  "version": "r9.2-validation-1"
+}

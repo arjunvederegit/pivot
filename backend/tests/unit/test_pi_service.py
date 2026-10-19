@@ -348,3 +348,67 @@ class TestPromotionReadiness:
         from app.player_intelligence.promotion import promotion_readiness
 
         assert promotion_readiness(league["db"], "no-such-version", registry()).eligible is False
+
+
+def test_a_stale_evaluation_is_reported_as_unevaluated_not_as_the_registry_says(league):
+    db: Session = league["db"]
+    v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%")))
+    saved = dict(v.validation_metrics or {})
+    try:
+        v.validation_metrics = {**saved, "evaluation_status": "stale:development_only"}
+        db.flush()
+        svc = PlayerIntelligenceService(db, registry())
+        r = svc.get(pid(league), ["fg3_pct"], as_of=CUTOFF, kinds=["projected"], include_experimental=True)
+        assert r.records and r.records[0].model.evaluation_status is EvaluationStatus.UNEVALUATED
+    finally:
+        db.rollback()
+
+
+def test_an_ability_estimate_is_not_blocked_by_its_models_forecast_confirmation_status(league):
+    """A model whose *forecasts* were not confirmed against the baseline can still serve an ability estimate that met
+    its own rule (non-inferior forecasts, calibrated predictive interval); its projections stay blocked."""
+    db: Session = league["db"]
+    v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%")))
+    saved = dict(v.validation_metrics or {})
+    try:
+        v.validation_metrics = {**saved, "evaluation_status": "holdout_not_confirmed"}
+        db.flush()
+        svc = PlayerIntelligenceService(db, registry())
+        r = svc.get(pid(league), ["fg3_pct"], as_of=CUTOFF, kinds=["inferred", "projected"], include_experimental=True)
+        assert [x.output_kind for x in r.records] == [OutputKind.INFERRED]
+        assert "failed its pre-registered evaluation" in r.unavailable[0].reason
+    finally:
+        db.rollback()
+
+
+def test_a_player_with_no_evidence_gets_no_estimate_not_the_league_curve(league):
+    """A stored row built from zero attempts is the league curve; serving it as an estimate would invent a rating."""
+    db: Session = league["db"]
+    v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%")))
+    row = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct@ability")).first()
+    saved = (row.exposure, dict(row.inputs))
+    try:
+        row.exposure, row.inputs = 0.0, {**row.inputs, "n_observed": 0.0, "reliability": 0.0, "weight_on_player_record": 0.0}
+        db.flush()
+        svc = PlayerIntelligenceService(db, registry())
+        r = svc.get(row.player_id, ["fg3_pct"], as_of=CUTOFF, kinds=["inferred"], include_experimental=True)
+        assert r.records == [] and "nothing to infer from" in r.unavailable[0].reason
+    finally:
+        db.rollback()
+        row.exposure, row.inputs = saved
+
+
+def test_a_low_reliability_estimate_says_it_is_mostly_the_league_curve(league):
+    db: Session = league["db"]
+    v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%")))
+    row = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct@ability")).first()
+    saved = dict(row.inputs)
+    try:
+        row.inputs = {**row.inputs, "reliability": 0.08, "weight_on_player_record": 0.08}
+        db.flush()
+        svc = PlayerIntelligenceService(db, registry())
+        r = svc.get(row.player_id, ["fg3_pct"], as_of=CUTOFF, kinds=["inferred"], include_experimental=True)
+        assert any("mostly the league curve" in lim for lim in r.records[0].limitations)
+    finally:
+        db.rollback()
+        row.inputs = saved

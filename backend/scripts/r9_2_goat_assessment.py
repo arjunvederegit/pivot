@@ -53,6 +53,7 @@ def zone_frame(db: Session, panel_frame: pd.DataFrame) -> tuple[pd.DataFrame, di
         for z in ZONES:
             rec[f"{z}_pg_a"] = float(v.get(f"{z}_fga", np.nan))
             rec[f"{z}_pg_m"] = float(v.get(f"{z}_fgm", np.nan))
+            rec[f"{z}_pct"] = float(v.get(f"{z}_fg_pct", np.nan))  # published to 3 decimals: no per-game rounding in the rate
         recs.append(rec)
     z = pd.DataFrame(recs)
     coverage = {
@@ -71,9 +72,11 @@ def zone_frame(db: Session, panel_frame: pd.DataFrame) -> tuple[pd.DataFrame, di
     return merged, coverage
 
 
-def _rate_and_var(m: pd.Series, a: pd.Series) -> tuple[pd.Series, pd.Series]:
+def _rate_and_var(m: pd.Series, a: pd.Series, published: pd.Series | None = None) -> tuple[pd.Series, pd.Series]:
+    """The rate and its binomial sampling variance. The rate is the *published* percentage when given (it
+    carries no per-game rounding); the attempts, known only to within 0.05*GP, enter the variance only."""
     p = (m + 0.5) / (a + 1.0)
-    return m / a, p * (1 - p) / a
+    return (published if published is not None else m / a), p * (1 - p) / a
 
 
 def _corrected(x: np.ndarray, vx: np.ndarray, y: np.ndarray, vy: np.ndarray) -> float | None:
@@ -145,19 +148,19 @@ def main() -> None:
     }
     c, a = trusted["corner_3_a"], trusted["above_the_break_3_a"]
     t3 = trusted[(c >= MIN_ZONE_ATTEMPTS) & (a >= MIN_ZONE_ATTEMPTS)]
-    xc, vc = _rate_and_var(t3["corner_3_m"], t3["corner_3_a"])
-    xa, va = _rate_and_var(t3["above_the_break_3_m"], t3["above_the_break_3_a"])
+    xc, vc = _rate_and_var(t3["corner_3_m"], t3["corner_3_a"], t3["corner_3_pct"])
+    xa, va = _rate_and_var(t3["above_the_break_3_m"], t3["above_the_break_3_a"], t3["above_the_break_3_pct"])
     out["corner_vs_above_break_three_point_accuracy"] = {"min_attempts_each_zone": MIN_ZONE_ATTEMPTS, **corrected_correlation(xc, vc, xa, va)}
     both = trusted[(trusted["fta"] >= 100) & (trusted["above_the_break_3_a"] >= 100)]
     xf, vf = _rate_and_var(both["ftm"], both["fta"])
-    x3, v3 = _rate_and_var(both["above_the_break_3_m"], both["above_the_break_3_a"])
+    x3, v3 = _rate_and_var(both["above_the_break_3_m"], both["above_the_break_3_a"], both["above_the_break_3_pct"])
     out["free_throw_vs_above_break_three_point_accuracy"] = {"min_attempts": 100, **corrected_correlation(xf, vf, x3, v3)}
     mid = trusted[(trusted["mid-range_a"] >= MIN_ZONE_ATTEMPTS) & (trusted["fta"] >= 100)]
-    xm, vm = _rate_and_var(mid["mid-range_m"], mid["mid-range_a"])
+    xm, vm = _rate_and_var(mid["mid-range_m"], mid["mid-range_a"], mid["mid-range_pct"])
     xf2, vf2 = _rate_and_var(mid["ftm"], mid["fta"])
     out["free_throw_vs_mid_range_accuracy"] = {"min_attempts_mid_range": MIN_ZONE_ATTEMPTS, **corrected_correlation(xf2, vf2, xm, vm)}
     ra = trusted[trusted["restricted_area_a"] >= 100]
-    xr, vr = _rate_and_var(ra["restricted_area_m"], ra["restricted_area_a"])
+    xr, vr = _rate_and_var(ra["restricted_area_m"], ra["restricted_area_a"], ra["restricted_area_pct"])
     out["restricted_area_accuracy_spread"] = {
         "n": int(len(ra)), "observed_sd": float(xr.std(ddof=1)), "expected_sampling_sd": float(np.sqrt(vr.mean())),
         "true_sd": float(np.sqrt(max(xr.var(ddof=1) - vr.mean(), 0))),

@@ -125,6 +125,34 @@ def stability(panel, quantity: str, min_attempts: float = 100.0) -> dict:
     }
 
 
+def measured_dimension_stability(panel, min_minutes: float = 500.0) -> dict:
+    """Year-over-year stability of every measured dimension among players with >= ``min_minutes`` in both seasons.
+
+    The reason a dimension is offered as *measured only*: where the rate is this stable the measurement is already
+    close to the best estimate, and a latent model has nothing to add that a persistence forecast does not."""
+    f = panel.frame
+    cols = {
+        "ast_pct": "AST_PCT", "reb_pct": "REB_PCT", "oreb_pct": "OREB_PCT", "dreb_pct": "DREB_PCT", "usg_pct": "USG_PCT",
+        "minutes_per_game": "MIN", "ast_to_ratio": "AST_TO", "games_played": "GP",
+    }
+    out: dict = {"min_minutes_both_seasons": min_minutes}
+    for name, col in cols.items():
+        if col not in f.columns:
+            continue
+        a = f[["player_id", "season", col, "total_minutes"]].copy()
+        a["key"] = a["season"].map(season_key)
+        b = a.assign(key=a["key"] - 1)[["player_id", "key", col, "total_minutes"]]
+        m = a.merge(b, on=["player_id", "key"], suffixes=("", "_next"))
+        m = m[(m["total_minutes"] >= min_minutes) & (m["total_minutes_next"] >= min_minutes)].dropna(subset=[col, f"{col}_next"])
+        if len(m) < 30:
+            continue
+        out[name] = {
+            "n_pairs": int(len(m)), "pearson": float(np.corrcoef(m[col], m[f"{col}_next"])[0, 1]),
+            "spearman": float(stats.spearmanr(m[col], m[f"{col}_next"]).statistic),
+        }
+    return out
+
+
 def ability_vs_raw(panel, quantity: str, method: str, dev_origins: list[str]) -> dict:
     """Does the ability estimate rank next season's outcomes better than last season's raw rate?"""
     target = get_target(quantity)
@@ -178,7 +206,10 @@ def main() -> None:
         panel = build_skill_panel(db)
     dev, _ = split_origins(panel, R92_PROTOCOL)
     method = {"ts_pct": "state_space", "fg3_pct": "state_space", "ft_pct": "state_space"}
-    report = {"protocol": R92_PROTOCOL.version, "development_origins": dev, "note": "development folds only; the holdout is not read here", "quantities": {}}
+    report = {
+        "protocol": R92_PROTOCOL.version, "development_origins": dev, "note": "development folds only; the holdout is not read here",
+        "measured_dimension_stability": measured_dimension_stability(panel), "quantities": {},
+    }
     for q in QUANTITIES:
         report["quantities"][q] = {
             "method": method[q],

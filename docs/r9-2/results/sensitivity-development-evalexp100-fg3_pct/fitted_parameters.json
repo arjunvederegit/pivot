@@ -1,0 +1,1417 @@
+{
+  "2018-19": {
+    "beta_binomial": {
+      "fitted": {
+        "beta_logit": [
+          -0.5628921097067223,
+          0.005527470130192172,
+          -0.0011129161240382636
+        ],
+        "converged": true,
+        "discount": 0.8993903059762705,
+        "kappa": 434.69217649146935,
+        "loglik": -1756.3235444624097,
+        "n_covariates": 0,
+        "n_pairs": 500
+      },
+      "interval": {
+        "a": 0.001053420859653961,
+        "b": 0.12972864181154808,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2106239023022614,
+        "residuals_used": 499
+      }
+    },
+    "eb_shrinkage": {
+      "fitted": {
+        "age_curve": [
+          0.3600681818558193,
+          0.0017481577843118472,
+          -0.0002646505195481276
+        ],
+        "k_grid_loto_mae": {
+          "1110.0": 0.03201163662139759,
+          "13.875": 0.032087916832359425,
+          "138.75": 0.03164971186411802,
+          "2220.0": 0.0322451218825007,
+          "27.75": 0.031974049900108874,
+          "277.5": 0.03163784966080682,
+          "555.0": 0.031793408857526274,
+          "69.375": 0.03177557503613345
+        },
+        "persistence_slope": 0.7459731630471514,
+        "shrinkage_constant_k": 277.5
+      },
+      "interval": {
+        "a": 0.0010141612231268876,
+        "b": 0.13216901735698827,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2321492343653653,
+        "residuals_used": 499
+      }
+    },
+    "incumbent_tei_recalibrated": {
+      "fitted": {
+        "intercept": 0.354936949610601,
+        "slope_per_tei_point": 4.442737452735929e-05
+      },
+      "interval": {
+        "a": 0.001411523117155976,
+        "b": 0.10831529848779818,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2185854033519954,
+        "residuals_used": 499
+      }
+    },
+    "league_mean": {
+      "fitted": {
+        "mean": 0.3549295152789063
+      },
+      "interval": {
+        "a": 0.001412168781602389,
+        "b": 0.10792764466068046,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2208709460637326,
+        "residuals_used": 499
+      }
+    },
+    "ols_history": {
+      "fitted": {
+        "age": 0.0008778293831429217,
+        "age_sq": -0.0002289125003594815,
+        "intercept": 0.2704841731753686,
+        "last_season": -0.0017047085965570914,
+        "windowed_history": 0.25346662670959436
+      },
+      "interval": {
+        "a": 0.0010899968330835737,
+        "b": 0.13013903173754526,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2415105545432543,
+        "residuals_used": 499
+      }
+    },
+    "persistence": {
+      "fitted": {
+        "fallback_mean": 0.3549295152789063
+      },
+      "interval": {
+        "a": 0.000988105403378266,
+        "b": 0.5089153717686004,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.188210684113979,
+        "residuals_used": 499
+      }
+    },
+    "regressed_persistence": {
+      "fitted": {
+        "intercept": 0.28093668286786905,
+        "slope_last_season": 0.21036082139090098
+      },
+      "interval": {
+        "a": 0.0012189539004115446,
+        "b": 0.12326386763861358,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.252460824594761,
+        "residuals_used": 499
+      }
+    },
+    "regressed_persistence_age": {
+      "fitted": {
+        "age": 0.0011079291677557168,
+        "age_sq": -0.0002413583958899826,
+        "intercept": 0.290773114616044,
+        "slope_last_season": 0.19511924644474082
+      },
+      "interval": {
+        "a": 0.0011736138501387014,
+        "b": 0.12462785847620624,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2352242988389392,
+        "residuals_used": 499
+      }
+    },
+    "ridge_boxscore": {
+      "fitted": {
+        "alpha": 100.0,
+        "alpha_grid_loto_mae": {
+          "0.1": 0.03284886433747546,
+          "1.0": 0.03278706709881369,
+          "10.0": 0.03250999668530897,
+          "100.0": 0.03179154147461321,
+          "1000.0": 0.0325540992604696,
+          "30.0": 0.03221591783598807,
+          "300.0": 0.031803854440745113
+        },
+        "intercept": 0.3549295152789063,
+        "standardised_coefficients": {
+          "age": 0.002340672893211023,
+          "age_sq": -0.004499769128993124,
+          "log_window_exposure": 0.00013448811571405958,
+          "missing_x_lag1": 0.0038559696180928403,
+          "missing_x_lag2": 0.0,
+          "missing_x_t": 0.0021508532945390107,
+          "x_bar": 0.0043953383353936976,
+          "x_lag1": 0.0017167200007701733,
+          "x_lag2": 0.0,
+          "x_t": 0.0019288167703463593,
+          "z_AST_PCT": -0.0029867505353461275,
+          "z_DREB_PCT": 0.0017079275070985384,
+          "z_MIN": 0.0012646005086753823,
+          "z_NET_RATING": -0.0013419660827401825,
+          "z_OREB_PCT": -0.0014472584834111304,
+          "z_PIE": 0.00364012267139648,
+          "z_TM_TOV_PCT": -0.0009339203303653891,
+          "z_TS_PCT": 0.002389162663927911,
+          "z_USG_PCT": -0.0011834165820327138,
+          "z_blk_per_min": -0.004023196191797315,
+          "z_fg3a_rate": 0.004313157574848257,
+          "z_fta_rate": -0.004642364336573125,
+          "z_pts_per75": 0.0013154690753665941,
+          "z_stl_per_min": -0.0018006575716598633
+        }
+      },
+      "interval": {
+        "a": 0.001071246757079751,
+        "b": 0.1330976710903925,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.227307482675767,
+        "residuals_used": 499
+      }
+    },
+    "ridge_history": {
+      "fitted": {
+        "alpha": 100.0,
+        "alpha_grid_loto_mae": {
+          "0.1": 0.033653077620988354,
+          "1.0": 0.03362094358411575,
+          "10.0": 0.03334873679858343,
+          "100.0": 0.03264166566884026,
+          "1000.0": 0.03327047712957319,
+          "30.0": 0.03299966487082872,
+          "300.0": 0.03267120643594961
+        },
+        "intercept": 0.3549295152789063,
+        "standardised_coefficients": {
+          "age": 0.003084563054682277,
+          "age_sq": -0.004638221176535695,
+          "log_window_exposure": 0.003303822990598077,
+          "missing_x_lag1": 0.005131292112204587,
+          "missing_x_lag2": 0.0,
+          "missing_x_t": 0.0023211072364041673,
+          "x_bar": 0.006925764013322742,
+          "x_lag1": 0.002662480936500323,
+          "x_lag2": 0.0,
+          "x_t": 0.003168297240853323
+        }
+      },
+      "interval": {
+        "a": 0.001132460387995823,
+        "b": 0.1334495091465999,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.255028002553793,
+        "residuals_used": 499
+      }
+    },
+    "state_space": {
+      "fitted": {
+        "beta": [
+          0.3603051105165853,
+          0.0013746617704057467,
+          -0.00023008509861060432
+        ],
+        "converged": true,
+        "loglik": 922.3672033421707,
+        "n_covariates": 0,
+        "n_pairs": 500,
+        "omega2": 1.111086184194017e-06,
+        "phi": 1.0521707359671435,
+        "rho": 0.9989847410748081,
+        "tau": 0.023398107186826445,
+        "tau2": 0.0005474714199262193,
+        "unit_variance": 0.22581969942631447
+      },
+      "interval": {
+        "a": 0.0010629166741033165,
+        "b": 0.12602698391411743,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2258988864890625,
+        "residuals_used": 499
+      }
+    },
+    "state_space_role": {
+      "fitted": {
+        "beta": [
+          0.35743238223520957,
+          0.0012427406964725999,
+          -0.0002584196153899707,
+          0.005895006031123071,
+          0.011116849710452946,
+          -0.008397823595420482,
+          0.002206196004703625
+        ],
+        "converged": true,
+        "loglik": 932.4585543019448,
+        "n_covariates": 4,
+        "n_pairs": 500,
+        "omega2": 8.973166770371319e-07,
+        "phi": 1.0482921466602815,
+        "rho": 0.9989396937205989,
+        "tau": 0.02057582971126843,
+        "tau2": 0.00042336476830711673,
+        "unit_variance": 0.22581969942631447
+      },
+      "interval": {
+        "a": 0.0010312173914437904,
+        "b": 0.13021717040792075,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2232783187070897,
+        "residuals_used": 499
+      }
+    }
+  },
+  "2019-20": {
+    "beta_binomial": {
+      "fitted": {
+        "beta_logit": [
+          -0.563311007117828,
+          0.004104656959798589,
+          -0.001008732449867135
+        ],
+        "converged": true,
+        "discount": 0.8986133420342057,
+        "kappa": 420.48083730645544,
+        "loglik": -2654.417740935,
+        "n_covariates": 0,
+        "n_pairs": 760
+      },
+      "interval": {
+        "a": 0.0011892370916593456,
+        "b": 0.12545299004315338,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.230545425855726,
+        "residuals_used": 759
+      }
+    },
+    "eb_shrinkage": {
+      "fitted": {
+        "age_curve": [
+          0.35856503172501214,
+          0.0016669224742868799,
+          -0.00019521590618161132
+        ],
+        "k_grid_loto_mae": {
+          "1308.0": 0.03189253192209775,
+          "16.35": 0.032347994421743055,
+          "163.5": 0.031829851893028595,
+          "2616.0": 0.03198594797684883,
+          "32.7": 0.032226247289627745,
+          "327.0": 0.03177211769435239,
+          "654.0": 0.03179657561332033,
+          "81.75": 0.031996341369620276
+        },
+        "persistence_slope": 0.8596336271127022,
+        "shrinkage_constant_k": 327.0
+      },
+      "interval": {
+        "a": 0.0011927558547491757,
+        "b": 0.12245176769224948,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2343361903543801,
+        "residuals_used": 759
+      }
+    },
+    "incumbent_tei_recalibrated": {
+      "fitted": {
+        "intercept": 0.35452619070372493,
+        "slope_per_tei_point": 0.00034595324341841035
+      },
+      "interval": {
+        "a": 0.0015718921658122906,
+        "b": 0.09973182334900246,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2324123713896333,
+        "residuals_used": 759
+      }
+    },
+    "league_mean": {
+      "fitted": {
+        "mean": 0.35445735330195777
+      },
+      "interval": {
+        "a": 0.001574423678911501,
+        "b": 0.09914456542088,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2286177922205819,
+        "residuals_used": 759
+      }
+    },
+    "ols_history": {
+      "fitted": {
+        "age": 0.0006173495088178009,
+        "age_sq": -0.00014877820946080877,
+        "intercept": 0.25153673128570586,
+        "last_season": -0.058547863143658646,
+        "windowed_history": 0.3589971558446117
+      },
+      "interval": {
+        "a": 0.0012485366422604004,
+        "b": 0.12656094097105197,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.203344063348935,
+        "residuals_used": 759
+      }
+    },
+    "persistence": {
+      "fitted": {
+        "fallback_mean": 0.35445735330195777
+      },
+      "interval": {
+        "a": 0.0013355739182849319,
+        "b": 0.46531962719821124,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1737502199852536,
+        "residuals_used": 759
+      }
+    },
+    "regressed_persistence": {
+      "fitted": {
+        "intercept": 0.2745465965925539,
+        "slope_last_season": 0.22745991436821486
+      },
+      "interval": {
+        "a": 0.0013902994154489224,
+        "b": 0.11046716420300291,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1994491217002086,
+        "residuals_used": 759
+      }
+    },
+    "regressed_persistence_age": {
+      "fitted": {
+        "age": 0.0010201436816352693,
+        "age_sq": -0.00016611095250561146,
+        "intercept": 0.28382861431446815,
+        "slope_last_season": 0.21036635669405798
+      },
+      "interval": {
+        "a": 0.0013690250699809278,
+        "b": 0.11128879695330346,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.219324022615229,
+        "residuals_used": 759
+      }
+    },
+    "ridge_boxscore": {
+      "fitted": {
+        "alpha": 300.0,
+        "alpha_grid_loto_mae": {
+          "0.1": 0.032826055062587775,
+          "1.0": 0.03277824278625985,
+          "10.0": 0.032582621869677926,
+          "100.0": 0.031917302181030074,
+          "1000.0": 0.03209055023131689,
+          "30.0": 0.03232824213929344,
+          "300.0": 0.03169651779672765
+        },
+        "intercept": 0.35445735330195777,
+        "standardised_coefficients": {
+          "age": 0.0019557895903448462,
+          "age_sq": -0.0026136376489741754,
+          "log_window_exposure": 0.0013394617077724478,
+          "missing_x_lag1": 0.003927560341101792,
+          "missing_x_lag2": -0.0011165077372555527,
+          "missing_x_t": 0.0016475818430774698,
+          "x_bar": 0.0049249848152048215,
+          "x_lag1": 0.0005215862895032238,
+          "x_lag2": 0.001932654182969761,
+          "x_t": 0.0020409140570401127,
+          "z_AST_PCT": -0.0029449095618729257,
+          "z_DREB_PCT": -0.0002642033077887128,
+          "z_MIN": -0.0006591538875266653,
+          "z_NET_RATING": -0.0004797677123985203,
+          "z_OREB_PCT": -0.0013703752371637136,
+          "z_PIE": 0.0018871231691985713,
+          "z_TM_TOV_PCT": -0.002443745377788153,
+          "z_TS_PCT": 0.002248369944493743,
+          "z_USG_PCT": 0.00034201795367467635,
+          "z_blk_per_min": -0.0029234548794652487,
+          "z_fg3a_rate": 0.0026055119354191944,
+          "z_fta_rate": -0.0031270070125103576,
+          "z_pts_per75": 0.0018801249967612397,
+          "z_stl_per_min": -0.0018208400993786275
+        }
+      },
+      "interval": {
+        "a": 0.001267634764651915,
+        "b": 0.10829314811434243,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1856622147620162,
+        "residuals_used": 759
+      }
+    },
+    "ridge_history": {
+      "fitted": {
+        "alpha": 300.0,
+        "alpha_grid_loto_mae": {
+          "0.1": 0.03330770349736273,
+          "1.0": 0.03328271993688829,
+          "10.0": 0.03307719593332019,
+          "100.0": 0.032358732552841794,
+          "1000.0": 0.03284623650782067,
+          "30.0": 0.03277905990527732,
+          "300.0": 0.03228421569675473
+        },
+        "intercept": 0.35445735330195777,
+        "standardised_coefficients": {
+          "age": 0.002291401184362669,
+          "age_sq": -0.0027097161354056667,
+          "log_window_exposure": 0.003109798326592195,
+          "missing_x_lag1": 0.0044595626424297746,
+          "missing_x_lag2": -0.0006804941010043108,
+          "missing_x_t": 0.0016478215983887802,
+          "x_bar": 0.0070411182636665424,
+          "x_lag1": 0.0009567983738121561,
+          "x_lag2": 0.0023220592562124406,
+          "x_t": 0.0032126189196392974
+        }
+      },
+      "interval": {
+        "a": 0.0012512095986773285,
+        "b": 0.12017496814450188,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2133825772204265,
+        "residuals_used": 759
+      }
+    },
+    "state_space": {
+      "fitted": {
+        "beta": [
+          0.3600513446131847,
+          0.0011650486442871134,
+          -0.00020844148077840428
+        ],
+        "converged": true,
+        "loglik": 1395.7187571094867,
+        "n_covariates": 0,
+        "n_pairs": 760,
+        "omega2": 2.2113859391293255e-06,
+        "phi": 1.0649896781581332,
+        "rho": 0.9980454800587112,
+        "tau": 0.02379630541605719,
+        "tau2": 0.0005662641514542727,
+        "unit_variance": 0.22590025877594586
+      },
+      "interval": {
+        "a": 0.001195682030765383,
+        "b": 0.12090924760193315,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2484649571917237,
+        "residuals_used": 759
+      }
+    },
+    "state_space_role": {
+      "fitted": {
+        "beta": [
+          0.35676784608119494,
+          0.0009435190860885593,
+          -0.00022112973331594042,
+          0.002683236347891426,
+          0.010395791953189477,
+          -0.0076770952026396265,
+          0.003959593496242586
+        ],
+        "converged": true,
+        "loglik": 1406.5836909439479,
+        "n_covariates": 4,
+        "n_pairs": 760,
+        "omega2": 1.0962986835849872e-06,
+        "phi": 1.066349111366547,
+        "rho": 0.9987751506479791,
+        "tau": 0.021161241188390537,
+        "tau2": 0.0004477981286332362,
+        "unit_variance": 0.22590025877594586
+      },
+      "interval": {
+        "a": 0.0012500535963536337,
+        "b": 0.10626781456094106,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.229932686558378,
+        "residuals_used": 759
+      }
+    }
+  },
+  "2020-21": {
+    "beta_binomial": {
+      "fitted": {
+        "beta_logit": [
+          -0.5512768953285947,
+          0.005210473885527232,
+          -0.0010860360164102387
+        ],
+        "converged": true,
+        "discount": 0.7094379530999777,
+        "kappa": 354.4669863432666,
+        "loglik": -3624.430891941197,
+        "n_covariates": 0,
+        "n_pairs": 1030
+      },
+      "interval": {
+        "a": 0.0013507971526543242,
+        "b": 0.12656634244470158,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2213792882755716,
+        "residuals_used": 1028
+      }
+    },
+    "eb_shrinkage": {
+      "fitted": {
+        "age_curve": [
+          0.3605689218116704,
+          0.0017624448396920214,
+          -0.0001991908699129611
+        ],
+        "k_grid_loto_mae": {
+          "1446.0": 0.03313183349318679,
+          "18.075": 0.03385875553781818,
+          "180.75": 0.03313964962322894,
+          "2892.0": 0.03321681659031635,
+          "36.15": 0.033678699822231886,
+          "361.5": 0.03304950309694365,
+          "723.0": 0.03306040037169612,
+          "90.375": 0.03335988407960023
+        },
+        "persistence_slope": 0.9873295547822626,
+        "shrinkage_constant_k": 361.5
+      },
+      "interval": {
+        "a": 0.0013721568071034104,
+        "b": 0.11871628246461342,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.214240376661294,
+        "residuals_used": 1028
+      }
+    },
+    "incumbent_tei_recalibrated": {
+      "fitted": {
+        "intercept": 0.35653080820844524,
+        "slope_per_tei_point": 0.0010186807750328126
+      },
+      "interval": {
+        "a": 0.0018191748576775618,
+        "b": 0.09312722946177363,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2329702823745226,
+        "residuals_used": 1028
+      }
+    },
+    "league_mean": {
+      "fitted": {
+        "mean": 0.3563458101340563
+      },
+      "interval": {
+        "a": 0.0018207676197580173,
+        "b": 0.0927164482604818,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2388438880538761,
+        "residuals_used": 1028
+      }
+    },
+    "ols_history": {
+      "fitted": {
+        "age": 0.000778851655591783,
+        "age_sq": -0.0001508443475059316,
+        "intercept": 0.24851499471456415,
+        "last_season": 0.018314554435062396,
+        "windowed_history": 0.2959353058217389
+      },
+      "interval": {
+        "a": 0.001406253911145571,
+        "b": 0.13513289985300267,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2122006334416155,
+        "residuals_used": 1028
+      }
+    },
+    "persistence": {
+      "fitted": {
+        "fallback_mean": 0.3563458101340563
+      },
+      "interval": {
+        "a": 0.0013370899605890218,
+        "b": 0.5452552052169167,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1753953362021015,
+        "residuals_used": 1028
+      }
+    },
+    "regressed_persistence": {
+      "fitted": {
+        "intercept": 0.2713540648698787,
+        "slope_last_season": 0.24165967766555654
+      },
+      "interval": {
+        "a": 0.0015702272727553073,
+        "b": 0.1121535467401152,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2176607319635042,
+        "residuals_used": 1028
+      }
+    },
+    "regressed_persistence_age": {
+      "fitted": {
+        "age": 0.0011343756268642298,
+        "age_sq": -0.00016951499101691917,
+        "intercept": 0.2808292628952399,
+        "slope_last_season": 0.22436221706729814
+      },
+      "interval": {
+        "a": 0.0015587020390820158,
+        "b": 0.10952159089215031,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1982760531005596,
+        "residuals_used": 1028
+      }
+    },
+    "ridge_boxscore": {
+      "fitted": {
+        "alpha": 300.0,
+        "alpha_grid_loto_mae": {
+          "0.1": 0.033611500144677425,
+          "1.0": 0.03358478887085076,
+          "10.0": 0.03353220391768953,
+          "100.0": 0.03351209430618075,
+          "1000.0": 0.033713945979340486,
+          "30.0": 0.03352589187358673,
+          "300.0": 0.03348172307652686
+        },
+        "intercept": 0.3563458101340563,
+        "standardised_coefficients": {
+          "age": 0.0016696765881190972,
+          "age_sq": -0.002216738608631259,
+          "log_window_exposure": 0.002243234085872705,
+          "missing_x_lag1": 0.002624843250438846,
+          "missing_x_lag2": -0.001958039425937959,
+          "missing_x_t": 0.0009673933383440536,
+          "x_bar": 0.0049077936841478605,
+          "x_lag1": 0.0014891820698982572,
+          "x_lag2": 0.0021284908159787492,
+          "x_t": 0.0023808074248198577,
+          "z_AST_PCT": -0.002284107076203016,
+          "z_DREB_PCT": 9.766421970242737e-05,
+          "z_MIN": -0.0006641122541414206,
+          "z_NET_RATING": -0.00034713367666205035,
+          "z_OREB_PCT": -0.0010205335738145541,
+          "z_PIE": 0.002825175191056347,
+          "z_TM_TOV_PCT": -0.002650541002021864,
+          "z_TS_PCT": 0.001355297763247424,
+          "z_USG_PCT": 0.0003506887312596179,
+          "z_blk_per_min": -0.003623434329618716,
+          "z_fg3a_rate": 0.0033838210016051314,
+          "z_fta_rate": -0.004062511170697555,
+          "z_pts_per75": 0.0019765622532560236,
+          "z_stl_per_min": -0.002337536619572533
+        }
+      },
+      "interval": {
+        "a": 0.001469135302649987,
+        "b": 0.10409262826147674,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2088753238395678,
+        "residuals_used": 1028
+      }
+    },
+    "ridge_history": {
+      "fitted": {
+        "alpha": 100.0,
+        "alpha_grid_loto_mae": {
+          "0.1": 0.034334555377501096,
+          "1.0": 0.0343311097566619,
+          "10.0": 0.03430043914308888,
+          "100.0": 0.0341845522071663,
+          "1000.0": 0.034484237588265486,
+          "30.0": 0.03425203152122005,
+          "300.0": 0.03419629683728506
+        },
+        "intercept": 0.3563458101340563,
+        "standardised_coefficients": {
+          "age": 0.0021648973714440364,
+          "age_sq": -0.0030621275821286647,
+          "log_window_exposure": 0.005910222938852034,
+          "missing_x_lag1": 0.004819976152497912,
+          "missing_x_lag2": -0.0014793868287136132,
+          "missing_x_t": 0.001142110577977015,
+          "x_bar": 0.008211171661867016,
+          "x_lag1": 0.0017798905027918872,
+          "x_lag2": 0.002958602944007214,
+          "x_t": 0.003513213491881705
+        }
+      },
+      "interval": {
+        "a": 0.0014851410738140542,
+        "b": 0.11631512472677114,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2264255480444746,
+        "residuals_used": 1028
+      }
+    },
+    "state_space": {
+      "fitted": {
+        "beta": [
+          0.3619538305758487,
+          0.0019517475490897448,
+          -0.00023868728975390876
+        ],
+        "converged": true,
+        "loglik": 1857.7204196499529,
+        "n_covariates": 0,
+        "n_pairs": 1030,
+        "omega2": 8.191714589718849e-06,
+        "phi": 1.1318447485910887,
+        "rho": 0.9934657873528144,
+        "tau": 0.025077623683043233,
+        "tau2": 0.0006288872095883308,
+        "unit_variance": 0.225936581647815
+      },
+      "interval": {
+        "a": 0.001355227829385041,
+        "b": 0.11931492018531697,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2149079782672008,
+        "residuals_used": 1028
+      }
+    },
+    "state_space_role": {
+      "fitted": {
+        "beta": [
+          0.35904469693233493,
+          0.0014743702995549304,
+          -0.00023150766990049648,
+          0.003661964208538374,
+          0.010994971634281826,
+          -0.007963395816317857,
+          0.005555640406534909
+        ],
+        "converged": true,
+        "loglik": 1871.8039546063103,
+        "n_covariates": 4,
+        "n_pairs": 1030,
+        "omega2": 6.1780829900537134e-06,
+        "phi": 1.1334332610033087,
+        "rho": 0.9937458034083532,
+        "tau": 0.022259028807257074,
+        "tau2": 0.0004954643634423003,
+        "unit_variance": 0.225936581647815
+      },
+      "interval": {
+        "a": 0.001393796779131771,
+        "b": 0.10356301068511459,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2184018535210575,
+        "residuals_used": 1028
+      }
+    }
+  },
+  "2021-22": {
+    "beta_binomial": {
+      "fitted": {
+        "beta_logit": [
+          -0.5625417860490971,
+          0.003528522137233275,
+          -0.0010908851022229619
+        ],
+        "converged": true,
+        "discount": 0.7981394458801302,
+        "kappa": 358.15061667015107,
+        "loglik": -4629.489454844147,
+        "n_covariates": 0,
+        "n_pairs": 1309
+      },
+      "interval": {
+        "a": 0.0013108638900816204,
+        "b": 0.1461054544989527,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2105445116669977,
+        "residuals_used": 1306
+      }
+    },
+    "eb_shrinkage": {
+      "fitted": {
+        "age_curve": [
+          0.35899619394497134,
+          0.0015267985152053224,
+          -0.00019559462675195757
+        ],
+        "k_grid_loto_mae": {
+          "1588.0": 0.033421091624024866,
+          "19.85": 0.033915449766665114,
+          "198.5": 0.03325297141281672,
+          "3176.0": 0.03353232351162244,
+          "39.7": 0.03373150131835064,
+          "397.0": 0.033215837085559884,
+          "794.0": 0.03329506193138291,
+          "99.25": 0.03343004630260391
+        },
+        "persistence_slope": 0.9858456259723707,
+        "shrinkage_constant_k": 397.0
+      },
+      "interval": {
+        "a": 0.0013314754225089481,
+        "b": 0.13733744897475114,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2241489504920817,
+        "residuals_used": 1306
+      }
+    },
+    "incumbent_tei_recalibrated": {
+      "fitted": {
+        "intercept": 0.35492286278102464,
+        "slope_per_tei_point": 0.0004718257337452301
+      },
+      "interval": {
+        "a": 0.0017515384670404044,
+        "b": 0.11552291158131854,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2251602281178582,
+        "residuals_used": 1306
+      }
+    },
+    "league_mean": {
+      "fitted": {
+        "mean": 0.3548358711412361
+      },
+      "interval": {
+        "a": 0.0017466912955062359,
+        "b": 0.11622404484890277,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2246070157993252,
+        "residuals_used": 1306
+      }
+    },
+    "ols_history": {
+      "fitted": {
+        "age": 0.0006298162411687102,
+        "age_sq": -0.0001467207142420641,
+        "intercept": 0.25090807295763273,
+        "last_season": 0.02390412709132818,
+        "windowed_history": 0.2780782900088405
+      },
+      "interval": {
+        "a": 0.0013432852314680627,
+        "b": 0.162610119084432,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2192651477030612,
+        "residuals_used": 1306
+      }
+    },
+    "persistence": {
+      "fitted": {
+        "fallback_mean": 0.3548358711412361
+      },
+      "interval": {
+        "a": 0.0012044868976019297,
+        "b": 0.6206193882345185,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1889811537834611,
+        "residuals_used": 1306
+      }
+    },
+    "regressed_persistence": {
+      "fitted": {
+        "intercept": 0.2730094799462672,
+        "slope_last_season": 0.23087386503720364
+      },
+      "interval": {
+        "a": 0.0014736561765930389,
+        "b": 0.14589105065889957,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.244203236728668,
+        "residuals_used": 1306
+      }
+    },
+    "regressed_persistence_age": {
+      "fitted": {
+        "age": 0.0009300446579034518,
+        "age_sq": -0.0001623352975042286,
+        "intercept": 0.28166344711168106,
+        "slope_last_season": 0.2156358105170601
+      },
+      "interval": {
+        "a": 0.0014814222692538892,
+        "b": 0.13955764801118764,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.227509227132618,
+        "residuals_used": 1306
+      }
+    },
+    "ridge_boxscore": {
+      "fitted": {
+        "alpha": 300.0,
+        "alpha_grid_loto_mae": {
+          "0.1": 0.033819089968658594,
+          "1.0": 0.0338050916685858,
+          "10.0": 0.03377130976806653,
+          "100.0": 0.03371610861603863,
+          "1000.0": 0.03374038888122904,
+          "30.0": 0.033758566255360126,
+          "300.0": 0.033648631924538444
+        },
+        "intercept": 0.3548358711412361,
+        "standardised_coefficients": {
+          "age": 0.0012231273943592556,
+          "age_sq": -0.0020561167896054706,
+          "log_window_exposure": 0.0028780444977054,
+          "missing_x_lag1": 0.0020480245034622153,
+          "missing_x_lag2": 0.0001002905690155589,
+          "missing_x_t": 0.0010162146739514377,
+          "x_bar": 0.003749268970170047,
+          "x_lag1": 0.0024217035318159163,
+          "x_lag2": 0.002363751376692045,
+          "x_t": 0.0019672785940164916,
+          "z_AST_PCT": -0.002916811790933466,
+          "z_DREB_PCT": -0.0010969911844054166,
+          "z_MIN": -0.0005545474258966311,
+          "z_NET_RATING": 0.0002911982861621329,
+          "z_OREB_PCT": -0.00020952333945262918,
+          "z_PIE": 0.0029222760916879915,
+          "z_TM_TOV_PCT": -0.0027273481618882065,
+          "z_TS_PCT": 0.0023834630803832536,
+          "z_USG_PCT": -5.7850341054491376e-06,
+          "z_blk_per_min": -0.0042582223240208335,
+          "z_fg3a_rate": 0.003036662202268467,
+          "z_fta_rate": -0.00463366999736242,
+          "z_pts_per75": 0.0022256612767990094,
+          "z_stl_per_min": -0.002399614248266387
+        }
+      },
+      "interval": {
+        "a": 0.0014165170377525,
+        "b": 0.12379440295701936,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2058875308550225,
+        "residuals_used": 1306
+      }
+    },
+    "ridge_history": {
+      "fitted": {
+        "alpha": 300.0,
+        "alpha_grid_loto_mae": {
+          "0.1": 0.034760308596495766,
+          "1.0": 0.034756947267326484,
+          "10.0": 0.03472520954845601,
+          "100.0": 0.03454749750647369,
+          "1000.0": 0.03461998187978853,
+          "30.0": 0.03466651628374054,
+          "300.0": 0.03445831269180315
+        },
+        "intercept": 0.3548358711412361,
+        "standardised_coefficients": {
+          "age": 0.001619751945446781,
+          "age_sq": -0.0026239226010453293,
+          "log_window_exposure": 0.0054982061732859,
+          "missing_x_lag1": 0.0026516229857038516,
+          "missing_x_lag2": 0.0010445218253053792,
+          "missing_x_t": 0.000801969047755949,
+          "x_bar": 0.006068016258389419,
+          "x_lag1": 0.0030258957000672943,
+          "x_lag2": 0.0027909935965699114,
+          "x_t": 0.004278519840750024
+        }
+      },
+      "interval": {
+        "a": 0.0014364276821265101,
+        "b": 0.14308015697068305,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2324025196239476,
+        "residuals_used": 1306
+      }
+    },
+    "state_space": {
+      "fitted": {
+        "beta": [
+          0.3597997271179045,
+          0.0012632524335192566,
+          -0.0002176726473663778
+        ],
+        "converged": true,
+        "loglik": 2356.3406790575877,
+        "n_covariates": 0,
+        "n_pairs": 1309,
+        "omega2": 2.969785315935038e-05,
+        "phi": 1.1482093516393603,
+        "rho": 0.9769595592532808,
+        "tau": 0.025533964118906714,
+        "tau2": 0.0006519833236256154,
+        "unit_variance": 0.22661799594554322
+      },
+      "interval": {
+        "a": 0.0013242337041702097,
+        "b": 0.1364553967677034,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2110938169641365,
+        "residuals_used": 1306
+      }
+    },
+    "state_space_role": {
+      "fitted": {
+        "beta": [
+          0.3570495507330683,
+          0.0009610149563164738,
+          -0.00021250261213661447,
+          0.001973685518659432,
+          0.009140592457171944,
+          -0.007878427052865287,
+          0.004362030717119983
+        ],
+        "converged": true,
+        "loglik": 2370.5382289471377,
+        "n_covariates": 4,
+        "n_pairs": 1309,
+        "omega2": 2.2533819410582643e-05,
+        "phi": 1.1607204771355577,
+        "rho": 0.977845476652346,
+        "tau": 0.02267723080226344,
+        "tau2": 0.0005142567968591257,
+        "unit_variance": 0.22661799594554322
+      },
+      "interval": {
+        "a": 0.001377757516605423,
+        "b": 0.11655629996121195,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.227783849679174,
+        "residuals_used": 1306
+      }
+    }
+  },
+  "2022-23": {
+    "beta_binomial": {
+      "fitted": {
+        "beta_logit": [
+          -0.5577375672159423,
+          0.004633833956701516,
+          -0.0012268990035242398
+        ],
+        "converged": true,
+        "discount": 0.855956408024056,
+        "kappa": 358.05873094658597,
+        "loglik": -5614.951768704603,
+        "n_covariates": 0,
+        "n_pairs": 1593
+      },
+      "interval": {
+        "a": 0.0012345062248618178,
+        "b": 0.15159618120268312,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2044476486800377,
+        "residuals_used": 1590
+      }
+    },
+    "eb_shrinkage": {
+      "fitted": {
+        "age_curve": [
+          0.36006603904492684,
+          0.0016548970699446746,
+          -0.00022216497204216625
+        ],
+        "k_grid_loto_mae": {
+          "105.5": 0.03292860955440055,
+          "1688.0": 0.03296978196769383,
+          "21.1": 0.033425247599647795,
+          "211.0": 0.03278129592587778,
+          "3376.0": 0.033078722139212396,
+          "42.2": 0.03322453993702252,
+          "422.0": 0.0327624783248068,
+          "844.0": 0.032845627731440355
+        },
+        "persistence_slope": 1.0118561754715556,
+        "shrinkage_constant_k": 422.0
+      },
+      "interval": {
+        "a": 0.001273700165173449,
+        "b": 0.14128507326486514,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2046230026232203,
+        "residuals_used": 1590
+      }
+    },
+    "incumbent_tei_recalibrated": {
+      "fitted": {
+        "intercept": 0.35531971364856196,
+        "slope_per_tei_point": 0.0007232615421990529
+      },
+      "interval": {
+        "a": 0.0016881732245960523,
+        "b": 0.12330572856863561,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2317570098283703,
+        "residuals_used": 1590
+      }
+    },
+    "league_mean": {
+      "fitted": {
+        "mean": 0.3551974883071752
+      },
+      "interval": {
+        "a": 0.0016842023323208363,
+        "b": 0.12410728738126368,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2231400416728957,
+        "residuals_used": 1590
+      }
+    },
+    "ols_history": {
+      "fitted": {
+        "age": 0.0006884963654217702,
+        "age_sq": -0.00015592753638468923,
+        "intercept": 0.24795118653112416,
+        "last_season": 0.010575067914110897,
+        "windowed_history": 0.30210668048205824
+      },
+      "interval": {
+        "a": 0.0012715745898205096,
+        "b": 0.16911208947956763,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.1979175537649318,
+        "residuals_used": 1590
+      }
+    },
+    "persistence": {
+      "fitted": {
+        "fallback_mean": 0.3551974883071752
+      },
+      "interval": {
+        "a": 0.0010811602082939696,
+        "b": 0.6829319933657948,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.208012155961303,
+        "residuals_used": 1590
+      }
+    },
+    "regressed_persistence": {
+      "fitted": {
+        "intercept": 0.2740884183493965,
+        "slope_last_season": 0.22994116879714427
+      },
+      "interval": {
+        "a": 0.001425416870626494,
+        "b": 0.14990994484434447,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2290844690359852,
+        "residuals_used": 1590
+      }
+    },
+    "regressed_persistence_age": {
+      "fitted": {
+        "age": 0.0010626459315480157,
+        "age_sq": -0.00017817517519700798,
+        "intercept": 0.28437853762737386,
+        "slope_last_season": 0.21134205798579345
+      },
+      "interval": {
+        "a": 0.001430743393812099,
+        "b": 0.1424788129294842,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2186649455954075,
+        "residuals_used": 1590
+      }
+    },
+    "ridge_boxscore": {
+      "fitted": {
+        "alpha": 300.0,
+        "alpha_grid_loto_mae": {
+          "0.1": 0.033504794945991685,
+          "1.0": 0.03349727423424475,
+          "10.0": 0.03347110227372775,
+          "100.0": 0.03342160060316812,
+          "1000.0": 0.03338989158964832,
+          "30.0": 0.03345340743420925,
+          "300.0": 0.03336481229525092
+        },
+        "intercept": 0.3551974883071752,
+        "standardised_coefficients": {
+          "age": 0.0013494316317108693,
+          "age_sq": -0.0023058784853204435,
+          "log_window_exposure": 0.0027040594710549272,
+          "missing_x_lag1": 0.0014791840417437108,
+          "missing_x_lag2": -0.0002372336443428414,
+          "missing_x_t": 0.0009775019727492349,
+          "x_bar": 0.0042274677709668515,
+          "x_lag1": 0.0029528038154374246,
+          "x_lag2": 0.002303367160705657,
+          "x_t": 0.001731556271006624,
+          "z_AST_PCT": -0.002392213778623916,
+          "z_DREB_PCT": -0.0006982483426381286,
+          "z_MIN": 6.387557541524657e-05,
+          "z_NET_RATING": 0.00019929099901931334,
+          "z_OREB_PCT": -0.000992168155980136,
+          "z_PIE": 0.002988467215313886,
+          "z_TM_TOV_PCT": -0.0023510250187761283,
+          "z_TS_PCT": 0.002576821560841697,
+          "z_USG_PCT": -0.0006250028528512341,
+          "z_blk_per_min": -0.0033015813424534515,
+          "z_fg3a_rate": 0.002898473433901098,
+          "z_fta_rate": -0.004553845710492306,
+          "z_pts_per75": 0.0015134680465656468,
+          "z_stl_per_min": -0.00263056531263227
+        }
+      },
+      "interval": {
+        "a": 0.0013372876263326968,
+        "b": 0.13397468266935686,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2225426637950465,
+        "residuals_used": 1590
+      }
+    },
+    "ridge_history": {
+      "fitted": {
+        "alpha": 300.0,
+        "alpha_grid_loto_mae": {
+          "0.1": 0.034107271476776044,
+          "1.0": 0.03410562755953267,
+          "10.0": 0.03409001309833224,
+          "100.0": 0.03398445544234584,
+          "1000.0": 0.03405186898149246,
+          "30.0": 0.03405878019315221,
+          "300.0": 0.033928291249697005
+        },
+        "intercept": 0.3551974883071752,
+        "standardised_coefficients": {
+          "age": 0.0018134477348978933,
+          "age_sq": -0.002810469640835069,
+          "log_window_exposure": 0.005265464175657704,
+          "missing_x_lag1": 0.00211368948248415,
+          "missing_x_lag2": 0.0007806481019083106,
+          "missing_x_t": 0.000843009458578236,
+          "x_bar": 0.006609531470976434,
+          "x_lag1": 0.0036261331447815285,
+          "x_lag2": 0.0026325820650439703,
+          "x_t": 0.003978170238181526
+        }
+      },
+      "interval": {
+        "a": 0.0013397799557959454,
+        "b": 0.15135648381383984,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.213798086381792,
+        "residuals_used": 1590
+      }
+    },
+    "state_space": {
+      "fitted": {
+        "beta": [
+          0.3598877097799684,
+          0.0015417475504645034,
+          -0.0002248964952328228
+        ],
+        "converged": true,
+        "loglik": 2897.993323392258,
+        "n_covariates": 0,
+        "n_pairs": 1593,
+        "omega2": 7.958812697476407e-06,
+        "phi": 1.1408339244536434,
+        "rho": 0.9936239389495678,
+        "tau": 0.025022245959922328,
+        "tau2": 0.0006261127928788492,
+        "unit_variance": 0.2260545047091464
+      },
+      "interval": {
+        "a": 0.0012493889628168043,
+        "b": 0.1428204634487881,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2098772003948408,
+        "residuals_used": 1590
+      }
+    },
+    "state_space_role": {
+      "fitted": {
+        "beta": [
+          0.3572773679197981,
+          0.0012971812074112584,
+          -0.00022124694576173217,
+          0.0016750505216108992,
+          0.008883782145568375,
+          -0.006976068962861105,
+          0.0027518458706497534
+        ],
+        "converged": true,
+        "loglik": 2912.9521734403233,
+        "n_covariates": 4,
+        "n_pairs": 1593,
+        "omega2": 4.274268529361597e-06,
+        "phi": 1.1506274513298003,
+        "rho": 0.9957091157534375,
+        "tau": 0.022341322698367704,
+        "tau2": 0.0004991346999125999,
+        "unit_variance": 0.2260545047091464
+      },
+      "interval": {
+        "a": 0.0012956167094327297,
+        "b": 0.12481977688039811,
+        "method": "leave-one-transition-out residuals; spread a + b/E; empirical quantile of |r|/s",
+        "nominal_level": 0.8,
+        "quantile_multiplier": 1.2167843241222127,
+        "residuals_used": 1590
+      }
+    }
+  }
+}

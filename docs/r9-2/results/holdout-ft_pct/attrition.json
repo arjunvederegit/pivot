@@ -1,0 +1,22 @@
+[
+  {
+    "evaluated": 264,
+    "origin": "2023-24",
+    "scored": 606,
+    "share_evaluated_of_scored": 0.43564356435643564,
+    "target_observed": 418,
+    "target_season": "2024-25",
+    "train_origins": 7,
+    "train_pairs": 1821
+  },
+  {
+    "evaluated": 280,
+    "origin": "2024-25",
+    "scored": 610,
+    "share_evaluated_of_scored": 0.45901639344262296,
+    "target_observed": 429,
+    "target_season": "2025-26",
+    "train_origins": 8,
+    "train_pairs": 2085
+  }
+]

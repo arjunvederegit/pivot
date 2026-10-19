@@ -1,0 +1,112 @@
+{
+  "against_exact_totals_2025_26": {
+    "n": 573,
+    "naive_rounded_per_game_times_games": {
+      "fg3a": {
+        "exact_share": 0.3403141361256545,
+        "max_abs_error": 4.0,
+        "mean_abs_error": 1.137870855148342
+      },
+      "fg3m": {
+        "exact_share": 0.39965095986038396,
+        "max_abs_error": 4.0,
+        "mean_abs_error": 1.019197207678883
+      },
+      "fta": {
+        "exact_share": 0.35602094240837695,
+        "max_abs_error": 4.0,
+        "mean_abs_error": 1.1029668411867364
+      },
+      "ftm": {
+        "exact_share": 0.33158813263525305,
+        "max_abs_error": 4.0,
+        "mean_abs_error": 1.155322862129145
+      }
+    },
+    "quality_vs_truth": {
+      "bounded | all four counts equal the truth": 45,
+      "bounded | at least one count differs": 52,
+      "exact | all four counts equal the truth": 476,
+      "range_contains_truth | True": 573
+    },
+    "reconstruction": {
+      "fg3a": {
+        "exact_share": 0.9458987783595113,
+        "max_abs_error": 5.0,
+        "mean_abs_error": 0.09773123909249563
+      },
+      "fg3m": {
+        "exact_share": 0.9808027923211169,
+        "max_abs_error": 2.0,
+        "mean_abs_error": 0.020942408376963352
+      },
+      "fta": {
+        "exact_share": 0.9493891797556719,
+        "max_abs_error": 5.0,
+        "mean_abs_error": 0.1082024432809773
+      },
+      "ftm": {
+        "exact_share": 0.9493891797556719,
+        "max_abs_error": 4.0,
+        "mean_abs_error": 0.08551483420593368
+      },
+      "pts": {
+        "exact_share": 0.9458987783595113,
+        "max_abs_error": 4.0,
+        "mean_abs_error": 0.08900523560209424
+      }
+    }
+  },
+  "by_quality": {
+    "bounded": 996,
+    "exact": 4487
+  },
+  "by_season": {
+    "2016-17": {
+      "bounded": 118,
+      "exact": 368
+    },
+    "2017-18": {
+      "bounded": 112,
+      "exact": 428
+    },
+    "2018-19": {
+      "bounded": 106,
+      "exact": 424
+    },
+    "2019-20": {
+      "bounded": 81,
+      "exact": 448
+    },
+    "2020-21": {
+      "bounded": 77,
+      "exact": 463
+    },
+    "2021-22": {
+      "bounded": 101,
+      "exact": 504
+    },
+    "2022-23": {
+      "bounded": 97,
+      "exact": 442
+    },
+    "2023-24": {
+      "bounded": 101,
+      "exact": 471
+    },
+    "2024-25": {
+      "bounded": 106,
+      "exact": 463
+    },
+    "2025-26": {
+      "bounded": 97,
+      "exact": 476
+    }
+  },
+  "player_seasons": 5483,
+  "true_shooting_recomputed_vs_published": {
+    "max_abs_difference": 0.0005000000000000004,
+    "n": 5455,
+    "share_within_0.0006": 1.0
+  }
+}

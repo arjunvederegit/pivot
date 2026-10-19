@@ -234,9 +234,12 @@ SKILL_PANEL_MODELS = frozenset({"state_space", "state_space_role", "beta_binomia
 SKILL_PANEL_TARGETS = frozenset({"fg3_pct", "ft_pct"})
 
 
-def panel_for(db: Session, spec: str, target: str) -> PlayerSeasonPanel:
-    """The panel a (model, target) pair needs: R9.1's, or R9.2's with shot counts added."""
-    if spec in SKILL_PANEL_MODELS or target in SKILL_PANEL_TARGETS:
+def panel_for(db: Session, spec: str, target: str, skill_panel: bool = False) -> PlayerSeasonPanel:
+    """The panel a (model, target) pair needs: R9.1's, or R9.2's with shot counts added.
+
+    ``skill_panel=True`` forces R9.2's: R9.2 experiments ran on it, so a baseline served beside them must be
+    trained on the same data (same fingerprint), or its stored evaluation would read as stale."""
+    if skill_panel or spec in SKILL_PANEL_MODELS or target in SKILL_PANEL_TARGETS:
         from app.player_intelligence.panel import build_skill_panel
 
         return build_skill_panel(db)
@@ -294,6 +297,7 @@ def train_candidate(
     features: FeatureConfig | None = None,
     experiment_dir: Path | None = None,
     evaluation: dict | None = None,
+    skill_panel: bool = False,
 ) -> CandidateRecord:
     """Train a candidate and persist it — and nothing else — under ``status = 'candidate'``.
 
@@ -311,7 +315,7 @@ def train_candidate(
     # 1. Everything that is expensive or can fail happens BEFORE any write — under a read-only guard.
     try:
         with _read_only_computation(db):
-            panel = panel_for(db, spec, target)
+            panel = panel_for(db, spec, target, skill_panel=skill_panel)
             if origin not in panel.seasons:
                 raise CandidateError(f"no statistics for {origin}; ingested seasons: {panel.seasons}")
             scoring, params, counts = _forward_estimates(panel, spec, target, origin, features, seed, level)
