@@ -26,6 +26,7 @@ from app.api.v1 import (
     comparisons,
     health,
     intelligence,
+    player_intelligence,
     players,
     provenance,
     scenarios,
@@ -132,6 +133,7 @@ app.include_router(trades.router, prefix=API)
 app.include_router(comparisons.router, prefix=API)
 app.include_router(intelligence.router, prefix=API)
 app.include_router(assets.router, prefix=API)
+app.include_router(player_intelligence.router, prefix=API, include_in_schema=settings.player_intelligence_preview)
 # A disabled deployment does not advertise the experimental routes (read at import, like
 # every other setting here): /status still answers `enabled: false`, but nothing is listed.
 app.include_router(assistant.router, prefix=API, include_in_schema=settings.assistant_enabled)

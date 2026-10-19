@@ -116,6 +116,11 @@ class Settings(BaseSettings):
     # --- Kaggle historical dataset cache (kagglehub) ---
     kaggle_data_dir: str = ""  # default: kagglehub's own cache; override for CI/servers
 
+    # --- R9.2 Player Intelligence preview ---
+    #: R9.2. Serves `/players/{id}/intelligence` and `/player-intelligence/catalog`. Off by default: nothing
+    #: existing reads these routes, and with the flag off they are 404 and absent from the OpenAPI schema.
+    player_intelligence_preview: bool = False
+
     # --- Ask Pivot / Pivot Intelligence (experimental; FICTIONAL corpus only) ---
     #: Master switch for the synthetic research assistant. Off by default everywhere: with
     #: it off, `POST /assistant/ask` is a 404 and `GET /assistant/status` reports only

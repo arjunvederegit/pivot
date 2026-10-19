@@ -203,12 +203,15 @@ export default function MethodologyPage() {
                     ),
                   },
                   {
-                    term: "Likely range",
+                    term: "Model range",
                     body: (
                       <>
-                        Each estimate&apos;s 10–90% band, with both ends placed in the same
+                        Each estimate&apos;s nominal 10–90% band, with both ends placed in the same
                         population. A wide range means the box score cannot pin the position down —
-                        neighbouring ranks usually overlap inside it.
+                        neighbouring ranks usually overlap inside it. <strong>It is not a calibrated
+                        80% interval:</strong> tested out of time (R9.1), it contained the next
+                        season&apos;s outcome about 57–61% of the time. Use it to compare how
+                        uncertain two estimates are, not as odds.
                       </>
                     ),
                   },

@@ -200,6 +200,12 @@ PREREGISTRATION_R92 = {
             "reason": "the pre-registration said which candidates advance but not which of several is served; fixing the rule now, from development evidence only, means the holdout cannot be used to choose",
             "direction": "neutral: a selection rule fixed before the evidence it selects on",
         },
+        {
+            "id": 2, "when": "after the three R9.2 development runs, before any R9.2 holdout read",
+            "change": "a holdout that is a RE-READ (ts_pct, already read once in R9.1) cannot raise a candidate's status above 'development_only'; it can only lower it to 'failed' if the candidate is not confirmed",
+            "reason": "R9.1's baseline results on that holdout were published before R9.2's candidates were designed, so a confirmation there is not independent confirmation",
+            "direction": "more conservative",
+        },
     ],
 }
 

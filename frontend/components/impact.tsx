@@ -370,7 +370,7 @@ export function ImpactReadout({
           />
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-hairline pt-3 sm:grid-cols-3">
             <div>
-              <dt className="eyebrow text-[0.625rem]">Likely range</dt>
+              <dt className="eyebrow text-[0.625rem]" title="A model-spread band, not a calibrated 80% interval: out of time it contained the outcome about 57–61% of the time">Model range</dt>
               <dd className="mt-1 font-mono text-[13px] text-foreground">
                 {placement.band ? (
                   <>
@@ -406,8 +406,11 @@ export function ImpactReadout({
               It is a {reference.percentile_method}. Rank is {reference.rank_method}.
             </p>
             <p className="mt-1.5">
-              The likely range places the estimate&apos;s 10–90% band in the same league: a wide
-              range means the box score cannot pin the position down. {reference.scale}
+              The model range places the estimate&apos;s nominal 10–90% band in the same league: a
+              wide range means the box score cannot pin the position down. The band is not a
+              calibrated 80% interval — in Pivot&apos;s own out-of-time test it contained the next
+              season&apos;s outcome about 57–61% of the time — so read it as relative uncertainty,
+              not as odds. {reference.scale}
             </p>
             <p className="mt-1.5">
               A percentile is not a calibrated 0–100 rating. {reference.population.rostered_unscored}{" "}

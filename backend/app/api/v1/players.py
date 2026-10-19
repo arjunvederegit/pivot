@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.analytics.impact import TEI_BAND_CALIBRATION
 from app.api.schemas import PlayerOut, Provenance, describe_providers
 from app.canonical.provenance import build_source_meta
 from app.canonical.rosters import current_roster_clause, current_team_of, resolve_roster_season
@@ -174,9 +175,12 @@ def get_player(player_id: str, db: Session = Depends(get_db)) -> dict:
             "tei": round(impact.tei, 2),
             "tei_offense": round(impact.tei_offense, 2) if impact.tei_offense is not None else None,
             "tei_defense": round(impact.tei_defense, 2) if impact.tei_defense is not None else None,
+            # Nominally a 10-90% band. R9.1 measured its coverage at ~57-61% out of time, so it is
+            # served with that fact beside it (the key is unchanged: existing readers keep working).
             "tei_range_10_90": [round(impact.tei_low, 2), round(impact.tei_high, 2)]
             if impact.tei_low is not None and impact.tei_high is not None
             else None,
+            "tei_range_calibration": TEI_BAND_CALIBRATION,
             "availability": round(impact.availability, 3)
             if impact.availability is not None
             else None,
