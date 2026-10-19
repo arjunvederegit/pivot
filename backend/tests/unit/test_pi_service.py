@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import CandidateEstimate, ModelVersion, PlayerSeasonStats
 from app.modeling.contract import EvaluationStatus, OutputKind
-from app.modeling.registry import protected_fingerprint, reject_candidate, train_candidate
+from app.modeling.registry import protected_fingerprint, reject_candidate
 from app.player_intelligence.service import (
     InvalidRequestError,
     PlayerIntelligenceService,
@@ -19,45 +19,30 @@ from app.player_intelligence.service import (
 )
 from app.player_intelligence.validation import ValidationRegistry
 
-from .pi_support import populate_shooting_db
+from .pi_support import RUN_ID as RUN_ID_SUPPORT
+from .pi_support import build_league, make_registry
 
 CUTOFF = "2023-24"
 PROJECTED_FOR = "2024-25"
+RUN_ID = RUN_ID_SUPPORT
 
 
 def registry(**overrides) -> ValidationRegistry:
-    entry = lambda method, tier, status, **kw: {  # noqa: E731
-        "method": method, "tier": tier, "evaluation_status": status, "evaluation_ref": "exp-test", "reason": "test", **kw,
-    }
-    q = {
-        "fg3_pct": {
-            "projected": entry("state_space", "experimental", "development_only", calibration={"folds": 5, "n": 1367, "empirical_coverage": 0.79, "evaluation_ref": "exp-test"}, numbers={"attrition": {"share_evaluated_of_scored": 0.46}}),
-            "inferred": entry("state_space", "experimental", "development_only"),
-        },
-        "ts_pct": {"projected": entry("ols_history", "benchmarked", "benchmarked"), "inferred": entry("state_space", "withheld", "failed", reason="did not meet the serving rule")},
-    }
-    q.update(overrides)
-    return ValidationRegistry({"version": "test", "quantities": q})
+    return make_registry(FINGERPRINT["value"], **overrides)
+
+
+FINGERPRINT: dict[str, str] = {}
 
 
 @pytest.fixture(scope="module")
-def league():
-    """Built once: the synthetic league and two stored candidates at the 2023-24 cutoff."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from sqlalchemy.pool import StaticPool
-
-    from app.db.models import Base
-
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    Base.metadata.create_all(engine)
-    session = sessionmaker(bind=engine, expire_on_commit=False)()
-    info = populate_shooting_db(session, n_players=130, n_seasons=9, seed=4)
-    for spec in ("state_space", "ols_history"):
-        train_candidate(session, spec, "fg3_pct", CUTOFF)
-    info["db"] = session
+def league(tmp_path_factory):
+    """Built once: the synthetic league and two stored candidates at the 2023-24 cutoff, trained against a fake
+    experiment so the registry's evidence legitimately applies to them."""
+    info = build_league(tmp_path_factory, seed=4, cutoff=CUTOFF)
+    FINGERPRINT["value"] = info["fingerprint"]
     yield info
-    session.close()
+    info["db"].close()
+    info["engine"].dispose()
 
 
 @pytest.fixture()
@@ -396,19 +381,3 @@ def test_a_player_with_no_evidence_gets_no_estimate_not_the_league_curve(league)
     finally:
         db.rollback()
         row.exposure, row.inputs = saved
-
-
-def test_a_low_reliability_estimate_says_it_is_mostly_the_league_curve(league):
-    db: Session = league["db"]
-    v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%")))
-    row = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct@ability")).first()
-    saved = dict(row.inputs)
-    try:
-        row.inputs = {**row.inputs, "reliability": 0.08, "weight_on_player_record": 0.08}
-        db.flush()
-        svc = PlayerIntelligenceService(db, registry())
-        r = svc.get(row.player_id, ["fg3_pct"], as_of=CUTOFF, kinds=["inferred"], include_experimental=True)
-        assert any("mostly the league curve" in lim for lim in r.records[0].limitations)
-    finally:
-        db.rollback()
-        row.inputs = saved

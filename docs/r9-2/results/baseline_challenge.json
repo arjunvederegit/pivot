@@ -1,0 +1,418 @@
+{
+  "development_origins": [
+    "2018-19",
+    "2019-20",
+    "2020-21",
+    "2021-22",
+    "2022-23"
+  ],
+  "note": "development folds only; diagnostics, not part of the rule",
+  "protocol": "r9.2-prereg-1",
+  "quantities": {
+    "fg3_pct": {
+      "checks": {
+        "beta_binomial": {
+          "checks": {
+            "folds_improved": true,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": true,
+            "practical_floor": false,
+            "season_ci_below_zero": true
+          },
+          "fold_level_ci95": [
+            -0.0008408343758977946,
+            -4.1856786934755424e-05
+          ],
+          "folds_improved": "4/5",
+          "player_ci95": [
+            -0.0007976359534519583,
+            -9.982229047483479e-05
+          ],
+          "relative_diff": -0.01321048827370927,
+          "vs": "ols_eb",
+          "would_advance_against_it": false
+        },
+        "state_space": {
+          "checks": {
+            "folds_improved": true,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": true,
+            "practical_floor": false,
+            "season_ci_below_zero": true
+          },
+          "fold_level_ci95": [
+            -0.0006872294124674558,
+            -0.0002915468325708875
+          ],
+          "folds_improved": "5/5",
+          "player_ci95": [
+            -0.0008446319522743814,
+            -0.0001395791331953143
+          ],
+          "relative_diff": -0.014670872840081318,
+          "vs": "ols_eb",
+          "would_advance_against_it": false
+        },
+        "state_space_fixedvar": {
+          "checks": {
+            "folds_improved": true,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": true,
+            "practical_floor": false,
+            "season_ci_below_zero": true
+          },
+          "fold_level_ci95": [
+            -0.0009057607117676691,
+            -2.9850925879178225e-05
+          ],
+          "folds_improved": "4/5",
+          "player_ci95": [
+            -0.0008406720390913451,
+            -0.00010668083341442417
+          ],
+          "relative_diff": -0.01404853556475441,
+          "vs": "ols_eb",
+          "would_advance_against_it": false
+        },
+        "state_space_role": {
+          "checks": {
+            "folds_improved": true,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": false,
+            "practical_floor": false,
+            "season_ci_below_zero": false
+          },
+          "fold_level_ci95": [
+            -0.001032616001912381,
+            0.00018685336030327762
+          ],
+          "folds_improved": "4/5",
+          "player_ci95": [
+            -0.0008478425240644033,
+            7.704187134246539e-06
+          ],
+          "relative_diff": -0.012639531629136683,
+          "vs": "ols_eb",
+          "would_advance_against_it": false
+        },
+        "state_space_role_fixedvar": {
+          "checks": {
+            "folds_improved": true,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": true,
+            "practical_floor": false,
+            "season_ci_below_zero": false
+          },
+          "fold_level_ci95": [
+            -0.001200810331823972,
+            0.00026561814814495975
+          ],
+          "folds_improved": "4/5",
+          "player_ci95": [
+            -0.0008751136950182033,
+            -4.5766355831753374e-05
+          ],
+          "relative_diff": -0.014011754477685172,
+          "vs": "ols_eb",
+          "would_advance_against_it": false
+        }
+      },
+      "models": {
+        "beta_binomial": {
+          "bias_pred_minus_outcome": 0.0024235613630089895,
+          "mae": 0.03283609494261327
+        },
+        "ols_attempts": {
+          "bias_pred_minus_outcome": -0.0009583087694966415,
+          "mae": 0.03336967042206038,
+          "relative_to_ols_history": -0.027023237107297194
+        },
+        "ols_attempts_role": {
+          "bias_pred_minus_outcome": -0.0017416809727083136,
+          "mae": 0.03352019223068114,
+          "relative_to_ols_history": -0.02263439477699478
+        },
+        "ols_eb": {
+          "bias_pred_minus_outcome": -0.00032914966688741735,
+          "mae": 0.03327568296218489,
+          "relative_to_ols_history": -0.029763678151680767
+        },
+        "ols_eb_role": {
+          "bias_pred_minus_outcome": -0.0017798163783692353,
+          "mae": 0.033481970808391916,
+          "relative_to_ols_history": -0.02374883658183593
+        },
+        "ols_history": {
+          "bias_pred_minus_outcome": -0.0014553471761791943,
+          "mae": 0.03429647212010581,
+          "relative_to_ols_history": null
+        },
+        "state_space": {
+          "bias_pred_minus_outcome": 0.00123901895169368,
+          "mae": 0.03278749964877981
+        },
+        "state_space_fixedvar": {
+          "bias_pred_minus_outcome": 0.0030702281786703133,
+          "mae": 0.03280820834664913
+        },
+        "state_space_role": {
+          "bias_pred_minus_outcome": 0.0006051235478436596,
+          "mae": 0.032855093914903225
+        },
+        "state_space_role_fixedvar": {
+          "bias_pred_minus_outcome": 0.0024536337230616784,
+          "mae": 0.03280943226244146
+        }
+      },
+      "n": 1367,
+      "pre_registered_reference": "ols_history",
+      "served_model": "state_space",
+      "strongest_baseline_in_this_set": "ols_eb"
+    },
+    "ft_pct": {
+      "checks": {
+        "beta_binomial": {
+          "checks": {
+            "folds_improved": false,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": false,
+            "practical_floor": false,
+            "season_ci_below_zero": false
+          },
+          "fold_level_ci95": [
+            -0.0011833921774314798,
+            0.002211586106685359
+          ],
+          "folds_improved": "1/5",
+          "player_ci95": [
+            -0.00027310869157474266,
+            0.0012714379986303562
+          ],
+          "relative_diff": 0.011633817239230073,
+          "vs": "ols_attempts_role",
+          "would_advance_against_it": false
+        },
+        "state_space": {
+          "checks": {
+            "folds_improved": false,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": false,
+            "practical_floor": false,
+            "season_ci_below_zero": false
+          },
+          "fold_level_ci95": [
+            -0.0012591065482350297,
+            0.0010674015061904224
+          ],
+          "folds_improved": "3/5",
+          "player_ci95": [
+            -0.0009534369911505806,
+            0.0006913400975017165
+          ],
+          "relative_diff": -0.0023972793636518903,
+          "vs": "ols_attempts_role",
+          "would_advance_against_it": false
+        },
+        "state_space_fixedvar": {
+          "checks": {
+            "folds_improved": true,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": false,
+            "practical_floor": false,
+            "season_ci_below_zero": false
+          },
+          "fold_level_ci95": [
+            -0.0013893168176062455,
+            0.001303747802390722
+          ],
+          "folds_improved": "4/5",
+          "player_ci95": [
+            -0.0007951643849310782,
+            0.0006295220592301163
+          ],
+          "relative_diff": -0.001508895016962402,
+          "vs": "ols_attempts_role",
+          "would_advance_against_it": false
+        },
+        "state_space_role": {
+          "checks": {
+            "folds_improved": true,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": true,
+            "practical_floor": false,
+            "season_ci_below_zero": false
+          },
+          "fold_level_ci95": [
+            -0.001716623080163118,
+            0.00048694402694958114
+          ],
+          "folds_improved": "4/5",
+          "player_ci95": [
+            -0.001177996364897171,
+            -5.535545033532945e-05
+          ],
+          "relative_diff": -0.014366299455064348,
+          "vs": "ols_attempts_role",
+          "would_advance_against_it": false
+        },
+        "state_space_role_fixedvar": {
+          "checks": {
+            "folds_improved": true,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": true,
+            "practical_floor": false,
+            "season_ci_below_zero": false
+          },
+          "fold_level_ci95": [
+            -0.001108092737562591,
+            0.00011743636418309444
+          ],
+          "folds_improved": "4/5",
+          "player_ci95": [
+            -0.0009249964542274451,
+            -9.997602243754335e-05
+          ],
+          "relative_diff": -0.011829041580242465,
+          "vs": "ols_attempts_role",
+          "would_advance_against_it": false
+        }
+      },
+      "models": {
+        "beta_binomial": {
+          "bias_pred_minus_outcome": -0.0005356695690027878,
+          "mae": 0.043019004939184195
+        },
+        "ols_attempts": {
+          "bias_pred_minus_outcome": -0.0024335720735728272,
+          "mae": 0.04289121594228877,
+          "relative_to_ols_history": -0.030414841002918032
+        },
+        "ols_attempts_role": {
+          "bias_pred_minus_outcome": -0.0029789214133513187,
+          "mae": 0.042524285177203705,
+          "relative_to_ols_history": -0.03870956094475004
+        },
+        "ols_eb": {
+          "bias_pred_minus_outcome": -0.003079433150883124,
+          "mae": 0.04310683596507223,
+          "relative_to_ols_history": -0.025540603481772776
+        },
+        "ols_eb_role": {
+          "bias_pred_minus_outcome": -0.0034744083863952357,
+          "mae": 0.042642306038058485,
+          "relative_to_ols_history": -0.036041618975214434
+        },
+        "ols_history": {
+          "bias_pred_minus_outcome": -0.0019827416249924776,
+          "mae": 0.044236667139846204,
+          "relative_to_ols_history": null
+        },
+        "state_space": {
+          "bias_pred_minus_outcome": 0.0035743892744354616,
+          "mae": 0.04242234258589435
+        },
+        "state_space_fixedvar": {
+          "bias_pred_minus_outcome": -0.0012610378398555976,
+          "mae": 0.042460120495199934
+        },
+        "state_space_role": {
+          "bias_pred_minus_outcome": 0.0031342866306372456,
+          "mae": 0.04191336856223545
+        },
+        "state_space_role_fixedvar": {
+          "bias_pred_minus_outcome": -0.0017447239139883582,
+          "mae": 0.04202126363967248
+        }
+      },
+      "n": 1294,
+      "pre_registered_reference": "ols_history",
+      "served_model": "state_space_role",
+      "strongest_baseline_in_this_set": "ols_attempts_role"
+    },
+    "ts_pct": {
+      "checks": {
+        "state_space": {
+          "checks": {
+            "folds_improved": true,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": true,
+            "practical_floor": false,
+            "season_ci_below_zero": false
+          },
+          "fold_level_ci95": [
+            -0.0012150328778904953,
+            6.017326145760639e-05
+          ],
+          "folds_improved": "4/5",
+          "player_ci95": [
+            -0.0009682448576712255,
+            -0.00018329558357789948
+          ],
+          "relative_diff": -0.01838358906974874,
+          "vs": "ols_eb_role",
+          "would_advance_against_it": false
+        },
+        "state_space_role": {
+          "checks": {
+            "folds_improved": true,
+            "interval_coverage_in_band": true,
+            "player_ci_below_zero": true,
+            "practical_floor": true,
+            "season_ci_below_zero": true
+          },
+          "fold_level_ci95": [
+            -0.0009557594610813866,
+            -0.0003236822250298346
+          ],
+          "folds_improved": "5/5",
+          "player_ci95": [
+            -0.0008926780157828391,
+            -0.0003703966092134461
+          ],
+          "relative_diff": -0.02056969758209571,
+          "vs": "ols_eb_role",
+          "would_advance_against_it": true
+        }
+      },
+      "models": {
+        "ols_attempts": {
+          "bias_pred_minus_outcome": -0.003188907000463274,
+          "mae": 0.030910699092302985,
+          "relative_to_ols_history": -0.002923292908315375
+        },
+        "ols_attempts_role": {
+          "bias_pred_minus_outcome": -0.004080880509403598,
+          "mae": 0.030835935203701464,
+          "relative_to_ols_history": -0.005334928168766026
+        },
+        "ols_eb": {
+          "bias_pred_minus_outcome": -0.004066724811417172,
+          "mae": 0.03081582057175048,
+          "relative_to_ols_history": -0.005983759530688839
+        },
+        "ols_eb_role": {
+          "bias_pred_minus_outcome": -0.00471037165064802,
+          "mae": 0.03077604410820996,
+          "relative_to_ols_history": -0.007266816415565526
+        },
+        "ols_history": {
+          "bias_pred_minus_outcome": -0.004087206898170732,
+          "mae": 0.031001325045958216,
+          "relative_to_ols_history": null
+        },
+        "state_space": {
+          "bias_pred_minus_outcome": -0.002502373895782147,
+          "mae": 0.030210269960132166
+        },
+        "state_space_role": {
+          "bias_pred_minus_outcome": -0.003245914688194382,
+          "mae": 0.030142990188130846
+        }
+      },
+      "n": 1591,
+      "pre_registered_reference": "ols_history",
+      "served_model": "state_space_role",
+      "strongest_baseline_in_this_set": "ols_eb_role"
+    }
+  }
+}

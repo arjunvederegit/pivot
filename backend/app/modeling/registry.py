@@ -200,16 +200,23 @@ def _forward_estimates(
 ABILITY_SUFFIX = "@ability"
 ABILITY_COLUMNS = (
     "ability", "ability_sd", "ability_lo", "ability_hi", "curve", "reliability", "weight_on_player_record",
-    "effective_attempts", "n_observed",
+    "effective_attempts", "n_observed", "history_exposure",
 )
 
 
 def ability_table(fitted: object, scoring: pd.DataFrame, level: float) -> pd.DataFrame | None:
-    """Per-player posterior of ability at the cutoff, for models that have one (the state-space family)."""
+    """Per-player posterior of ability at the cutoff, for models that have one (the state-space family).
+
+    ``weight_on_player_record`` is the model's actual weight on the player's own observations (the response of the
+    posterior mean to a unit shift in all of them) — not the reliability, which equals it only when the cutoff
+    season itself is observed. ``effective_attempts`` uses the player's *own* per-attempt variance so that a
+    one-season player's evidence is worth about the attempts he took. ``history_exposure`` is the attempts across
+    every season the filter used (up to ten), which is what the estimate actually rests on."""
     if not hasattr(fitted, "posterior"):
         return None
     post = fitted.posterior(scoring)  # type: ignore[attr-defined]
     p = fitted.p  # type: ignore[attr-defined]
+    extras = fitted.ability_extras(scoring)  # type: ignore[attr-defined]
     from app.player_intelligence import rate_models as rm
 
     lo, hi = post.credible_interval("now", level)
@@ -218,9 +225,10 @@ def ability_table(fitted: object, scoring: pd.DataFrame, level: float) -> pd.Dat
         {
             "player_id": scoring["player_id"].to_numpy(),
             "ability": post.level_now, "ability_sd": np.sqrt(post.var_now), "ability_lo": lo, "ability_hi": hi,
-            "curve": post.curve_now, "reliability": rel, "weight_on_player_record": rel,
-            "effective_attempts": rm.effective_attempts(post.var_now, p.tau2, p.phi, p.unit_variance),
+            "curve": post.curve_now, "reliability": rel, "weight_on_player_record": np.clip(extras["weight"], 0.0, 1.0),
+            "effective_attempts": rm.effective_attempts(post.var_now, p.tau2, p.phi, extras["unit_variance"]),
             "n_observed": post.n_observed.astype(float),
+            "history_exposure": extras["history_exposure"],
             "window_exposure": scoring["window_exposure"].to_numpy(dtype=float),
         }
     )
@@ -286,6 +294,19 @@ def evaluation_from_experiment(experiment_dir: Path, spec: str, target: str, dat
     }
 
 
+def _config_matches(experiment_dir: Path, config: dict) -> bool:
+    """Did the experiment evaluate the same configuration this candidate is trained under?"""
+    try:
+        recorded = json.loads((experiment_dir / "config.json").read_text())["backtest"]
+    except (OSError, ValueError, KeyError):
+        return False
+    return (
+        recorded.get("features") == config["features"]
+        and recorded.get("seed") == config["seed"]
+        and recorded.get("interval_level") == config["interval_level"]
+    )
+
+
 def train_candidate(
     db: Session,
     spec: str,
@@ -337,6 +358,10 @@ def train_candidate(
         "seed": seed, "interval_level": level, "features": features.as_dict(),
         "model_spec": PREDICTORS[spec].spec(),
     }
+    if experiment_dir is not None and evaluation is not None:
+        # Whether the candidate was trained under the configuration the experiment evaluated (window, minute floors,
+        # seed, interval level). Registry evidence is only attached to a stored model that matches it.
+        evaluation = {**evaluation, "config_matches": _config_matches(experiment_dir, config)}
     version = f"cand-{spec}-{target}-{config_hash({**config, 'data': snapshot.fingerprint})[:12]}"
     model_name = f"{CANDIDATE_MODEL_PREFIX}{target}"
     estimates = {str(r.player_id): float(r.pred) for r in scoring.itertuples(index=False)}
@@ -345,7 +370,10 @@ def train_candidate(
         select(ModelVersion).where(ModelVersion.model_name == model_name, ModelVersion.version == version)
     )
     if existing is not None:
-        return _reuse(db, existing, estimates, evaluation, version, model_name, spec, target, origin, target_season, snapshot)
+        ability_map = (
+            dict(zip(scoring["player_id"].astype(str), scoring["ability"].astype(float), strict=True)) if ability is not None else None
+        )
+        return _reuse(db, existing, estimates, evaluation, version, model_name, spec, target, origin, target_season, snapshot, ability_map)
 
     active = db.scalars(
         select(ModelVersion).where(ModelVersion.model_name == "player_impact", ModelVersion.is_active)
@@ -396,7 +424,8 @@ def train_candidate(
                     interval_high=float(r.hi),
                     interval_level=level,
                     exposure=float(r.window_exposure),
-                    inputs={"x_t": _clean(r.x_t), "age": _clean(r.age), "window_minutes": _clean(r.window_minutes)},
+                    inputs={"x_t": _clean(r.x_t), "age": _clean(r.age), "window_minutes": _clean(r.window_minutes)}
+                    | {k: _clean(getattr(r, k)) for k in ("history_exposure", "n_observed") if hasattr(r, k)},
                 )
                 for r in scoring.itertuples(index=False)
             ]
@@ -417,12 +446,12 @@ def train_candidate(
                         interval_low=float(r.ability_lo),
                         interval_high=float(r.ability_hi),
                         interval_level=level,
-                        exposure=float(r.window_exposure),
+                        exposure=float(r.history_exposure),
                         inputs={
                             k: _clean(getattr(r, k))
                             for k in (
                                 "ability_sd", "curve", "reliability", "weight_on_player_record",
-                                "effective_attempts", "n_observed",
+                                "effective_attempts", "n_observed", "window_exposure",
                             )
                         } | {"interval_kind": "credible"},
                     )
@@ -457,21 +486,29 @@ def _assert_isolated(db: Session, model: ModelVersion) -> None:
 def _reuse(
     db: Session, existing: ModelVersion, estimates: dict[str, float], evaluation: dict | None,
     version: str, model_name: str, spec: str, target: str, origin: str, target_season: str,
-    snapshot: DataSnapshot,
+    snapshot: DataSnapshot, ability: dict[str, float] | None = None,
 ) -> CandidateRecord:
     """The same specification on the same data is the same candidate — but only if it still produces
     the same numbers. If it does not (the code or a library changed), say so rather than return
     stale estimates under an unchanged id. Nothing is deleted or rewritten except, when asked, this
-    candidate's own evaluation record."""
-    stored = {
-        e.player_id: e.estimate
-        for e in db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == existing.id))
-    }
+    candidate's own evaluation record.
+
+    The forecast rows (``target = <target>``) and the ability rows (``<target>@ability``) are compared
+    *separately*: they share player ids, so pooling them lets one overwrite the other."""
+    rows = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == existing.id)).all()
+    stored = {e.player_id: e.estimate for e in rows if e.target == target}
+    stored_ability = {e.player_id: e.estimate for e in rows if e.target == f"{target}{ABILITY_SUFFIX}"}
     if stored.keys() != estimates.keys() or any(abs(stored[p] - estimates[p]) > 1e-9 for p in stored):
         raise CandidateError(
             f"{version} exists but retraining now gives different estimates: the code or environment "
             "changed since it was trained. Nothing was modified; change the seed or configuration to "
             "create a new candidate, or investigate the difference."
+        )
+    expected_ability = ability or {}
+    if stored_ability.keys() != expected_ability.keys() or any(abs(stored_ability[p] - expected_ability[p]) > 1e-9 for p in stored_ability):
+        raise CandidateError(
+            f"{version} exists but retraining now gives different ability estimates: the code or environment "
+            "changed since it was trained. Nothing was modified."
         )
     if evaluation is not None and existing.validation_metrics != evaluation:
         before = protected_fingerprint(db, exclude_model_id=existing.id)

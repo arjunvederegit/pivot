@@ -231,6 +231,17 @@ def attach_outcomes(
     return out
 
 
+#: Columns that describe the OUTCOME season. A predictor is fitted on rows that carry them (the training pairs) but is
+#: handed a frame WITHOUT them to forecast, so a careless predictor cannot peek at the answer — the leakage audit
+#: should not be the only thing standing between a model and the outcome it is scored against.
+OUTCOME_COLUMNS = ("y", "y_exposure", "y_minutes", "y_team", "y_sv", "target_observed", "target_eligible")
+
+
+def features_only(frame: pd.DataFrame) -> pd.DataFrame:
+    return frame.drop(columns=[c for c in OUTCOME_COLUMNS if c in frame.columns])
+
+
+
 class PairCache:
     """Per-experiment cache of origin features and outcomes, keyed by (origin, target).
 

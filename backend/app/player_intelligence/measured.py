@@ -48,6 +48,7 @@ from .quantities import QUANTITIES, get_quantity
 
 TS_RECONCILIATION_TOLERANCE = 0.0006  # published to 3 decimals: half a unit in the last place + slack
 MAX_GAMES = 90
+TS_MAX = 1.5  # three points on every attempt
 RECONSTRUCTION_NOTE_SHARE = 0.02  # mention reconstruction ambiguity only when it is >= 2% of the attempts
 
 
@@ -172,6 +173,8 @@ def measured_record(player_id: str, quantity: str, row: SeasonRow) -> PlayerInte
     get_quantity(quantity)  # an unknown quantity is a KeyError here, not a silent None
     rec = row.recon
     if quantity in ("ts_pct", "fg3_pct", "ft_pct"):
+        if row.games == 0:
+            return Unavailable(quantity, "measured", "the player played no games this season", season=row.season)
         if rec is None:
             return Unavailable(quantity, "measured", "shot counts could not be recovered from the stored statistics", season=row.season)
         m: int | None
@@ -182,6 +185,16 @@ def measured_record(player_id: str, quantity: str, row: SeasonRow) -> PlayerInte
             m, a, unit = rec.ftm, float(rec.fta), "free-throw attempts"
         else:
             m, a, unit = None, rec.fga + 0.44 * rec.fta, "true shooting attempts (FGA + 0.44 FTA)"
+        max_attempts = rec.fg3a_max if quantity == "fg3_pct" else rec.fta_max
+        if a <= 0 and max_attempts > 0 and (quantity != "ts_pct" or rec.fga == 0):
+            # The provider's rounding is equally consistent with zero attempts and with a few: saying "no attempts" would
+            # be a claim the data do not support (real examples: three-pointers taken and missed, shown as 0.0 per game).
+            return Unavailable(
+                quantity, "measured",
+                f"the attempt count is undetermined: the provider's rounding is consistent with 0 to {max_attempts} attempts, "
+                "so the rate cannot be given (it is neither 0% nor known)",
+                season=row.season,
+            )
         if a <= 0:
             return Unavailable(
                 quantity, "measured",
@@ -205,8 +218,10 @@ def measured_record(player_id: str, quantity: str, row: SeasonRow) -> PlayerInte
         if quantity == "ts_pct":
             published = _fraction(row.advanced.get("TS_PCT"))
             computed = rec.pts / (2 * a)
-            if published is not None and not (0 <= published <= 1.0):
-                return Unavailable(quantity, "measured", f"integrity check failed: published TS_PCT {published} is not a fraction of 1", season=row.season)
+            # True shooting can legitimately exceed 1 (a made three on one attempt is 1.5); only values outside the
+            # feasible [0, 1.5] indicate a scale problem (percentage points).
+            if published is not None and not (0 <= published <= TS_MAX):
+                return Unavailable(quantity, "measured", f"integrity check failed: published TS_PCT {published} is outside the feasible range [0, {TS_MAX}] (percentage points?)", season=row.season)
             if published is not None and abs(published - computed) > TS_RECONCILIATION_TOLERANCE:
                 limits.append(
                     f"recomputed true shooting ({computed:.4f}) differs from the published value ({published:.4f}); the published value is shown"

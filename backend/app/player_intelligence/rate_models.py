@@ -74,11 +74,26 @@ class StateSpaceParams:
     def omega2(self) -> float:
         return self.tau2 * (1.0 - self.rho**2)
 
+    @property
+    def at_bound(self) -> list[str]:
+        """Parameters sitting on (or within 0.1% of) a bound of the search. ``converged`` is the optimiser's own flag
+        and stays true there because the logistic/log re-parametrisation flattens the gradient; a parameter on a bound
+        is *not identified* by the data, and is reported as such."""
+        out = []
+        if self.rho >= MAX_RHO - 1e-3 * (MAX_RHO - MIN_RHO) or self.rho <= MIN_RHO + 1e-3:
+            out.append("rho")
+        if self.tau2 >= MAX_TAU2 * 0.999 or self.tau2 <= MIN_TAU2 * 1.001:
+            out.append("tau2")
+        if self.phi >= MAX_PHI * 0.999 or self.phi <= MIN_PHI * 1.001:
+            out.append("phi")
+        return out
+
     def as_dict(self) -> dict:
         return {
             "beta": list(self.beta), "rho": self.rho, "tau2": self.tau2, "tau": float(np.sqrt(self.tau2)),
             "omega2": self.omega2, "phi": self.phi, "n_pairs": self.n_pairs, "loglik": self.loglik,
-            "converged": self.converged, "unit_variance": self.unit_variance, "n_covariates": self.n_covariates,
+            "converged": self.converged, "at_bound": self.at_bound, "unit_variance": self.unit_variance,
+            "n_covariates": self.n_covariates,
         }
 
 
@@ -156,6 +171,19 @@ def filter_histories(
         level_next=curve_next + u_next, var_next=P_next,
         curve_now=curve_now, curve_next=curve_next, n_observed=n_obs,
     )
+
+
+def observation_weight(
+    y: np.ndarray, s2: np.ndarray, age: np.ndarray, covariates: np.ndarray | None, params: StateSpaceParams
+) -> np.ndarray:
+    """The model's total weight on a player's own observations: how far the posterior mean moves if every
+    observation he has is shifted by one unit (the filter is linear in ``y``). ``1 - P/tau^2`` (the reliability)
+    equals it only when the cutoff season itself is observed; with older evidence the state has decayed and the
+    two differ."""
+    usable = np.isfinite(y) & np.isfinite(s2) & (s2 > 0)
+    base = filter_histories(y, s2, age, covariates, params).level_now
+    shifted = filter_histories(np.where(usable, y + 1.0, y), s2, age, covariates, params).level_now
+    return shifted - base
 
 
 def _unpack(theta: np.ndarray, n_cov: int) -> StateSpaceParams:

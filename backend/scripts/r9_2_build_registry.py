@@ -34,7 +34,7 @@ from app.modeling.predictors import PREDICTORS
 QUANTITIES = ("ts_pct", "fg3_pct", "ft_pct")
 NON_INFERIORITY = 0.02
 ABILITY_MODELS = ("state_space", "state_space_role")
-COPY = ("metrics.json", "decisions.json", "attrition.json", "leakage_audit.json", "data_snapshot.json", "fitted_parameters.json", "config.json")
+COPY = ("metrics.json", "decisions.json", "attrition.json", "leakage_audit.json", "data_snapshot.json", "fitted_parameters.json", "config.json", "run.json")
 
 
 def _load(path: Path) -> dict | list:
@@ -79,7 +79,35 @@ def _calibration(method: str, dev_met: dict, dev_dir: Path, hold_met: dict | Non
             "empirical_coverage": src["overall"][method]["coverage"], "evaluation_ref": stage_dir.name}
 
 
-def build(exp: Path, analysis: dict | None) -> dict:
+def _challenge_limitation(q: str, challenge: dict | None) -> tuple[dict | None, list[str]]:
+    """What the attempts-aware baseline challenge (development folds, exploratory) says about a served projection."""
+    if not challenge or q not in challenge.get("quantities", {}):
+        return None, []
+    e = challenge["quantities"][q]
+    served = e["served_model"]
+    c = e["checks"].get(served)
+    if c is None:
+        return None, []
+    best = e["strongest_baseline_in_this_set"]
+    summary = {
+        "served_model": served, "strongest_baseline_in_the_set": best, "relative_mae_vs_it": c["relative_diff"],
+        "folds_improved": c["folds_improved"], "would_advance_against_it": c["would_advance_against_it"], "development_only": True,
+    }
+    if c["would_advance_against_it"]:
+        text = (
+            f"exploratory, development folds only: against the strongest attempts-aware regression ({best}) the model is still "
+            f"{100 * c['relative_diff']:+.1f}% and would advance"
+        )
+    else:
+        text = (
+            f"exploratory, development folds only: a regression that also knows each player's attempts ({best}) captures most of this "
+            f"model's gain over ols_history — the model is only {100 * c['relative_diff']:+.1f}% against it ({c['folds_improved']} folds), "
+            "below the pre-registered 2% floor"
+        )
+    return summary, [text]
+
+
+def build(exp: Path, analysis: dict | None, challenge: dict | None = None) -> dict:
     ledger = _load(exp / "holdout_ledger.json") if (exp / "holdout_ledger.json").exists() else []
     registry: dict = {
         "version": "r9.2-validation-1",
@@ -124,6 +152,10 @@ def build(exp: Path, analysis: dict | None) -> dict:
                 ),
                 "limitations": ["a candidate model: experimental until a reviewed promotion"],
             }
+            summary, texts = _challenge_limitation(q, challenge)
+            if summary:
+                proj["numbers"]["attempts_aware_baseline_challenge"] = summary
+                proj["limitations"] += texts
         elif advanced:
             method = ref
             proj = {
@@ -177,15 +209,28 @@ def build(exp: Path, analysis: dict | None) -> dict:
             # Ability is latent: it is never "confirmed", whatever the model's forecasts did on the holdout. The
             # inferred record is capped at development_only (the forecast skill of the same model is stated in
             # `numbers` and on the projected record). Amendment 3 to the pre-registration.
+            hold_native = (hold_met["overall"].get(chosen, {}).get("native_interval", {}) if hold_met else {}).get("coverage")
+            extra_limits = [
+                "ability is latent: the estimate is validated only by what it predicts",
+                "attempts are treated only as precision; that volume is itself information about ability is not used, so players who shoot rarely lean on a league curve that is too high — inferred values below reliability 0.30 are withheld",
+            ]
+            if chosen not in confirmed:
+                extra_limits.append(
+                    f"this model's own forecasts were not confirmed against the baseline on the holdout ({'a re-read' if reread else 'first read'}); "
+                    "the ability estimate is served on the development-only non-inferiority and calibration rule"
+                )
+            if hold_native is not None and not (COVERAGE_BAND[0] <= hold_native <= COVERAGE_BAND[1]):
+                extra_limits.append(f"the model's own predictive interval covered {hold_native:.3f} of holdout outcomes, outside the pre-registered band {COVERAGE_BAND}")
             registry["quantities"][q]["inferred"] = {
                 "method": chosen, "tier": "experimental", "evaluation_status": "development_only",
                 "evaluation_ref": dev_dir.name,
-                "numbers": {**numbers(chosen), "predictive_interval_coverage_development": overall[chosen]["native_interval"]["coverage"]},
+                "numbers": {**numbers(chosen), "predictive_interval_coverage_development": overall[chosen]["native_interval"]["coverage"], "predictive_interval_coverage_holdout": hold_native},
                 "reason": (
                     f"{chosen} carries a posterior of ability; its own forecasts are {overall[chosen]['mae'] / overall[ref]['mae'] - 1:+.1%} vs the reference "
-                    "on development and its predictive interval is calibrated out of time. This is evidence of predictive validity, not a measurement of ability"
+                    f"on development and its predictive interval covered {overall[chosen]['native_interval']['coverage']:.1%} of development outcomes (band {COVERAGE_BAND}). "
+                    "This is evidence of predictive validity on players who later qualify, not a measurement of ability"
                 ),
-                "limitations": ["ability is latent: the estimate is validated only by what it predicts"],
+                "limitations": extra_limits,
             }
         else:
             registry["quantities"][q]["inferred"] = {
@@ -208,11 +253,14 @@ def main() -> None:
     ap.add_argument("--analysis")
     ap.add_argument("--results-out", required=True)
     ap.add_argument("--registry-out", required=True)
+    ap.add_argument("--challenge", help="baseline_challenge.json (development-only attempts-aware baseline challenge)")
     ap.add_argument("--sensitivity-dir", help="runs made with --eval-min-target-* (copied as sensitivity-*; not used by the registry)")
     args = ap.parse_args()
     exp = Path(args.exp_dir)
     analysis = json.loads(Path(args.analysis).read_text()) if args.analysis else None
-    registry = build(exp, analysis)
+    challenge_path = Path(args.challenge) if args.challenge else None
+    challenge = json.loads(challenge_path.read_text()) if challenge_path and challenge_path.exists() else None
+    registry = build(exp, analysis, challenge)
     Path(args.registry_out).write_text(json.dumps(registry, indent=2, sort_keys=True) + "\n")
     out = Path(args.results_out)
     out.mkdir(parents=True, exist_ok=True)

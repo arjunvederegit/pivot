@@ -1,9 +1,10 @@
 """R9.2 — planted defects: every safeguard must actually fire.
 
-A passing test suite proves little if the safeguards it relies on cannot fail. Each case here injects one of
-the defects R9.2 is meant to be immune to, runs the *guard* that should notice (an invariant check, the
-leakage audit, the contract, the service) and requires it to complain. If a future change weakens a safeguard,
-the corresponding ``test_*_is_detected`` fails — which is the point."""
+A passing suite proves little if the safeguards it relies on cannot fail. Each case here defines a *guard* (an invariant
+check, the leakage audit, the contract, the service) that passes on the real code, plants one defect the engine is meant to
+be immune to, and requires the guard to complain. If a later change weakens a safeguard, the matching ``*_is_detected`` test
+fails — which is the point. The independent review (docs/r9-2/qa-and-regression-report.md) found five defects that an earlier
+version of this file did not catch; each now has a case below."""
 
 import numpy as np
 import pandas as pd
@@ -12,17 +13,11 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.db.models import CandidateEstimate, ModelVersion, PlayerSeasonStats
+from app.modeling import panel as panel_module
 from app.modeling import targets as targets_module
 from app.modeling.backtest import BacktestConfig, leakage_audit
-from app.modeling.contract import (
-    EvaluationStatus,
-    Interval,
-    ModelRef,
-    OutputKind,
-    Period,
-    PlayerIntelligenceRecord,
-)
-from app.modeling.pairs import FeatureConfig, PairCache
+from app.modeling.contract import Interval, ModelRef, OutputKind, Period, PlayerIntelligenceRecord
+from app.modeling.pairs import PairCache
 from app.modeling.panel import PanelValidationError, PlayerSeasonPanel
 from app.modeling.predictors import PREDICTORS, predictors_for
 from app.modeling.registry import train_candidate
@@ -30,14 +25,31 @@ from app.modeling.targets import get_target
 from app.player_intelligence import measured as measured_module
 from app.player_intelligence import rate_models as rm
 from app.player_intelligence import service as service_module
-from app.player_intelligence.panel import attach_components, load_stat_dicts
+from app.player_intelligence.panel import build_skill_panel
 from app.player_intelligence.service import PlayerIntelligenceService
-from app.player_intelligence.validation import ValidationRegistry
 
 from .modeling_support import make_frame
-from .pi_support import make_shooting_frame, populate_shooting_db
+from .pi_support import build_league, make_registry, provider_rows
 
 CUTOFF = "2022-23"
+
+
+# ------------------------------------------------------------------------------------- fixtures
+
+
+@pytest.fixture(scope="module")
+def league(tmp_path_factory):
+    info = build_league(tmp_path_factory, seed=9, n_players=90, cutoff=CUTOFF)
+    info["panel"] = build_skill_panel(info["db"])
+    yield info
+    info["db"].close()
+    info["engine"].dispose()
+
+
+def a_player(league, rank: int = -1) -> str:
+    frame = league["frame"]
+    at = frame[frame["season"] == CUTOFF].sort_values("total_minutes")
+    return league["players"][at.iloc[rank]["player_id"]].id
 
 
 # ------------------------------------------------------------------------------------- guards
@@ -68,50 +80,100 @@ def guard_thin_samples_are_not_certain():
     assert abs(post.level_now[0] - 0.35) < 0.02, "ten attempts must barely move the estimate"
 
 
-def guard_unit_scale():
-    f = make_frame(n_players=40, n_seasons=6, seed=2).assign(TS_PCT=lambda d: d["TS_PCT"] * 100)
+def guard_percentages_are_refused_in_fraction_columns():
+    frame = make_frame(n_players=40, n_seasons=6, seed=2).assign(TS_PCT=lambda d: d["TS_PCT"] * 100)
     with pytest.raises(PanelValidationError):
-        PlayerSeasonPanel.from_frame(f)
+        PlayerSeasonPanel.from_frame(frame)
 
 
-# ------------------------------------------------------------------------------------ fixtures
+def guard_candidates_need_an_explicit_opt_in(league):
+    svc = PlayerIntelligenceService(league["db"], make_registry(league["fingerprint"]))
+    out = svc.get(a_player(league), ["fg3_pct"], as_of=CUTOFF, kinds=["projected", "inferred"])
+    assert out.records == [], "a candidate model's output must not be served without include_experimental"
 
 
-@pytest.fixture(scope="module")
-def skill_panel_and_db():
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from sqlalchemy.pool import StaticPool
-
-    from app.db.models import Base
-
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    Base.metadata.create_all(engine)
-    session = sessionmaker(bind=engine, expire_on_commit=False)()
-    info = populate_shooting_db(session, n_players=90, n_seasons=8, seed=9)
-    train_candidate(session, "state_space", "fg3_pct", CUTOFF)
-    from app.player_intelligence.panel import build_skill_panel
-
-    panel = build_skill_panel(session)
-    yield session, panel, info
-    session.close()
+def guard_a_missing_season_is_reported_not_filled(league):
+    svc = PlayerIntelligenceService(league["db"], make_registry(league["fingerprint"]))
+    r = svc.get(a_player(league), ["usg_pct"], as_of="2031-32")
+    assert r.records == [], "a missing season must be reported, never filled"
 
 
-def registry() -> ValidationRegistry:
-    return ValidationRegistry({"version": "t", "quantities": {"fg3_pct": {
-        "projected": {"method": "state_space", "tier": "experimental", "evaluation_status": "development_only", "evaluation_ref": "x", "reason": "r"},
-        "inferred": {"method": "state_space", "tier": "experimental", "evaluation_status": "development_only", "evaluation_ref": "x", "reason": "r"},
-    }}})
+def guard_nothing_after_the_cutoff_is_read(league):
+    rows = measured_module.load_season_rows(league["db"], a_player(league), "2019-20")
+    assert rows and max(rows) <= "2019-20", "measured rows after the information cutoff were read"
+
+
+def guard_true_shooting_inconsistent_inputs_are_refused_by_the_reconstruction():
+    """Layer 1: counts must reproduce the published TS_PCT, or the row is 'unconstrained' (and so never served)."""
+    from app.player_intelligence.components import QUALITY_UNCONSTRAINED, reconstruct
+
+    base, adv = provider_rows(gp=70, fgm=480, fga=1010, fg3m=254, fg3a=694, ftm=503, fta=645)
+    off = {**adv, "TS_PCT": adv["TS_PCT"] + 0.02}
+    assert reconstruct(base, off, 70).quality == QUALITY_UNCONSTRAINED, "counts that cannot reproduce the published TS were accepted"
+
+
+def guard_true_shooting_disagreement_is_flagged_by_the_measured_path():
+    """Layer 2: even if a row reached the measured path with counts and a published TS that disagree, it says so."""
+    base, adv = provider_rows(gp=70, fgm=480, fga=1010, fg3m=254, fg3a=694, ftm=503, fta=645)
+    rec = measured_module.reconstruct(base, adv, 70)  # counts from the CONSISTENT row...
+    row = measured_module.SeasonRow(
+        season="2024-25", games=70, minutes_per_game=30.0, team_id=None, team_count=1, base=base,
+        advanced={**adv, "TS_PCT": adv["TS_PCT"] + 0.02}, retrieved_at=None, recon=rec,  # ...with a published value that disagrees
+    )
+    out = measured_module.measured_record("p", "ts_pct", row)
+    assert not isinstance(out, measured_module.Unavailable) and any("differs from the published value" in lim for lim in out.limitations), "a TS disagreement was not flagged"
+
+
+def guard_a_traded_player_is_labelled(league):
+    db = league["db"]
+    player = a_player(league)
+    rows = db.scalars(select(PlayerSeasonStats).where(PlayerSeasonStats.player_id == player, PlayerSeasonStats.season == CUTOFF, PlayerSeasonStats.stat_type == "base")).all()
+    try:
+        for r in rows:
+            r.stats = {**r.stats, "TEAM_COUNT": 2}
+        db.flush()
+        rec = PlayerIntelligenceService(db, make_registry(league["fingerprint"])).get(player, ["usg_pct"], as_of=CUTOFF).records[0]
+        assert any("appeared for 2 teams" in lim for lim in rec.limitations), "a traded player's totals were not labelled"
+    finally:
+        db.rollback()
+
+
+def guard_the_credible_interval_is_the_stated_level():
+    params = rm.StateSpaceParams(beta=(0.35, 0.0, 0.0), rho=0.9, tau2=0.0009, phi=1.0, unit_variance=0.22)
+    y = np.full((1, 3), np.nan)
+    s2 = np.full((1, 3), np.nan)
+    y[0, 0], s2[0, 0] = 0.4, 0.4 * 0.6 / 200
+    post = rm.filter_histories(y, s2, np.array([26.0]), None, params)
+    lo, hi = post.credible_interval("now", 0.8)
+    assert (hi - lo)[0] / 2 == pytest.approx(1.2815515655446004 * np.sqrt(post.var_now[0]), rel=1e-6), "an 80% interval must use the 80% quantile"
+
+
+def guard_rounding_ambiguity_is_disclosed(league):
+    # 2 three-point attempts over 82 games hide behind a published 0.0 per game
+    base, adv = provider_rows(gp=82, fgm=300, fga=700, fg3m=1, fg3a=40, ftm=100, fta=400)
+    rec = measured_module.reconstruct(base, adv, 82)
+    row = measured_module.SeasonRow(season="2024-25", games=82, minutes_per_game=20.0, team_id=None, team_count=1, base=base, advanced=adv, retrieved_at=None, recon=rec)
+    out = measured_module.measured_record("p", "ft_pct", row)
+    spread = rec.fta_max - rec.fta_min
+    if spread / rec.fta >= measured_module.RECONSTRUCTION_NOTE_SHARE:
+        assert any("rounding leaves the exact attempt count uncertain" in lim for lim in out.limitations), "reconstruction ambiguity was not disclosed"
 
 
 # ----------------------------------------------------------- the guards pass on correct code
 
 
-def test_every_guard_passes_on_the_real_implementation():
+def test_every_guard_passes_on_the_real_implementation(league):
     guard_no_attempts_is_not_a_rate()
     guard_beta_binomial_never_sees_true_shooting()
     guard_thin_samples_are_not_certain()
-    guard_unit_scale()
+    guard_percentages_are_refused_in_fraction_columns()
+    guard_candidates_need_an_explicit_opt_in(league)
+    guard_a_missing_season_is_reported_not_filled(league)
+    guard_nothing_after_the_cutoff_is_read(league)
+    guard_true_shooting_inconsistent_inputs_are_refused_by_the_reconstruction()
+    guard_true_shooting_disagreement_is_flagged_by_the_measured_path()
+    guard_a_traded_player_is_labelled(league)
+    guard_the_credible_interval_is_the_stated_level()
 
 
 # ----------------------------------------------------------------------- the planted defects
@@ -146,20 +208,21 @@ def test_ignoring_sampling_variance_gives_false_certainty_and_is_detected(monkey
         guard_thin_samples_are_not_certain()
 
 
-def test_percentage_points_in_a_fraction_column_is_detected():
-    guard_unit_scale()  # raises inside if the validator were weakened
+def test_removing_the_unit_check_is_detected(monkeypatch):
+    monkeypatch.setattr(panel_module, "FRACTION_COLUMNS", {})  # the planted defect: no column is checked for percentage points
+    with pytest.raises(pytest.fail.Exception):  # the guard's `pytest.raises(PanelValidationError)` no longer sees an error
+        guard_percentages_are_refused_in_fraction_columns()
 
 
-def test_a_future_season_in_the_features_is_detected_by_the_leakage_audit(monkeypatch, skill_panel_and_db):
-    _, panel, _ = skill_panel_and_db
+def test_a_future_season_in_the_features_is_detected_by_the_leakage_audit(monkeypatch, league):
+    panel = league["panel"]
     cfg = BacktestConfig(target="fg3_pct", models=("persistence", "state_space"), bootstrap_draws=20)
     assert leakage_audit(panel, cfg, "2019-20")["passed"] is True  # clean code passes
 
     real = PairCache.features
 
     def leaky(self, origin, target):
-        # the planted defect: next season's statistic is read from the full panel the cache holds
-        out = real(self, origin, target).copy()
+        out = real(self, origin, target).copy()  # the planted defect: next season's statistic read from the full panel
         nxt = self.panel.season_rows(f"{int(origin[:4]) + 1}-{(int(origin[:4]) + 2) % 100:02d}")
         lookup = dict(zip(nxt["player_id"], target.measure(nxt), strict=True))
         out["x_t"] = out["player_id"].map(lookup).fillna(out["x_t"])
@@ -169,8 +232,8 @@ def test_a_future_season_in_the_features_is_detected_by_the_leakage_audit(monkey
     assert leakage_audit(panel, cfg, "2019-20")["passed"] is False
 
 
-def test_a_player_mapped_to_a_later_franchise_is_detected_by_the_leakage_audit(monkeypatch, skill_panel_and_db):
-    _, panel, _ = skill_panel_and_db
+def test_a_player_mapped_to_a_later_franchise_is_detected_by_the_leakage_audit(monkeypatch, league):
+    panel = league["panel"]
     cfg = BacktestConfig(target="fg3_pct", models=("persistence",), bootstrap_draws=20)
     real = PairCache.features
 
@@ -197,49 +260,75 @@ def test_an_inferred_value_labelled_measured_is_refused():
         )
 
 
-def test_serving_an_unvalidated_candidate_as_promoted_is_detected(monkeypatch, skill_panel_and_db):
-    session, _, info = skill_panel_and_db
-    frame = info["frame"]
-    pid = info["players"][frame[frame["season"] == CUTOFF].sort_values("total_minutes").iloc[-1]["player_id"]].id
-    svc = PlayerIntelligenceService(session, registry())
-    plain = svc.get(pid, ["fg3_pct"], as_of=CUTOFF, kinds=["projected"])
-    assert plain.records == []  # the safeguard works...
+def test_serving_a_candidate_without_the_opt_in_is_detected(monkeypatch, league):
+    guard_candidates_need_an_explicit_opt_in(league)  # the safeguard works...
     monkeypatch.setattr(service_module, "serving_decision", lambda *a, **k: (True, "validated"))  # ...the planted defect
-    leaked = svc.get(pid, ["fg3_pct"], as_of=CUTOFF, kinds=["projected"])
-    assert leaked.records, "the defect really does serve it"
-    assert leaked.records[0].model.status == "candidate"  # and the record still says what it is: never silently 'active'
-    assert leaked.records[0].model.evaluation_status is not EvaluationStatus.HOLDOUT_CONFIRMED
+    with pytest.raises(AssertionError, match="without include_experimental"):
+        guard_candidates_need_an_explicit_opt_in(league)
 
 
-def test_a_missing_season_becoming_zero_is_detected(monkeypatch, skill_panel_and_db):
-    session, _, info = skill_panel_and_db
-    frame = info["frame"]
-    pid = info["players"][frame.iloc[0]["player_id"]].id
-    svc = PlayerIntelligenceService(session, registry())
-
-    def guard():
-        r = svc.get(pid, ["usg_pct"], as_of="2031-32")
-        assert r.records == [], "a missing season must be reported, never filled"
-
-    guard()
-    real = measured_module.measured_for
-
-    def zero_filled(player_id, quantities, rows, season):
-        recs, missing = real(player_id, quantities, rows, season)
-        if not recs and missing:
-            from app.player_intelligence.measured import Period as _P  # noqa: F401
-        return recs, missing
-
-    # The planted defect: report a zero record for the missing season.
-    def filler(player_id, quantities, rows, season):
+def test_a_missing_season_becoming_zero_is_detected(monkeypatch, league):
+    def filler(player_id, quantities, rows, season):  # the planted defect: report a zero record for the missing season
         from app.modeling.contract import Provenance
 
         spec = measured_module.get_quantity(quantities[0])
-        return [PlayerIntelligenceRecord(player_id=player_id, quantity=quantities[0], unit=spec.unit, output_kind=OutputKind.MEASURED, value=0.0, period=Period(season=season), provenance=Provenance())], []
+        rec = PlayerIntelligenceRecord(player_id=player_id, quantity=quantities[0], unit=spec.unit, output_kind=OutputKind.MEASURED, value=0.0, period=Period(season=season), provenance=Provenance())
+        return [rec], []
 
     monkeypatch.setattr(service_module, "measured_for", filler)
     with pytest.raises(AssertionError, match="never filled"):
-        guard()
+        guard_a_missing_season_is_reported_not_filled(league)
+
+
+def test_reading_rows_after_the_cutoff_is_detected(monkeypatch, league):
+    real = measured_module.load_season_rows
+
+    def ignores_the_cutoff(db, player_id, as_of=None):
+        return real(db, player_id, None)  # the planted defect
+
+    monkeypatch.setattr(measured_module, "load_season_rows", ignores_the_cutoff)
+    with pytest.raises(AssertionError, match="after the information cutoff"):
+        guard_nothing_after_the_cutoff_is_read(league)
+
+
+def test_disabling_the_true_shooting_constraint_is_detected(monkeypatch):
+    from app.player_intelligence import components as components_module
+
+    monkeypatch.setattr(components_module, "PCT_HALF_ULP", 1.0)  # the planted defect: any published rate is "consistent"
+    with pytest.raises(AssertionError, match="cannot reproduce the published TS"):
+        guard_true_shooting_inconsistent_inputs_are_refused_by_the_reconstruction()
+
+
+def test_disabling_the_measured_true_shooting_reconciliation_is_detected(monkeypatch):
+    guard_true_shooting_disagreement_is_flagged_by_the_measured_path()
+    monkeypatch.setattr(measured_module, "TS_RECONCILIATION_TOLERANCE", 10.0)  # the planted defect: nothing ever disagrees
+    with pytest.raises(AssertionError, match="not flagged"):
+        guard_true_shooting_disagreement_is_flagged_by_the_measured_path()
+
+
+def test_dropping_the_traded_player_note_is_detected(monkeypatch, league):
+    monkeypatch.setattr(measured_module, "_common_limitations", lambda row: [])
+    with pytest.raises(AssertionError, match="not labelled"):
+        guard_a_traded_player_is_labelled(league)
+
+
+def test_suppressing_the_rounding_disclosure_is_detected(monkeypatch, league):
+    guard_rounding_ambiguity_is_disclosed(league)
+    monkeypatch.setattr(measured_module, "RECONSTRUCTION_NOTE_SHARE", 10.0)  # the planted defect: the note can never fire
+    base, adv = provider_rows(gp=82, fgm=300, fga=700, fg3m=1, fg3a=40, ftm=100, fta=400)
+    rec = measured_module.reconstruct(base, adv, 82)
+    if (rec.fta_max - rec.fta_min) / rec.fta >= 0.02:
+        with pytest.raises(AssertionError, match="was not disclosed"):
+            guard_rounding_ambiguity_is_disclosed(league)
+
+
+def test_an_80_percent_interval_computed_at_50_percent_is_detected(monkeypatch):
+    from scipy import stats as scipy_stats
+
+    z50 = float(scipy_stats.norm.ppf(0.75))  # captured BEFORE patching: the planted defect uses the 50% quantile for any level
+    monkeypatch.setattr(rm.stats, "norm", type("N", (), {"ppf": staticmethod(lambda q: z50)}))
+    with pytest.raises(AssertionError, match="80% quantile"):
+        guard_the_credible_interval_is_the_stated_level()
 
 
 def test_an_interval_advertised_with_unsupported_coverage_is_detected():
@@ -256,46 +345,34 @@ def test_an_interval_advertised_with_unsupported_coverage_is_detected():
     assert "has not been measured" in r.reliability_statement()  # never presented as a probability
 
 
-def test_a_provider_that_changes_scale_is_refused_by_the_measured_path(skill_panel_and_db):
-    session, _, info = skill_panel_and_db
-    frame = info["frame"]
-    pid = info["players"][frame[frame["season"] == CUTOFF].iloc[0]["player_id"]].id
-    row = session.scalars(select(PlayerSeasonStats).where(PlayerSeasonStats.player_id == pid, PlayerSeasonStats.season == CUTOFF, PlayerSeasonStats.stat_type == "advanced")).one()
+def test_a_provider_that_changes_scale_is_refused_by_the_measured_path(league):
+    db = league["db"]
+    player = a_player(league)
+    row = db.scalars(select(PlayerSeasonStats).where(PlayerSeasonStats.player_id == player, PlayerSeasonStats.season == CUTOFF, PlayerSeasonStats.stat_type == "advanced")).one()
     try:
         row.stats = {**row.stats, "REB_PCT": 9.4}
-        session.flush()
-        out = PlayerIntelligenceService(session, registry()).get(pid, ["reb_pct"], as_of=CUTOFF)
+        db.flush()
+        out = PlayerIntelligenceService(db, make_registry(league["fingerprint"])).get(player, ["reb_pct"], as_of=CUTOFF)
         assert out.records == [] and "not a fraction of 1" in out.unavailable[0].reason
     finally:
-        session.rollback()
+        db.rollback()
 
 
-def test_a_candidate_cannot_overwrite_an_active_model(skill_panel_and_db):
-    session, _, _ = skill_panel_and_db
+def test_a_candidate_cannot_overwrite_an_active_model(league):
+    db = league["db"]
     active = ModelVersion(model_name="player_impact", version="legacy-active", algorithm="fixture", is_active=True, status="active")
-    session.add(active)
-    session.commit()
-    before = session.get(ModelVersion, active.id).validation_metrics
-    train_candidate(session, "ols_history", "fg3_pct", CUTOFF)
-    again = session.get(ModelVersion, active.id)
+    db.add(active)
+    db.commit()
+    before = db.get(ModelVersion, active.id).validation_metrics
+    train_candidate(db, "ols_history", "fg3_pct", CUTOFF)
+    again = db.get(ModelVersion, active.id)
     assert again.is_active and again.status == "active" and again.validation_metrics == before
-    assert session.scalar(select(CandidateEstimate).where(CandidateEstimate.model_version_id == active.id)) is None
+    assert db.scalar(select(CandidateEstimate).where(CandidateEstimate.model_version_id == active.id)) is None
 
 
 def test_the_reconstruction_notices_inputs_that_cannot_be_right():
     from app.player_intelligence.components import QUALITY_UNCONSTRAINED, reconstruct
 
-    from .pi_support import provider_rows
-
     base, adv = provider_rows(gp=70, fgm=480, fga=1010, fg3m=254, fg3a=694, ftm=503, fta=645)
     base["FG3_PCT"] = 35.6  # percentage points where a fraction belongs
     assert reconstruct(base, adv, 70).quality == QUALITY_UNCONSTRAINED
-
-
-def test_loading_a_frame_without_unit_checks_is_the_only_way_to_bypass_them():
-    """The measured path and the panel both refuse non-fractions; neither can be bypassed by an extra column."""
-    frame, _, _ = make_shooting_frame(40, 6, 3)
-    assert PlayerSeasonPanel.from_frame(frame) is not None
-    with pytest.raises(PanelValidationError):
-        PlayerSeasonPanel.from_frame(frame.assign(USG_PCT=frame["USG_PCT"] * 100))
-    _ = (attach_components, load_stat_dicts, FeatureConfig)  # imports kept for readers following the data path

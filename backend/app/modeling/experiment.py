@@ -219,6 +219,12 @@ PREREGISTRATION_R92: dict[str, Any] = {
             "reason": "the state-space candidates read up to ten seasons and ols_history reads three: a gain over it could be 'more history' rather than 'attempts-aware weighting' (the flaw R9.1's review found in its own first baselines). The diagnostic separates the two. Result: ols_history_long differs from ols_history by +0.01% (3P), -0.16% (FT), +0.24% (TS); state_space_h3 keeps 83% / 78% / 100% of the gain. The reference baseline and every decision stand",
             "direction": "neutral: a diagnostic that could have weakened the claims and did not; not part of the rule",
         },
+        {
+            "id": 5, "when": "after QA round 1 (independent statistical review); development folds only; no holdout was re-read",
+            "change": "(a) attempts-aware simple baselines (ols_attempts, ols_eb, each with role covariates) and a fixed-variance state-space variant were added as opt-in diagnostics, and the pre-registered checks were re-applied against the strongest of them; (b) inferred ability is withheld below reliability 0.30 (chosen from scripts/r9_2_selection_check.py); (c) the documents state that the 'confirmed' three-point and free-throw projections are confirmed against ols_history only",
+            "reason": "round 1 showed ols_history ignores how much evidence each player has, so it is not the strongest simple baseline for a made/attempted rate: against an attempts-aware regression the served three-point and free-throw models are -1.4% to -1.5% (below the 2% floor; development only); and that the inferred estimate over-predicts low-evidence players (+1.2 to +3.5 points below reliability 0.30). The reference baseline and every recorded decision stand; claims are restated and a serving floor added",
+            "direction": "more conservative: lowers what is claimed and what is served",
+        },
     ],
 }
 
@@ -465,6 +471,10 @@ def run_stage(
             raise ValueError("a holdout read must be recorded: out_dir is required")
         if development_dir is None:
             raise ValueError("a holdout run needs the development run it confirms (development_dir)")
+        missing_ledgers = [str(path) for path in protocol.prior_ledgers if not path.exists()]
+        if missing_ledgers:
+            # A ledger that is declared but absent must not silently turn the re-read guard off.
+            raise HoldoutPrerequisiteError(f"the prior holdout ledger(s) {missing_ledgers} do not exist; refusing to read a holdout without them")
         dev_decisions = load_development_decisions(development_dir, snapshot, target_name, protocol.version)
         models = tuple(
             sorted(
@@ -476,7 +486,7 @@ def run_stage(
         origins = tuple(hold)
         ledger = out_dir / "holdout_ledger.json"
         entries = json.loads(ledger.read_text()) if ledger.exists() else []
-        earlier = [e for path in protocol.prior_ledgers if path.exists() for e in json.loads(path.read_text())]
+        earlier = [e for path in protocol.prior_ledgers for e in json.loads(path.read_text())]
         if any(e["target"] == target_name for e in entries + earlier) and not acknowledge_reread:
             raise HoldoutReadRefused(
                 f"the {target_name} holdout was already read; pass acknowledge_reread=True to read it again "

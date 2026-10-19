@@ -31,6 +31,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from .pairs import features_only
 from .predictors import FitContext, Predictor
 
 
@@ -68,14 +69,14 @@ def loto_residuals(predictor: Predictor, train: pd.DataFrame, ctx: FitContext) -
     parts = []
     if len(origins) < 2:
         fitted = predictor.fit(train, ctx)
-        pred = fitted.predict(train)
+        pred = fitted.predict(features_only(train))
         return pd.DataFrame(
             {"resid": train["y"].to_numpy(dtype=float) - pred, "exposure": train["window_exposure"].to_numpy(dtype=float)}
         )
     for held in origins:
         inner = train[train["origin"] != held]
         val = train[train["origin"] == held]
-        pred = predictor.fit(inner, ctx).predict(val)
+        pred = predictor.fit(inner, ctx).predict(features_only(val))
         parts.append(
             pd.DataFrame(
                 {

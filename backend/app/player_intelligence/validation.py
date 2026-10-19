@@ -69,6 +69,14 @@ class ValidationRegistry:
             numbers=entry.get("numbers", {}), limitations=list(entry.get("limitations", [])),
         )
 
+    def run_ids(self, quantity: str) -> list[str]:
+        """The experiment runs (development, holdout) whose artifacts this registry's evidence for ``quantity`` came from."""
+        src = (self.raw.get("generated_from", {}) or {}).get(quantity, {}) or {}
+        return [v for v in (src.get("development"), src.get("holdout")) if v]
+
+    def data_fingerprint(self, quantity: str) -> str | None:
+        return ((self.raw.get("generated_from", {}) or {}).get(quantity, {}) or {}).get("data_fingerprint")
+
     def served_methods(self, quantity: str, kind: str) -> list[str]:
         f = self.facts(quantity, kind)
         return [f.method] if f.method and f.tier != TIER_WITHHELD else []
@@ -87,7 +95,11 @@ def status_from_stored(stored: str | None) -> EvaluationStatus:
     if not stored:
         return EvaluationStatus.UNEVALUATED
     if stored.startswith("stale:"):
-        return EvaluationStatus.UNEVALUATED
+        # The data changed since the experiment ran, so its evidence no longer describes this model. That can only
+        # LOWER a status: a stale 'passed' is unevaluated, but a stale 'failed' is still failed (staleness must never
+        # lift a model out of a refusal).
+        inner = status_from_stored(stored[len("stale:"):])
+        return EvaluationStatus.FAILED if inner is EvaluationStatus.FAILED else EvaluationStatus.UNEVALUATED
     return {
         "development_only": EvaluationStatus.DEVELOPMENT_ONLY,
         "holdout_confirmed": EvaluationStatus.HOLDOUT_CONFIRMED,

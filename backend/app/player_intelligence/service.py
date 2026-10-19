@@ -28,8 +28,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import exists, select
+from sqlalchemy.orm import Session, defer
 
 from app.canonical.seasons import InvalidSeasonError, Season
 from app.core.errors import DomainError, NotFoundError
@@ -67,8 +67,12 @@ from .validation import (
 )
 
 ALL_KINDS = (OutputKind.MEASURED, OutputKind.INFERRED, OutputKind.PROJECTED)
-#: Below this reliability an ability estimate is flagged as mostly the league curve (it is still served, with its reliability).
-LOW_RELIABILITY = 0.20
+#: Inferred ability is withheld below this reliability. Chosen from `results/selection_check.json` (development folds):
+#: for players who took any attempt the next season, the model over-predicted by +1.2 to +3.5 points in every reliability bin
+#: below 0.30 for three-point and free-throw accuracy and by < 0.6 points in every bin above it. Volume carries information
+#: about ability (coaches let good shooters shoot) that a model treating attempts only as precision cannot use, so a
+#: low-evidence estimate is mostly the league curve — and the curve is too high for low-volume players.
+INFERRED_MIN_RELIABILITY = 0.30
 
 
 class InvalidRequestError(DomainError):
@@ -127,6 +131,9 @@ class PlayerIntelligenceService:
     def __init__(self, db: Session, registry: ValidationRegistry | None = None) -> None:
         self.db = db
         self.registry = registry or load_registry()
+        #: Set only inside ``get_many``: a batch resolves each model version once. A single ``get`` never caches, so
+        #: a model stored (or rejected) a moment ago is always seen.
+        self._cache: dict[tuple, Any] | None = None
 
     # ------------------------------------------------------------------ catalog
 
@@ -237,11 +244,17 @@ class PlayerIntelligenceService:
         Deliberately a loop over ``get``: every consumer, one player or fifteen, goes through the same code, so
         a roster view and a player view can never disagree about a number. ``as_of`` is resolved once so the
         whole batch shares one information cutoff."""
+        wanted = list(dict.fromkeys(player_ids))
+        known = set(self.db.scalars(select(Player.id).where(Player.id.in_(wanted))).all()) if wanted else set()
+        unknown = [p for p in wanted if p not in known]
+        if unknown:
+            raise NotFoundError(f"no such player id(s): {unknown}; nothing was computed")
         cutoff = as_of or self.latest_season()
-        return {
-            pid: self.get(pid, quantities, cutoff, kinds, model_version, include_experimental)
-            for pid in dict.fromkeys(player_ids)
-        }
+        self._cache = {}  # versions and ability presence are resolved once per (quantity, cutoff) for the whole batch
+        try:
+            return {pid: self.get(pid, quantities, cutoff, kinds, model_version, include_experimental) for pid in wanted}
+        finally:
+            self._cache = None
 
     # ------------------------------------------------------------------ internals
 
@@ -274,25 +287,82 @@ class PlayerIntelligenceService:
                 }
         return ctx
 
-    def _find_version(self, quantity: str, kind: OutputKind, cutoff: str, method: str | None, model_version: str | None) -> ModelVersion | None:
-        name = f"{CANDIDATE_MODEL_PREFIX}{quantity}"
-        versions = self.db.scalars(select(ModelVersion).where(ModelVersion.model_name == name)).all()
-        if model_version is not None:
-            return next((v for v in versions if v.version == model_version), None)
-        fits = [v for v in versions if (v.config or {}).get("origin") == cutoff and (v.config or {}).get("spec") == method]
-        if kind is OutputKind.INFERRED:
-            # only a model that stored a posterior of ability can answer an inferred question
-            fits = [v for v in fits if self._has_ability(v.id, quantity, cutoff)]
-        return max(fits, key=lambda v: v.trained_at or datetime.min, default=None)
+    def _versions(self, quantity: str) -> list[ModelVersion]:
+        key = ("versions", quantity)
+        if self._cache is not None and key in self._cache:
+            return self._cache[key]  # type: ignore[no-any-return]
+        rows = list(
+            self.db.scalars(
+                select(ModelVersion).where(ModelVersion.model_name == f"{CANDIDATE_MODEL_PREFIX}{quantity}").options(defer(ModelVersion.lineage))
+            ).all()
+        )
+        if self._cache is not None:
+            self._cache[key] = rows
+        return rows
 
     def _has_ability(self, version_id: str, quantity: str, cutoff: str) -> bool:
-        found = self.db.scalar(
-            select(func.count()).select_from(CandidateEstimate).where(
-                CandidateEstimate.model_version_id == version_id, CandidateEstimate.season == cutoff,
-                CandidateEstimate.target == f"{quantity}{ABILITY_SUFFIX}",
-            ).limit(1)
+        key = ("ability", version_id, cutoff)
+        if self._cache is not None and key in self._cache:
+            return bool(self._cache[key])
+        found = bool(
+            self.db.scalar(
+                select(
+                    exists().where(
+                        CandidateEstimate.model_version_id == version_id, CandidateEstimate.season == cutoff,
+                        CandidateEstimate.target == f"{quantity}{ABILITY_SUFFIX}",
+                    )
+                )
+            )
         )
-        return bool(found)
+        if self._cache is not None:
+            self._cache[key] = found
+        return found
+
+    def _resolve_version(
+        self, quantity: str, kind: OutputKind, cutoff: str, method: str | None, model_version: str | None
+    ) -> tuple[ModelVersion | None, str | None]:
+        """The stored model that answers this question, or the reason there is none."""
+        versions = self._versions(quantity)
+        if model_version is not None:
+            named = next((v for v in versions if v.version == model_version), None)
+            if named is None:
+                return None, f"no stored model version {model_version!r} exists for {quantity}"
+            trained_at = (named.config or {}).get("origin")
+            if trained_at != cutoff:
+                return None, f"model version {model_version!r} was trained at cutoff {trained_at}, not {cutoff}"
+            if kind is OutputKind.INFERRED and not self._has_ability(named.id, quantity, cutoff):
+                return None, f"model version {model_version!r} stores no ability estimate"
+            return named, None
+        fits = [
+            v for v in versions
+            if (v.config or {}).get("origin") == cutoff and (v.config or {}).get("spec") == method and v.status in ("candidate", "active")
+        ]
+        if kind is OutputKind.INFERRED:
+            fits = [v for v in fits if self._has_ability(v.id, quantity, cutoff)]
+        if not fits:
+            return None, (
+                f"no stored {method or 'model'} output for cutoff {cutoff}: it has not been materialised "
+                "(a read never trains a model); run `make materialise-skills` for this cutoff on a copy of the database"
+            )
+        return max(fits, key=lambda v: v.trained_at or datetime.min), None
+
+    def _registry_applies(self, version: ModelVersion, facts: KindFacts, quantity: str) -> bool:
+        """May the registry's evidence (evaluation status, reference, calibration) be attached to this stored model?
+
+        Only if it IS the model the experiments evaluated: same method, evaluated against one of the registry's source
+        runs, trained under the configuration the experiment used, on the data the experiment saw, and not stale. A
+        stored model that merely shares a method name — trained on other data, or never evaluated — gets its own
+        stored status, not borrowed evidence."""
+        vm = version.validation_metrics or {}
+        raw = vm.get("evaluation_status")
+        if isinstance(raw, str) and raw.startswith("stale:"):
+            return False
+        return bool(
+            facts.method == (version.config or {}).get("spec")
+            and vm.get("experiment") in self.registry.run_ids(quantity)
+            and vm.get("config_matches") is True
+            and vm.get("experiment_data_fingerprint") == self.registry.data_fingerprint(quantity)
+        )
 
     def _model_record(
         self, player_id: str, quantity: str, kind: OutputKind, cutoff: str | None, rows: dict[str, SeasonRow],
@@ -308,30 +378,22 @@ class PlayerIntelligenceService:
             unavailable.append(Unavailable(quantity, k, "no statistics are ingested"))
             return
         facts = self.registry.facts(quantity, k)
-        if facts.tier == TIER_WITHHELD and model_version is None:
+        if facts.tier == TIER_WITHHELD:
+            # Withheld means nobody — naming a model version does not change what the evidence supports.
             unavailable.append(Unavailable(quantity, k, f"withheld: {facts.reason}", season=cutoff))
             return
-        version = self._find_version(quantity, kind, cutoff, facts.method, model_version)
+        version, missing = self._resolve_version(quantity, kind, cutoff, facts.method, model_version)
         if version is None:
-            unavailable.append(Unavailable(
-                quantity, k,
-                f"no stored {facts.method or 'model'} output for cutoff {cutoff}: it has not been materialised "
-                "(a read never trains a model); run `make train-candidate` for this cutoff on a copy of the database",
-                season=cutoff,
-            ))
+            unavailable.append(Unavailable(quantity, k, missing or "no stored model", season=cutoff))
             return
         stored_raw = (version.validation_metrics or {}).get("evaluation_status")
         stored_eval = status_from_stored(stored_raw)
-        # The registry (built from committed experiment artifacts) is authoritative when it covers this
-        # method. A stored 'failed' always blocks, and a stored 'stale:*' (the data changed since the
-        # experiment ran, so its evidence describes other data) always downgrades to unevaluated.
-        evaluation = facts.evaluation_status if facts.method == (version.config or {}).get("spec") else stored_eval
-        stale = isinstance(stored_raw, str) and stored_raw.startswith("stale:")
-        if stale:
-            evaluation = EvaluationStatus.UNEVALUATED
-        # A stored 'failed' (the candidate did not advance, or was not confirmed, as a FORECASTER) blocks its projections.
-        # It does not block an ability estimate: that is governed by its own pre-registered serving rule, already applied
-        # by the registry (non-inferiority of the model's forecasts and calibration of its predictive interval).
+        applies = self._registry_applies(version, facts, quantity)
+        evaluation = facts.evaluation_status if applies else stored_eval
+        # A stored 'failed' (the candidate did not advance, or was not confirmed, as a FORECASTER) blocks its projections,
+        # and a stale 'failed' stays failed. It does not block an ability estimate: that is governed by its own
+        # pre-registered serving rule, already applied by the registry (non-inferiority of the model's forecasts and
+        # calibration of its predictive interval).
         if stored_eval is EvaluationStatus.FAILED and kind is OutputKind.PROJECTED:
             evaluation = EvaluationStatus.FAILED
         allowed, why = serving_decision(version.status, evaluation, include_experimental)
@@ -353,23 +415,34 @@ class PlayerIntelligenceService:
                 season=cutoff,
             ))
             return
-        evidence = est.exposure or 0.0
-        observed = (est.inputs or {}).get("n_observed")
+        inputs = est.inputs or {}
+        evidence = inputs.get("history_exposure", est.exposure) or 0.0
+        observed = inputs.get("n_observed")
         if evidence <= 0 or (observed is not None and observed <= 0):
-            # No attempts in the evidence window: the stored value is the league curve, which is not an estimate of
-            # *this* player. Returning it as one (even with reliability 0) would invent a rating from nothing.
+            # No attempts in any season the model could see: the stored value is the league curve, which is not an
+            # estimate of *this* player. Returning it as one (even with reliability 0) would invent a rating from nothing.
             unavailable.append(Unavailable(
                 quantity, k,
-                f"no {get_target(quantity).exposure_unit} in the three-season evidence window, so there is nothing to infer from "
+                f"no {get_target(quantity).exposure_unit} in any season the model could see, so there is nothing to infer from "
                 "(the league curve is not an estimate of this player)",
                 season=cutoff,
             ))
             return
-        records.append(self._build_record(player_id, quantity, kind, version, est, facts, evaluation, rows.get(cutoff)))
+        if kind is OutputKind.INFERRED and (inputs.get("reliability") or 0.0) < INFERRED_MIN_RELIABILITY:
+            unavailable.append(Unavailable(
+                quantity, k,
+                f"reliability {(inputs.get('reliability') or 0.0):.2f} is below the serving floor of {INFERRED_MIN_RELIABILITY:.2f}: with this little "
+                "evidence the estimate would be mostly the league curve, and that curve over-predicts low-volume players "
+                "(docs/r9-2/shooting-intelligence-methodology.md §7). The measured value is still available",
+                requirement="more attempts (the estimate becomes servable as evidence accumulates)",
+                season=cutoff,
+            ))
+            return
+        records.append(self._build_record(player_id, quantity, kind, version, est, facts, evaluation, rows.get(cutoff), applies))
 
     def _build_record(
         self, player_id: str, quantity: str, kind: OutputKind, version: ModelVersion, est: CandidateEstimate,
-        facts: KindFacts, evaluation: EvaluationStatus, row: SeasonRow | None,
+        facts: KindFacts, evaluation: EvaluationStatus, row: SeasonRow | None, registry_applies: bool,
     ) -> PlayerIntelligenceRecord:
         spec = QUANTITIES[quantity]
         cutoff = est.season
@@ -379,7 +452,8 @@ class PlayerIntelligenceService:
         target = get_target(quantity)
         model = ModelRef(
             name=version.model_name, version=version.version, status=version.status,  # type: ignore[arg-type]
-            evaluation_status=evaluation, evaluation_ref=facts.evaluation_ref,
+            evaluation_status=evaluation,
+            evaluation_ref=facts.evaluation_ref if registry_applies else (version.validation_metrics or {}).get("experiment"),
             methodology=predictor.description if predictor else method,
             feature_definitions=[f"{c}: {target.description}" if c == "x_t" else c for c in (predictor.inputs if predictor else ())],
         )
@@ -394,11 +468,23 @@ class PlayerIntelligenceService:
             },
         )
         inputs = est.inputs or {}
-        attempts = est.exposure
+        if kind is OutputKind.INFERRED:  # the evidence the posterior rests on: every season the filter used
+            attempts, unit = est.exposure, f"{target.exposure_unit} across the seasons the estimate used"
+        else:  # the three-season window that decides who is scored and sets the interval's width
+            attempts, unit = est.exposure, f"{target.exposure_unit} over the three seasons ending at the cutoff"
         sample = Sample(
-            attempts=attempts, unit=f"{target.exposure_unit} over the three seasons ending at the cutoff",
+            attempts=attempts, unit=unit,
             games=row.games if row else None, minutes=row.total_minutes if row else None,
             seasons_used=int(inputs["n_observed"]) if inputs.get("n_observed") is not None else None,
+        )
+        lo_bound, hi_bound = spec.bounds if spec.bounds else (-float("inf"), float("inf"))
+        evidence_note = (
+            []
+            if registry_applies
+            else [
+                "the validation registry's evidence is NOT attached: this stored model was not trained against the committed "
+                "experiments (different data, configuration or never evaluated), so only its own stored evaluation is shown"
+            ]
         )
         shared_assumptions = [
             spec.definition,
@@ -407,6 +493,7 @@ class PlayerIntelligenceService:
         if kind is OutputKind.INFERRED:
             low, high = est.interval_low, est.interval_high
             assert low is not None and high is not None and est.interval_level is not None
+            low, high = max(low, lo_bound), min(high, hi_bound)
             rel = inputs.get("reliability")
             w = inputs.get("weight_on_player_record")
             n_eff = inputs.get("effective_attempts")
@@ -436,18 +523,21 @@ class PlayerIntelligenceService:
                 limitations=[
                     "ability is latent and was never observed: this is an estimate from box-score evidence, not a measurement",
                     "no role or opponent adjustment beyond the age curve (and, for models that use them, the role covariates listed in the methodology)",
+                    "attempts are treated only as precision: that volume itself is information about ability (coaches let good shooters shoot) "
+                    "is not used, so for players who shoot rarely the estimate leans on a league curve that is too high",
                     "the league curve the estimate is pulled toward was fitted on players who later qualified for evaluation "
                     f"(at least {int(cfg.get('features', {}).get('min_target_minutes', 500))} minutes"
                     + (f" and {int(target.min_exposure)} {target.exposure_unit}" if target.min_exposure else "")
                     + " in a following season); a player far outside that group is pulled toward a rotation-level average, "
                     "so a low-reliability estimate should be read as 'little is known', not as a measurement",
-                    *( [f"reliability {rel:.2f} is below {LOW_RELIABILITY:.2f}: the estimate is mostly the league curve, so read it as 'little is known'"]
-                       if rel is not None and rel < LOW_RELIABILITY else [] ),
-                    *facts.limitations,
+                    *(facts.limitations if registry_applies else []),
+                    *evidence_note,
                 ],
             )
         low, high = est.interval_low, est.interval_high
-        attr = facts.numbers.get("attrition", {})
+        if low is not None and high is not None:
+            low, high = max(low, lo_bound), min(high, hi_bound)
+        attr = facts.numbers.get("attrition", {}) if registry_applies else {}
         share = attr.get("share_evaluated_of_scored")
         conditioning = (
             f"the player plays at least {int(cfg.get('features', {}).get('min_target_minutes', 500))} minutes"
@@ -459,7 +549,7 @@ class PlayerIntelligenceService:
             interval = Interval(
                 low=low, high=high, nominal_level=est.interval_level, kind="prediction",
                 method="residual-calibrated: leave-one-transition-out forecast errors, spread modelled by evidence (a + b/attempts), empirical quantile",
-                calibration=facts.calibration,
+                calibration=facts.calibration if registry_applies else None,
                 interpretation=f"a range for the player's observed {spec.label.lower()} next season, given {conditioning}",
             )
         return PlayerIntelligenceRecord(
@@ -472,6 +562,7 @@ class PlayerIntelligenceService:
             limitations=[
                 "a forecast conditional on playing a rotation role; it is not a forecast of whether he will play or of his total contribution"
                 + (f" (only {share:.0%} of players scored at a cutoff met this condition the following season)" if share else ""),
-                *facts.limitations,
+                *(facts.limitations if registry_applies else []),
+                *evidence_note,
             ],
         )

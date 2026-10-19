@@ -46,7 +46,6 @@ MAX_TUPLES = 250_000
 QUALITY_EXACT = "exact"
 QUALITY_BOUNDED = "bounded"
 QUALITY_UNCONSTRAINED = "unconstrained"
-QUALITY_NO_ATTEMPTS = "no_attempts"
 
 
 @dataclass(frozen=True)
@@ -144,13 +143,16 @@ def reconstruct(base: dict[str, Any], advanced: dict[str, Any], gp: int) -> Reco
     feasible: list[tuple[Count, Count]] = []
     if three and free and len(three) * len(free) <= MAX_TUPLES:
         pts_lo = pts_hi = None
-        if pts_pg is not None:
+        if pts_pg is not None and exact_fg:
+            # The points and true-shooting identities need the EXACT field-goal totals; with only a rounded per-game
+            # FGM they would exclude the truth, so without an advanced row only the per-game windows and the
+            # published makes/attempts rates constrain the counts.
             pts_lo, pts_hi = (pts_pg - PER_GAME_HALF_ULP) * gp - 1e-9, (pts_pg + PER_GAME_HALF_ULP) * gp + 1e-9
         for c3, cf in product(three, free):
             pts = 2 * fgm + c3.makes + cf.makes
             if pts_lo is not None and not (pts_lo <= pts <= pts_hi):  # type: ignore[operator]
                 continue
-            if ts is not None:
+            if ts is not None and exact_fg:
                 tsa = fga + 0.44 * cf.attempts
                 if tsa <= 0:
                     if pts != 0:

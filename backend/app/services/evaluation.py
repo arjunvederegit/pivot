@@ -26,6 +26,7 @@ from app.analytics.archetypes import (
 from app.analytics.components import affine_score, bounded_score
 from app.analytics.features import build_player_season_features, recency_weighted_features
 from app.analytics.fit import fit_score
+from app.analytics.impact import TEI_BAND_CALIBRATION
 from app.analytics.needs import NEED_TO_SKILL
 from app.analytics.picks import (
     REFERENCE_SLOT,
@@ -1296,6 +1297,10 @@ class EvaluationService:
                 wins_mapping=self.wins_mapping(),
                 moved_keys={c.player_id for c in incoming + outgoing},
             )
+        if not uncertainty.get("skipped"):
+            # The draws take each player's sigma from his TEI band, which R9.1 measured as under-covering (57-61% out of
+            # time against a nominal 80%): the spread and P(deal helps) understate uncertainty. Say so beside the numbers.
+            uncertainty = {**uncertainty, "calibration_note": TEI_BAND_CALIBRATION["reading"]}
         unmodeled_in_deal = sorted({c.name for c in incoming + outgoing if c.tei is None})
         if unmodeled_in_deal:
             uncertainty["unmodeled_players_excluded"] = unmodeled_in_deal

@@ -25,7 +25,7 @@ import pandas as pd
 
 from .intervals import fit_interval, loto_residuals
 from .metrics import BOOTSTRAP_DRAWS, paired_cluster_bootstrap, summarise
-from .pairs import FeatureConfig, PairCache
+from .pairs import FeatureConfig, PairCache, features_only
 from .panel import PlayerSeasonPanel, replace_future, season_key, season_label
 from .predictors import FitContext, NotApplicable, predictors_for
 from .targets import TargetSpec, get_target
@@ -131,14 +131,15 @@ def _fit_and_predict(
         except NotApplicable as exc:
             params[predictor.name] = {"skipped": str(exc)}
             continue
-        pred = fitted.predict(test)
+        visible = features_only(test)
+        pred = fitted.predict(visible)
         if not np.isfinite(pred).all():
             raise NonFiniteForecastError(f"{predictor.name} produced non-finite forecasts")
         interval = fit_interval(loto_residuals(predictor, train, ctx), level)
-        lo, hi = interval.apply(pred, test["window_exposure"].to_numpy(dtype=float))
+        lo, hi = interval.apply(pred, visible["window_exposure"].to_numpy(dtype=float))
         if not (np.isfinite(pred).all() and np.isfinite(lo).all() and np.isfinite(hi).all()):
             raise NonFiniteForecastError(f"{predictor.name} produced non-finite forecasts or intervals")
-        native = fitted.native_interval(test)
+        native = fitted.native_interval(visible)
         frame = pd.DataFrame(
             {
                 "model": predictor.name,

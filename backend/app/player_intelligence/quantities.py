@@ -29,6 +29,9 @@ class QuantitySpec:
     not_offered: dict[str, str] = field(default_factory=dict)
     #: ``true`` for rates whose denominator makes "no attempts" an undefined value rather than zero.
     undefined_without_attempts: bool = False
+    #: The feasible range of the quantity; an interval for it is clipped to this (an 80% interval for a free-throw
+    #: rate may not extend past 1.0). ``None`` = unbounded.
+    bounds: tuple[float, float] | None = None
 
 
 QUANTITIES: dict[str, QuantitySpec] = {
@@ -38,19 +41,19 @@ QUANTITIES: dict[str, QuantitySpec] = {
             "ts_pct", "True shooting %", "shooting", "fraction of 1",
             "points per 2 true-shooting attempts: PTS / (2 * (FGA + 0.44 * FTA)). A ratio estimator, not made/attempted",
             (MEASURED, INFERRED, PROJECTED), "NBA.com season tables (base + advanced); integer counts recovered by constraint reconstruction",
-            undefined_without_attempts=True,
+            undefined_without_attempts=True, bounds=(0.0, 1.5),  # 1.5 = three points on every attempt
         ),
         QuantitySpec(
             "fg3_pct", "Three-point accuracy", "shooting", "fraction of 1",
             "three-pointers made / attempted", (MEASURED, INFERRED, PROJECTED),
             "NBA.com season tables (base + advanced); integer counts recovered by constraint reconstruction",
-            undefined_without_attempts=True,
+            undefined_without_attempts=True, bounds=(0.0, 1.0),
         ),
         QuantitySpec(
             "ft_pct", "Free-throw accuracy", "shooting", "fraction of 1",
             "free throws made / attempted", (MEASURED, INFERRED, PROJECTED),
             "NBA.com season tables (base + advanced); integer counts recovered by constraint reconstruction",
-            undefined_without_attempts=True,
+            undefined_without_attempts=True, bounds=(0.0, 1.0),
         ),
         QuantitySpec(
             "ast_pct", "Assist percentage", "playmaking", "fraction of 1",

@@ -45,9 +45,8 @@ def test_the_preview_is_off_by_default_so_nothing_existing_changes(db, league, m
     pid = league["player"].id
     assert client.get(f"/api/v1/players/{pid}/intelligence").status_code == 404
     assert client.get("/api/v1/player-intelligence/catalog").status_code == 404
-    schema = client.get("/openapi.json").json()["paths"]
-    assert not any("intelligence" in p and "player" in p and "catalog" in p for p in schema)
-    assert "/api/v1/players/{player_id}/intelligence" not in schema
+    # (Absence from the OpenAPI schema is decided when the app is imported; it is asserted in a fresh process in
+    # tests/unit/test_pi_review_fixes.py, which does not depend on test order.)
 
 
 def test_with_the_flag_on_measured_records_are_served_by_default(db, league, monkeypatch):

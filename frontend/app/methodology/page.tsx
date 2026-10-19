@@ -270,7 +270,10 @@ slope 2.235 wins/point · fit on 90 team-seasons · R²=0.953 · σ=2.9 wins`}
                 at the allocation above, and the ≈15 net-rating coefficient is held fixed, so the
                 band leaves out that conversion&apos;s own uncertainty. Reported: median,
                 10th–90th percentile, P(deal helps). Availability is historical games played — not
-                a medical prediction.
+                a medical prediction. <strong>The σ comes from the TEI band, which tested out of
+                time (R9.1) contained the outcome only about 57–61% of the time, not 80%:</strong>{" "}
+                the simulated spread and P(deal helps) therefore understate uncertainty and are
+                best read as a comparison of relative risk between deals, not as calibrated odds.
               </p>
             </DocTech>
           </DocSection>

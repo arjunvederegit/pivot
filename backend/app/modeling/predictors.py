@@ -593,6 +593,20 @@ class _StateSpaceFitted(Fitted):
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
         return self.posterior(frame).level_next
 
+    def ability_extras(self, frame: pd.DataFrame) -> dict[str, np.ndarray]:
+        """What an ability record needs beyond the posterior: the model's true weight on the player's own record,
+        his own per-attempt variance, and the attempts across all the seasons the filter used."""
+        h = history_arrays(frame, self.role, self.max_history)
+        usable = np.isfinite(h.y) & np.isfinite(h.s2) & (h.s2 > 0) & np.isfinite(h.exposure)
+        with warnings.catch_warnings(), np.errstate(all="ignore"):
+            warnings.simplefilter("ignore", RuntimeWarning)
+            own = np.nanmean(np.where(usable, h.s2 * h.exposure, np.nan), axis=1)
+        return {
+            "weight": rm.observation_weight(h.y, h.s2, h.age, h.covariates, self.p),
+            "unit_variance": np.where(np.isfinite(own), own, self.p.unit_variance),
+            "history_exposure": np.where(usable, h.exposure, 0.0).sum(axis=1),
+        }
+
     def expected_sampling_variance(self, frame: pd.DataFrame) -> np.ndarray:
         """Sampling variance of next season's statistic if the player takes about as many attempts as lately."""
         h = history_arrays(frame, self.role, self.max_history)
@@ -696,6 +710,161 @@ class BetaBinomialRate(Predictor):
         return _BetaBinomialFitted(params, self.role)
 
 
+# ------------------------------------------------------------------------------- R9.2 diagnostics (opt-in)
+
+
+def _log_attempts(frame: pd.DataFrame, column: str) -> np.ndarray:
+    return np.log1p(frame[column].astype(float).fillna(0.0).clip(lower=0.0).to_numpy())
+
+
+def _role_matrix(frame: pd.DataFrame) -> np.ndarray:
+    return np.column_stack([pd.to_numeric(frame[c], errors="coerce").fillna(0.0).to_numpy(dtype=float) if c in frame else np.zeros(len(frame)) for c in ROLE_COLUMNS])
+
+
+class OLSAttempts(Predictor):
+    """DIAGNOSTIC baseline: ``ols_history`` that also *knows how much evidence each player has*.
+
+    Added after the R9.2 statistical review: ``ols_history`` applies one slope to a 30-attempt and a 500-attempt player,
+    so it is not the strongest simple baseline for a made/attempted rate. This adds log attempts and the interaction of
+    each history input with its own attempts (nine parameters, no tuning) — the simple regression the pre-registered
+    hypothesis names. ``*_role`` also carries the four role covariates the ``state_space_role`` candidates use."""
+
+    name = "ols_attempts"
+    family = "baseline"
+    inputs: tuple[str, ...] = ("x_t", "x_bar", "exposure_t", "window_exposure", "age")
+    description = (
+        "OLS y = a + b*last + c*windowed_history + d*age + e*age^2 + f*log(window attempts) + g*log(last-season attempts) "
+        "+ h*last*log(last attempts) + i*history*log(window attempts): ols_history given the evidence behind each input"
+    )
+    role = False
+
+    def applies_to(self, target: TargetSpec) -> bool:
+        return target.sampling_variance is not None
+
+    def fit(self, train: pd.DataFrame, ctx: FitContext) -> Fitted:
+        fill_last = float(np.nanmean(train["x_t"].astype(float)))
+        fill_bar = float(np.nanmean(train["x_bar"].astype(float)))
+        role = self.role
+
+        def design(frame: pd.DataFrame) -> np.ndarray:
+            last = _last_value(frame, fill_last)
+            bar = frame["x_bar"].astype(float).fillna(pd.Series(last, index=frame.index)).fillna(fill_bar).to_numpy()
+            age, age2 = _age_terms(frame)
+            lw, lt = _log_attempts(frame, "window_exposure"), _log_attempts(frame, "exposure_t")
+            cols = [np.ones(len(frame)), last, bar, age, age2, lw, lt, (last - fill_last) * lt, (bar - fill_bar) * lw]
+            if role:
+                return np.column_stack([*cols, _role_matrix(frame)])
+            return np.column_stack(cols)
+
+        beta = ols(design(train), _y(train))
+        return _Linear(beta, design, {"beta": [float(b) for b in beta]})
+
+
+class OLSAttemptsRole(OLSAttempts):
+    name = "ols_attempts_role"
+    role = True
+    inputs = (*OLSAttempts.inputs, *ROLE_COLUMNS)
+
+
+class OLSShrunk(Predictor):
+    """DIAGNOSTIC baseline: OLS on empirical-Bayes-shrunk inputs (each input pulled toward the training mean by
+    ``E / (E + k)``; ``k`` by leave-one-transition-out). The R9.1 ``eb_shrinkage`` idea inside a regression."""
+
+    name = "ols_eb"
+    family = "baseline"
+    inputs: tuple[str, ...] = ("x_t", "x_bar", "exposure_t", "window_exposure", "age")
+    description = "OLS on shrunk last season and shrunk windowed mean, age and log attempts; the shrinkage constant is tuned out of sample"
+    role = False
+
+    def applies_to(self, target: TargetSpec) -> bool:
+        return target.sampling_variance is not None
+
+    def fit(self, train: pd.DataFrame, ctx: FitContext) -> Fitted:
+        role = self.role
+        scale = float(np.nanmedian(train["window_exposure"].astype(float))) or 1.0
+        grid = tuple(m * scale for m in (0.05, 0.1, 0.25, 0.5, 1.0, 2.0))
+
+        def build(tr: pd.DataFrame, k: float) -> _Linear:
+            centre = float(np.nanmean(tr["y"].astype(float)))
+
+            def design(frame: pd.DataFrame) -> np.ndarray:
+                e_t = frame["exposure_t"].astype(float).fillna(0.0).clip(lower=0.0).to_numpy()
+                e_w = frame["window_exposure"].astype(float).fillna(0.0).to_numpy()
+                x_t, x_b = frame["x_t"].astype(float).to_numpy(), frame["x_bar"].astype(float).to_numpy()
+                shrunk_t = np.where(np.isfinite(x_t), centre + e_t / (e_t + k / 3.0) * (np.nan_to_num(x_t) - centre), centre)
+                shrunk_b = np.where(np.isfinite(x_b), centre + e_w / (e_w + k) * (np.nan_to_num(x_b) - centre), centre)
+                age, age2 = _age_terms(frame)
+                cols = [np.ones(len(frame)), shrunk_t, shrunk_b, age, age2, np.log1p(e_w)]
+                if role:
+                    return np.column_stack([*cols, _role_matrix(frame)])
+                return np.column_stack(cols)
+
+            beta = ols(design(tr), _y(tr))
+            return _Linear(beta, design, {"shrinkage_constant_k": k, "beta": [float(b) for b in beta]})
+
+        k, _scores = loto_select(train, grid, lambda inner, val, kk: build(inner, kk).predict(val))
+        return build(train, k)
+
+
+class OLSShrunkRole(OLSShrunk):
+    name = "ols_eb_role"
+    role = True
+    inputs = (*OLSShrunk.inputs, *ROLE_COLUMNS)
+
+
+def fixed_variance_frame(frame: pd.DataFrame, p0: float) -> pd.DataFrame:
+    """Replace every per-season sampling variance with ``p0 (1 - p0) / attempts`` — a variance that does not depend on
+    the season's own observed rate (the plug-in variance of the main candidates does, which weights a lucky season more
+    for a high-rate statistic and biases levels upward; see the R9.2 review, finding 4)."""
+    f = frame.copy()
+    h = history_length(f)
+    for j in range(h):
+        e = f["exposure_t" if j == 0 else f"exposure_lag{j}"].astype(float)
+        x = f["x_t" if j == 0 else f"x_lag{j}"]
+        f["sv_t" if j == 0 else f"sv_lag{j}"] = np.where((e > 0) & x.notna(), p0 * (1 - p0) / e.where(e > 0), np.nan)
+    if "y_exposure" in f.columns:
+        f["y_sv"] = np.where(f["y_exposure"].astype(float) > 0, p0 * (1 - p0) / f["y_exposure"].astype(float), np.nan)
+    return f
+
+
+class _FixedVarianceFitted(Fitted):
+    def __init__(self, inner: _StateSpaceFitted, p0: float) -> None:
+        self.inner, self.p0 = inner, p0
+        self.p = inner.p
+        self.params = {**inner.params, "fixed_rate_p0": p0}
+
+    def posterior(self, frame: pd.DataFrame) -> rm.Posterior:
+        return self.inner.posterior(fixed_variance_frame(frame, self.p0))
+
+    def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        return self.inner.predict(fixed_variance_frame(frame, self.p0))
+
+    def native_interval(self, frame: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+        return self.inner.native_interval(fixed_variance_frame(frame, self.p0))
+
+
+class StateSpaceFixedVariance(StateSpaceRate):
+    """DIAGNOSTIC: ``state_space`` with a sampling variance that does not depend on the observed rate."""
+
+    name = "state_space_fixedvar"
+    max_history = None
+
+    def applies_to(self, target: TargetSpec) -> bool:
+        return target.name in ("fg3_pct", "ft_pct")
+
+    def fit(self, train: pd.DataFrame, ctx: FitContext) -> Fitted:
+        e = train["y_exposure"].astype(float)
+        p0 = float(np.nansum(train["y"].astype(float) * e) / np.nansum(e))
+        inner = super().fit(fixed_variance_frame(train, p0), ctx)
+        return _FixedVarianceFitted(inner, p0)  # type: ignore[arg-type]
+
+
+class StateSpaceRoleFixedVariance(StateSpaceFixedVariance):
+    name = "state_space_role_fixedvar"
+    role = True
+    inputs = (*StateSpaceRate.inputs, *ROLE_COLUMNS)
+
+
 ALL_PREDICTORS: tuple[Predictor, ...] = (
     LeagueMean(),
     Persistence(),
@@ -712,8 +881,12 @@ ALL_PREDICTORS: tuple[Predictor, ...] = (
     BetaBinomialRate(),
 )
 #: Selectable by name but never part of the default sets, so the committed experiments stay reproducible: the two
-#: R9.2 history-ablation diagnostics (see docs/r9-2/shooting-validation-results.md §3).
-DIAGNOSTIC_PREDICTORS: tuple[Predictor, ...] = (HistoryOLSLong(), StateSpaceHistory3())
+#: R9.2 diagnostics: the history ablation and, after the statistical review, attempts-aware baselines and a
+#: fixed-variance state-space variant (see docs/r9-2/shooting-validation-results.md §3).
+DIAGNOSTIC_PREDICTORS: tuple[Predictor, ...] = (
+    HistoryOLSLong(), StateSpaceHistory3(), OLSAttempts(), OLSAttemptsRole(), OLSShrunk(), OLSShrunkRole(),
+    StateSpaceFixedVariance(), StateSpaceRoleFixedVariance(),
+)
 PREDICTORS: dict[str, Predictor] = {p.name: p for p in (*ALL_PREDICTORS, *DIAGNOSTIC_PREDICTORS)}
 
 
