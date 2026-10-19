@@ -140,10 +140,10 @@ def _source(row: SeasonRow, dataset: str) -> SourceRef:
     return SourceRef(provider="nba_api", dataset=dataset, retrieved_at=row.retrieved_at)
 
 
-def _ambiguity_limitation(shown: float, low: int, high: int) -> str:
+def _ambiguity_limitation(shown: float, low: float, high: float) -> str:
     return (
-        f"the provider's rounding leaves the exact attempt count undetermined: between {low} and {high} "
-        f"(shown: {shown:.0f}, the nearest consistent count); the published three-decimal rate is shown because the counts are not exact"
+        f"the provider's rounding leaves the exact attempt count undetermined: between {low:.0f} and {high:.0f} "
+        f"(shown: {shown:.0f}, the nearest consistent count); the published three-decimal rate is shown and the makes are not given because the counts are not exact"
     )
 
 
@@ -215,7 +215,12 @@ def measured_record(player_id: str, quantity: str, row: SeasonRow) -> PlayerInte
                 "integrity check failed: the stored per-game figures and published rates admit no consistent set of integer counts",
                 season=row.season,
             )
-        a_min, a_max = (rec.fg3a_min, rec.fg3a_max) if quantity == "fg3_pct" else (rec.fta_min, rec.fta_max)
+        if quantity == "fg3_pct":
+            a_min, a_max = float(rec.fg3a_min), float(rec.fg3a_max)
+        elif quantity == "ft_pct":
+            a_min, a_max = float(rec.fta_min), float(rec.fta_max)
+        else:  # true-shooting attempts: FGA is exact, only the free-throw count is ambiguous
+            a_min, a_max = rec.fga + 0.44 * rec.fta_min, rec.fga + 0.44 * rec.fta_max
         bounded = rec.quality == "bounded" and a_max > a_min
         if bounded:
             note = _ambiguity_limitation(a, a_min, a_max)
@@ -245,7 +250,8 @@ def measured_record(player_id: str, quantity: str, row: SeasonRow) -> PlayerInte
                 value = published_rate  # exact to 0.0005; the nearest-tuple ratio can be off by up to 0.001
             if not 0.0 <= value <= 1.0:
                 return Unavailable(quantity, "measured", f"integrity check failed: made/attempted = {value:.3f} is not a fraction of 1", season=row.season)
-        sample = _sample(row, attempts=float(a), makes=float(m) if m is not None else None, unit=unit)
+        # when the counts are not exact the makes are not either: serve none rather than the nearest-tuple figure
+        sample = _sample(row, attempts=float(a), makes=float(m) if m is not None and not bounded else None, unit=unit)
         if bounded:
             sample = sample.model_copy(update={"attempts_min": float(a_min), "attempts_max": float(a_max)})
         return _record(player_id, quantity, float(value), row, sample, "leaguedashplayerstats/base+advanced", limits)

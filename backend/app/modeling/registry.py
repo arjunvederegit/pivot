@@ -316,6 +316,7 @@ ARTIFACT_SCHEMA = "r9.2-3"
 #: "reused" under an id that no longer describes the rows.
 
 _NUMERIC_COLUMNS = ("estimate", "interval_low", "interval_high", "interval_level", "exposure")
+_TEXT_COLUMNS = ("output_kind", "season", "target_season")  # what the row means and which period it describes
 
 
 def _estimate_rows(
@@ -380,6 +381,10 @@ def _row_differences(stored: list[CandidateEstimate], expected: list[CandidateEs
             a, b = getattr(old, col), getattr(new, col)
             if (a is None) != (b is None) or (a is not None and abs(float(a) - float(b)) > 1e-9):
                 problems.append(f"{key[1]} {col} differs for a player ({a} stored, {b} now)")
+        for col in _TEXT_COLUMNS:
+            a, b = getattr(old, col), getattr(new, col)
+            if str(getattr(a, "value", a)) != str(getattr(b, "value", b)):
+                problems.append(f"{key[1]} {col} differs for a player ({a} stored, {b} now)")
         old_inputs, new_inputs = old.inputs or {}, new.inputs or {}
         if old_inputs.keys() != new_inputs.keys():
             problems.append(f"{key[1]} inputs keys differ ({sorted(set(old_inputs) ^ set(new_inputs))})")
@@ -415,7 +420,11 @@ def train_candidate(
     set from ``experiment_dir``; a caller-supplied dict cannot assert them."""
     features = features or FeatureConfig()
     if evaluation is not None:
+        # A caller can neither assert where evidence came from nor claim a status: it may only record that a model
+        # was NOT confirmed (a failure) or was never evaluated. Positive evidence comes only from `experiment_dir`.
         evaluation = {k: v for k, v in evaluation.items() if k not in PROVENANCE_KEYS}
+        if evaluation.get("evaluation_status") not in ("failed", "unevaluated"):
+            evaluation["evaluation_status"] = "unevaluated"
     if spec not in PREDICTORS:
         raise CandidateError(f"unknown model {spec!r}; registered: {sorted(PREDICTORS)}")
     if db.new or db.deleted or any(db.is_modified(o) for o in db.dirty):
@@ -452,7 +461,14 @@ def train_candidate(
     if experiment_dir is not None and evaluation is not None:
         # Whether the candidate was trained under the configuration the experiment evaluated (window, minute floors,
         # seed, interval level). Registry evidence is only attached to a stored model that matches it.
-        evaluation = {**evaluation, "config_matches": _config_matches(experiment_dir, config)}
+        matches = _config_matches(experiment_dir, config)
+        evaluation = {**evaluation, "config_matches": matches}
+        if not matches:
+            # The experiment evaluated a different configuration: its verdict says nothing about THIS model. A failure
+            # still stands (stale/failed can only lower a status); a confirmation does not carry over.
+            if evaluation.get("evaluation_status") in ("holdout_confirmed", "development_only"):
+                evaluation["evaluation_status"] = "unevaluated"
+            evaluation["evaluation_note"] = "the experiment evaluated a different configuration than this model was trained under"
     version = f"cand-{spec}-{target}-{config_hash({**config, 'data': snapshot.fingerprint})[:12]}"
     model_name = f"{CANDIDATE_MODEL_PREFIX}{target}"
     estimates = {str(r.player_id): float(r.pred) for r in scoring.itertuples(index=False)}
@@ -461,7 +477,7 @@ def train_candidate(
         select(ModelVersion).where(ModelVersion.model_name == model_name, ModelVersion.version == version)
     )
     if existing is not None:
-        return _reuse(db, existing, scoring, ability, evaluation, version, model_name, spec, target, origin, target_season, snapshot, level)
+        return _reuse(db, existing, scoring, ability, evaluation if experiment_dir is not None else None, version, model_name, spec, target, origin, target_season, snapshot, level)
 
     active = db.scalars(
         select(ModelVersion).where(ModelVersion.model_name == "player_impact", ModelVersion.is_active)
@@ -512,7 +528,7 @@ def train_candidate(
         winner = db.scalar(select(ModelVersion).where(ModelVersion.model_name == model_name, ModelVersion.version == version))
         if winner is None:
             raise
-        return _reuse(db, winner, scoring, ability, evaluation, version, model_name, spec, target, origin, target_season, snapshot, level)
+        return _reuse(db, winner, scoring, ability, evaluation if experiment_dir is not None else None, version, model_name, spec, target, origin, target_season, snapshot, level)
     except BaseException:
         db.rollback()
         raise

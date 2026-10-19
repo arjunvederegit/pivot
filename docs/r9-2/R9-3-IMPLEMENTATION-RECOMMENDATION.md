@@ -88,3 +88,14 @@ a new version the user can switch to deliberately.
 * **Reliability misread as probability.** Mitigation: use `reliability_statement()` text, never a bare percentage.
 * **Cost of recomputation.** Mitigation: cache by fingerprint; batch route.
 * **Scope creep into new statistics.** R9.3 connects what exists; a new dimension is a new R9.x with its own pre-registration.
+
+## Carry-overs from the R9.2 independent reviews (modelling and engineering items deliberately not done in R9.2)
+
+1. **Reference baseline.** Pre-register an attempts-aware regression (`ols_eb` / `ols_attempts` style, see `results/baseline_challenge.json`) as the reference, not `ols_history`; re-confirm any shooting candidate against it on a fresh holdout.
+2. **Volume in the ability prior.** Let attempts-per-minute shift the prior mean (coaches let good shooters shoot); this is the root cause of the over-prediction for rare shooters that the 0.30 reliability floor only masks.
+3. **Sampling variance from the model, not the observed rate** (iterate the plug-in), which removes the free-throw level bias seen in the fixed-variance diagnostics.
+4. **Role covariates:** carry each returner's last observed role instead of the cutoff-season role / league average.
+5. **League-environment term** in the mean curves (the TS and FT intercepts drift upward across folds).
+6. **Measured counts:** where exact `totals` rows exist, use them instead of reconstruction; keep the range for seasons that have none.
+7. **Query efficiency:** batch the per-(player, quantity, kind) estimate lookups in `get_many` (146 statements for a 15-player roster today).
+8. **Trade Evaluator σ** derived from the TEI band is ≈ 1.5× too narrow (band coverage 57–61% for a nominal 80%): recalibrate on R9.1's held-out residuals.

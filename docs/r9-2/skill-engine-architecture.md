@@ -87,7 +87,7 @@ PlayerIntelligenceService(db).catalog()                   # what is offered, wha
   they were trained at; nothing later is read. Default: the latest ingested season.
 * **`kinds`**: `measured` (default), `inferred`, `projected`. Measured needs only data integrity.
 * **Measured values state what is known and no more.** Where NBA.com's rounding leaves a season's attempt count undetermined (996 of 5,483 player-seasons carry a range), the record serves the *published* rate
-  (exact to its precision), the attempt **range** (`sample.attempts_min/attempts_max`) and a limitation saying so; if zero attempts cannot be ruled out, there is no rate and the reason says "undetermined", never "no attempts".
+  (exact to its precision), the attempt **range** (`sample.attempts_min/attempts_max`, in the units of `attempts` — for true shooting, true-shooting attempts FGA + 0.44·FTA), no makes, and a limitation saying so; if zero attempts cannot be ruled out, there is no rate and the reason says "undetermined", never "no attempts".
   Implausible values (minutes per game outside [0, 53], assist-to-turnover outside [0, 60], true shooting above 1.5, negative counts) are integrity failures, not data; a player with no games gets "played no games".
 * **Model outputs are read, never computed.** A request never trains or writes. A cutoff with no stored model is reported as
   *not materialised*.
@@ -141,9 +141,9 @@ No new table and **no migration**. The R9.1 candidate store is the persistence l
 | how the model fared | `model_versions.validation_metrics` (from the experiment artifacts) and `lineage` (data snapshot, environment, seed, fitted hyperparameters) | — |
 
 Append-only by construction: training adds a new version (its id is a hash of configuration *and* data fingerprint) and never updates or
-deletes another row; the isolation checks prove it before every commit. The id also carries an **artifact schema tag** (`ARTIFACT_SCHEMA`, currently `r9.2-3`) in the stored configuration, so a store written by older code never shares an id with what today's code would write.
+deletes another row; the isolation checks prove it before every commit. The id also carries an **artifact schema tag** (`ARTIFACT_SCHEMA`, currently `r9.2-3`) in the stored configuration, so a store written by older code never shares an id with what today's code would write — and the registry's evidence never attaches to a model stored under another schema (it stays servable by name, labelled with its own stored status).
 Re-training the same specification on the same data is idempotent, and refuses (loudly) if the code now produces different numbers under an unchanged id: **every stored column** of the forecast rows and
-of the ability rows — estimate, interval, exposure and every key of `inputs` — is compared, separately for the two kinds because they share player ids. A refused reuse does not rewrite the version's evaluation record. (R9.2's first implementation pooled the rows and could not be re-materialised; a later version compared only the estimate and would have "reused" a store holding the defects fixed in review while upgrading its evidence label — `test_pi_review_fixes::TestIdempotence`, `TestReuseComparesEveryColumn`.) Two processes materialising at once are safe: the loser of the creation race hits the unique constraint and reuses the winner's version.
+of the ability rows — estimate, interval and level, exposure, every key of `inputs`, and the output kind, season and target season — is compared, separately for the two kinds because they share player ids. A refused reuse does not rewrite the version's evaluation record. (R9.2's first implementation pooled the rows and could not be re-materialised; a later version compared only the estimate and would have "reused" a store holding the defects fixed in review while upgrading its evidence label — `test_pi_review_fixes::TestIdempotence`, `TestReuseComparesEveryColumn`.) Two processes materialising at once are safe: the loser of the creation race hits the unique constraint and reuses the winner's version.
 Re-materialising after a data refresh creates a *new* version; older versions remain, so a past cutoff can be re-read exactly as it was served **by naming its version**
 (by default the servable version for the cutoff to which the registry's evidence *applies* is preferred, then the newest — so a later, never-evaluated `make train-candidate` run cannot silently become everyone's default answer; its version is on the record; measured records are not versioned — they are recomputed from the stored rows).
 
@@ -163,7 +163,7 @@ Changing what the service serves therefore means changing a committed JSON that 
 ## 9. The one change outside the engine: the TEI band
 
 TEI's `tei_low`/`tei_high` were presented as a 10–90% "likely range". R9.1 measured their out-of-time coverage at 60.8% / 57.2%. The
-smallest safe correction: the player-detail API serves `tei_range_calibration` beside the unchanged `tei_range_10_90`; the league reference
+smallest safe correction: the player-detail API serves `tei_range_calibration` beside the unchanged `tei_range_10_90`, and the roster endpoint gained one additive key, `tei_band_calibration` (nothing existing changed); the league reference
 states it; the UI calls it a *model range* and says it is not a calibrated 80% interval; the methodology page says the same. The TEI formula
 and every existing field are untouched. Regression tests pin the numbers to the R9.1 artifacts and the wording to the UI. The Trade Evaluator draws each player's σ from the same band,
 so its simulated spread and P(deal helps) inherit the under-coverage: the evaluation payload now carries a `calibration_note` and the methodology page says so; the deal-level bands are

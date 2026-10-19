@@ -440,7 +440,7 @@ class TestReuseComparesEveryColumn:
         v = league["db"].scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
         assert v.config["artifact_schema"] == ARTIFACT_SCHEMA
 
-    @pytest.mark.parametrize("column", ["interval_high", "exposure", "inputs_weight", "inputs_new_key"])
+    @pytest.mark.parametrize("column", ["interval_low", "interval_high", "interval_level", "exposure", "inputs_weight", "inputs_new_key"])
     def test_a_difference_in_any_stored_column_is_refused(self, league, column):
         from app.modeling.registry import CandidateError
 
@@ -448,8 +448,13 @@ class TestReuseComparesEveryColumn:
         v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
         row = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct@ability")).first()
         saved = (row.interval_high, row.exposure, dict(row.inputs))
+        saved_low, saved_level = row.interval_low, row.interval_level
         try:
-            if column == "interval_high":
+            if column == "interval_low":
+                row.interval_low = saved_low - 0.01
+            elif column == "interval_level":
+                row.interval_level = saved_level - 0.1
+            elif column == "interval_high":
                 row.interval_high = saved[0] + 0.01
             elif column == "exposure":
                 row.exposure = saved[1] + 7.0  # e.g. a three-season window where the filter's history is now stored
@@ -682,3 +687,204 @@ class TestSurvivingMutantsNowHaveTests:
         longer = [r for r in rows if r.exposure > r.inputs["window_exposure"] + 1.0]
         assert len(longer) > 10, "players with more than three seasons of history must show more attempts than their window"
         assert all(r.exposure >= r.inputs["window_exposure"] - 1e-6 for r in rows)
+
+
+# ===================================================== round 3 retest findings (independent re-verification of the fixes)
+
+
+class TestBoundedTrueShootingIsServedInItsOwnUnits:
+    """R3-retest 1: the free-throw range was reused for true shooting, whose attempts are FGA + 0.44*FTA."""
+
+    def test_the_range_is_in_true_shooting_attempts(self):
+        from .test_pi_mutations import _a_bounded_row
+
+        row, rec = _a_bounded_row()
+        out = measured_for("p", ["ts_pct"], {"2024-25": row}, "2024-25")[0][0]
+        assert out.sample.attempts == pytest.approx(rec.fga + 0.44 * rec.fta)
+        assert out.sample.attempts_min == pytest.approx(rec.fga + 0.44 * rec.fta_min)
+        assert out.sample.attempts_max == pytest.approx(rec.fga + 0.44 * rec.fta_max)
+        assert out.sample.attempts_min <= out.sample.attempts <= out.sample.attempts_max
+        assert out.value == pytest.approx(row.advanced["TS_PCT"])  # the published figure, not a recomputation from nearest counts
+
+    def test_three_point_is_not_given_the_free_throw_range_and_bounded_rows_give_no_makes(self):
+        from .test_pi_mutations import _a_bounded_row
+
+        row, rec = _a_bounded_row()  # ambiguous free throws; three-point counts are exact here
+        three = measured_for("p", ["fg3_pct"], {"2024-25": row}, "2024-25")[0][0]
+        assert three.sample.attempts_min is None and three.sample.attempts_max is None and three.sample.makes is not None
+        ft = measured_for("p", ["ft_pct"], {"2024-25": row}, "2024-25")[0][0]
+        assert ft.sample.makes is None and "makes are not given" in " ".join(ft.limitations)
+
+
+class TestEvidenceNeedsTheCurrentArtifactSchemaAndOwnData:
+    def test_a_model_stored_by_other_code_gets_no_registry_evidence(self, league):
+        reg = make_registry(league["fingerprint"])
+        v = league["db"].scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        assert reg.applies_to("fg3_pct", "state_space", v.config, v.validation_metrics) is True
+        assert reg.applies_to("fg3_pct", "state_space", {**v.config, "artifact_schema": "r9.2-2"}, v.validation_metrics) is False
+        without = {k: x for k, x in v.config.items() if k != "artifact_schema"}
+        assert reg.applies_to("fg3_pct", "state_space", without, v.validation_metrics) is False
+
+    def test_the_models_own_data_fingerprint_must_be_the_registrys(self, league):
+        reg = make_registry(league["fingerprint"])
+        v = league["db"].scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        assert reg.applies_to("fg3_pct", "state_space", v.config, {**v.validation_metrics, "current_data_fingerprint": "0" * 64}) is False
+        assert reg.applies_to("fg3_pct", "state_space", v.config, {**v.validation_metrics, "experiment_data_fingerprint": "0" * 64}) is False
+
+    def test_a_registry_that_records_no_configuration_attaches_nothing(self, league):
+        v = league["db"].scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        bare = ValidationRegistry({"version": "t", "quantities": {}, "generated_from": {"fg3_pct": {"development": RUN_ID, "holdout": None, "data_fingerprint": league["fingerprint"]}}})
+        assert bare.applies_to("fg3_pct", "state_space", v.config, v.validation_metrics) is False
+
+    def test_the_applies_check_requires_each_condition(self, league):
+        """Each clause is needed: a registry run id, config_matches, the method, and each configuration key."""
+        reg = make_registry(league["fingerprint"])
+        v = league["db"].scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        vm = v.validation_metrics
+        assert reg.applies_to("fg3_pct", "state_space", v.config, {**vm, "config_matches": False}) is False
+        assert reg.applies_to("fg3_pct", "state_space", v.config, {**vm, "config_matches": "yes"}) is False
+        assert reg.applies_to("fg3_pct", "state_space", v.config, {**vm, "experiment": "some-other-run"}) is False
+        assert reg.applies_to("fg3_pct", "state_space", {**v.config, "interval_level": 0.9}, vm) is False
+        assert reg.applies_to("fg3_pct", "state_space", v.config, {**vm, "evaluation_status": "STALE:development_only"}) is False
+
+
+class TestACallerCannotClaimAStatus:
+    def test_a_supplied_confirmation_is_recorded_as_unevaluated(self, league):
+        db = league["db"]
+        train_candidate(db, "state_space", "fg3_pct", "2021-22", features=FeatureConfig(min_target_minutes=305), evaluation={"evaluation_status": "holdout_confirmed", "note": "x"})
+        v = db.scalar(select(ModelVersion).where(ModelVersion.config["origin"].as_string() == "2021-22", ModelVersion.config["features"]["min_target_minutes"].as_float() == 305))
+        assert v.validation_metrics["evaluation_status"] == "unevaluated" and v.validation_metrics.get("note") == "x"
+
+    def test_a_supplied_failure_is_kept(self, league):
+        db = league["db"]
+        train_candidate(db, "state_space", "fg3_pct", "2021-22", features=FeatureConfig(min_target_minutes=310), evaluation={"evaluation_status": "failed"})
+        v = db.scalar(select(ModelVersion).where(ModelVersion.config["origin"].as_string() == "2021-22", ModelVersion.config["features"]["min_target_minutes"].as_float() == 310))
+        assert v.validation_metrics["evaluation_status"] == "failed"
+
+    def test_an_experiment_for_another_configuration_does_not_confirm_this_model(self, league):
+        db = league["db"]
+        train_candidate(db, "state_space", "fg3_pct", "2021-22", features=FeatureConfig(min_target_minutes=330), experiment_dir=league["experiment_dir"])
+        v = db.scalar(select(ModelVersion).where(ModelVersion.config["origin"].as_string() == "2021-22", ModelVersion.config["features"]["min_target_minutes"].as_float() == 330))
+        assert v.validation_metrics["config_matches"] is False
+        assert v.validation_metrics["evaluation_status"] == "unevaluated" and "different configuration" in v.validation_metrics["evaluation_note"]
+
+    def test_a_caller_evaluation_does_not_overwrite_an_existing_versions_record(self, league):
+        db = league["db"]
+        v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        before = dict(v.validation_metrics)
+        train_candidate(db, "state_space", "fg3_pct", CUTOFF, evaluation={"evaluation_status": "failed"})
+        assert dict(v.validation_metrics) == before
+
+
+class TestReuseComparesTheRowsMeaning:
+    @pytest.mark.parametrize("column", ["output_kind", "season", "target_season"])
+    def test_a_difference_in_what_a_row_means_is_refused(self, league, column):
+        from app.modeling.registry import CandidateError
+
+        db = league["db"]
+        v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        row = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct")).first()
+        saved = getattr(row, column)
+        try:
+            setattr(row, column, {"output_kind": OutputKind.INFERRED, "season": "2001-02", "target_season": "2001-02"}[column])
+            db.flush()
+            before = dict(v.validation_metrics)
+            with pytest.raises(CandidateError, match="different estimates"):
+                train_candidate(db, "state_space", "fg3_pct", CUTOFF, experiment_dir=league["experiment_dir"])
+            assert v.validation_metrics == before
+        finally:
+            db.rollback()
+            assert getattr(db.get(CandidateEstimate, row.id), column) == saved
+
+
+class TestRaceHandlerOnlyForRaces:
+    def test_an_integrity_error_with_no_winner_is_raised_not_swallowed(self, league, monkeypatch):
+        from sqlalchemy.exc import IntegrityError
+
+        db = league["db"]
+        before = db.query(ModelVersion).count()
+
+        def boom():
+            raise IntegrityError("insert", {}, Exception("some other constraint"))
+
+        monkeypatch.setattr(db, "commit", boom)
+        with pytest.raises(IntegrityError):
+            train_candidate(db, "state_space", "fg3_pct", "2021-22", features=FeatureConfig(min_target_minutes=340))
+        monkeypatch.undo()
+        assert db.query(ModelVersion).count() == before
+
+
+class TestMoreFailClosedAndBounds:
+    @pytest.mark.parametrize("stored", [5, 0.5, ["failed"], {"a": 1}, True])
+    def test_a_non_string_status_is_refused(self, stored):
+        assert status_from_stored(stored) is EvaluationStatus.FAILED
+
+    @pytest.mark.parametrize(("column", "value", "quantity"), [("MIN", -3.0, "minutes_per_game"), ("AST_TO", -1.0, "ast_to_ratio")])
+    def test_negative_values_are_refused(self, column, value, quantity):
+        from app.player_intelligence.measured import SeasonRow
+
+        base, adv = provider_rows(gp=60, fgm=300, fga=700, fg3m=80, fg3a=220, ftm=100, fta=140)
+        if column == "MIN":
+            base["MIN"] = value
+        else:
+            adv["AST_TO"] = value
+        row = SeasonRow(season="2024-25", games=60, minutes_per_game=value if column == "MIN" else 30.0, team_id=None, team_count=1, base=base, advanced=adv, retrieved_at=None, recon=reconstruct(base, adv, 60))
+        recs, missing = measured_for("p", [quantity], {"2024-25": row}, "2024-25")
+        assert recs == [] and "outside [0," in missing[0].reason
+
+    def test_the_floor_message_does_not_round_a_failing_value_up_to_the_floor(self, league):
+        db = league["db"]
+        v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        row = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct@ability")).first()
+        saved = dict(row.inputs)
+        try:
+            row.inputs = {**saved, "reliability": 0.2996}
+            db.flush()
+            r = svc(league).get(row.player_id, ["fg3_pct"], as_of=CUTOFF, kinds=["inferred"], include_experimental=True)
+            assert "reliability 0.299 is below the serving floor of 0.30" in r.unavailable[0].reason  # never rounded up to the floor
+        finally:
+            db.rollback()
+
+
+def test_valueless_cli_options_are_refused(tmp_path):
+    backend = Path(__file__).resolve().parents[2]
+    env = {**__import__("os").environ, "PYTHONPATH": str(backend), "DATABASE_URL": f"sqlite:///{tmp_path / 'y.db'}"}
+    for argv in (["--origin"], ["--evidence-dir"], ["--origin", "--evidence-dir", "x"]):
+        out = subprocess.run([sys.executable, "-W", "ignore", "-m", "app.cli", "materialise-skills", *argv], env=env, capture_output=True, text=True, cwd=str(backend))
+        assert out.returncode == 2 and "needs a value" in out.stdout, (argv, out.stdout, out.stderr)
+
+
+class TestReuseSetAndCountSemantics:
+    def test_a_swapped_player_with_the_same_row_count_is_refused(self, league):
+        from app.modeling.registry import CandidateError
+
+        db = league["db"]
+        v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        row = db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct")).first()
+        saved = row.player_id
+        try:
+            row.player_id = "00000000-0000-0000-0000-000000000000"  # same number of rows, a different set
+            db.flush()
+        except Exception:  # a foreign key may refuse the stand-in on some backends: then the swap cannot exist either
+            db.rollback()
+            pytest.skip("the backend enforces the player foreign key")
+        try:
+            with pytest.raises(CandidateError, match="the set of stored rows differs"):
+                train_candidate(db, "state_space", "fg3_pct", CUTOFF, experiment_dir=league["experiment_dir"])
+        finally:
+            db.rollback()
+            assert db.get(CandidateEstimate, row.id).player_id == saved
+
+    def test_the_reused_record_counts_forecast_rows_not_ability_rows(self, league):
+        db = league["db"]
+        rec = train_candidate(db, "state_space", "fg3_pct", CUTOFF, experiment_dir=league["experiment_dir"])
+        v = db.scalar(select(ModelVersion).where(ModelVersion.version == rec.version))
+        forecast = db.query(CandidateEstimate).filter_by(model_version_id=v.id, target="fg3_pct").count()
+        ability = db.query(CandidateEstimate).filter_by(model_version_id=v.id, target="fg3_pct@ability").count()
+        assert rec.reused_existing is True and rec.estimates_written == forecast and ability > 0
+
+    def test_forecast_rows_carry_the_history_the_model_used(self, league):
+        db = league["db"]
+        v = db.scalar(select(ModelVersion).where(ModelVersion.version.like("cand-state_space-fg3_pct-%"), ModelVersion.config["origin"].as_string() == CUTOFF))
+        for row in db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == v.id, CandidateEstimate.target == "fg3_pct").limit(20)):
+            assert {"history_exposure", "n_observed"} <= set(row.inputs)

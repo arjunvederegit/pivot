@@ -24,6 +24,7 @@ What the service does, and does not do:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -425,7 +426,7 @@ class PlayerIntelligenceService:
         if kind is OutputKind.INFERRED and (inputs.get("reliability") or 0.0) < INFERRED_MIN_RELIABILITY:
             unavailable.append(Unavailable(
                 quantity, k,
-                f"reliability {(inputs.get('reliability') or 0.0):.3f} is below the serving floor of {INFERRED_MIN_RELIABILITY:.2f}: with this little "
+                f"reliability {math.floor((inputs.get('reliability') or 0.0) * 1000) / 1000:.3f} is below the serving floor of {INFERRED_MIN_RELIABILITY:.2f}: with this little "
                 "evidence the estimate would be mostly the league curve, and that curve over-predicts low-volume players "
                 "(docs/r9-2/shooting-intelligence-methodology.md §7). The measured value is still available",
                 requirement="more attempts (the estimate becomes servable as evidence accumulates)",

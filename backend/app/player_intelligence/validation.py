@@ -81,7 +81,13 @@ class ValidationRegistry:
         method; evaluated against one of the registry's source runs, on the registry's data fingerprint; trained under
         the experiments' features / seed / interval level; and not stale. A model that merely shares a method name — trained
         on other data, under another configuration, or never evaluated — gets its own stored status, not borrowed evidence."""
+        from app.modeling.registry import (
+            ARTIFACT_SCHEMA,  # lazy: modeling imports player_intelligence
+        )
+
         cfg, vm = version_config or {}, validation_metrics or {}
+        if cfg.get("artifact_schema") != ARTIFACT_SCHEMA:
+            return False  # stored by other code than today's: its rows are not what the evidence was gathered about
         raw = vm.get("evaluation_status")
         if isinstance(raw, str) and raw.strip().lower().startswith("stale:"):
             return False
@@ -92,6 +98,7 @@ class ValidationRegistry:
             vm.get("experiment") in self.run_ids(quantity)
             and vm.get("config_matches") is True
             and vm.get("experiment_data_fingerprint") == self.data_fingerprint(quantity)
+            and vm.get("current_data_fingerprint") == self.data_fingerprint(quantity)
             and cfg.get("features") == recorded.get("features")
             and cfg.get("seed") == recorded.get("seed")
             and cfg.get("interval_level") == recorded.get("interval_level")

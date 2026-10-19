@@ -490,6 +490,9 @@ def _modeling_command(command: str, args: list[str]) -> int:
                     print(usage)
                     return 0
                 unknown = [a for a in args if a.startswith("-") and a not in ("--origin", "--evidence-dir")]
+                valueless = [f for f in ("--origin", "--evidence-dir") if f in args and option(f) is None]
+                if valueless:
+                    return refuse("usage", f"{valueless} needs a value; nothing was written. {usage}")
                 if unknown or any(not a.startswith("-") and (i == 0 or args[i - 1] not in ("--origin", "--evidence-dir")) for i, a in enumerate(args)):
                     return refuse("usage", f"unrecognised arguments {unknown or args}; nothing was written. {usage}")
 
