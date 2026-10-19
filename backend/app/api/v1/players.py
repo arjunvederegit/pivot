@@ -24,6 +24,7 @@ from app.db.models import (
     Team,
 )
 from app.integrations.contracts import get_contract_provider
+from app.services.financials import NOT_ON_FILE, player_financials
 from app.services.impact_reference import impact_reference
 
 router = APIRouter(prefix="/players", tags=["players"])
@@ -265,17 +266,46 @@ def get_player_stats(player_id: str, db: Session = Depends(get_db)) -> dict:
     }
 
 
+@router.get("/{player_id}/shot-zones")
+def get_player_shot_zones(player_id: str, db: Session = Depends(get_db)) -> dict:
+    """R9.3A: shot-zone distribution (BALLDONTLIE ``shooting/by_zone``), unit-reconciled or withheld.
+
+    Read-only; no provider call. See ``app.services.shot_zones``."""
+    from app.services.shot_zones import shot_zone_profile
+
+    if db.get(Player, player_id) is None:
+        raise NotFoundError(f"player {player_id} not found")
+    return shot_zone_profile(db, player_id)
+
+
 @router.get("/{player_id}/contract")
 def get_player_contract(player_id: str, db: Session = Depends(get_db)) -> dict:
     player = db.get(Player, player_id)
     if player is None:
         raise NotFoundError(f"player {player_id} not found")
     contract = db.scalar(select(Contract).where(Contract.player_id == player.id))
+    settings = get_settings()
+    # R9.3A: the same assembled record Cap Center and the Trade Evaluator read, so the three agree.
+    financials = player_financials(db, {player.id: player.full_name}, settings.cap_league_year)[
+        player.id
+    ].as_dict()
+    roster_season = resolve_roster_season(db)
+    team = _current_team(db, player.id, roster_season)
+    context = {
+        "financial_season": settings.cap_league_year,
+        "roster_season": roster_season,
+        "current_team": {"id": team.id, "abbreviation": team.abbreviation, "name": team.full_name}
+        if team
+        else None,
+        "financials": financials,
+        "not_on_file": NOT_ON_FILE,
+    }
     if contract is None:
         configured = get_contract_provider() is not None
         return {
             "player_id": player.id,
             "available": False,
+            **context,
             "reason": (
                 "Contract data unavailable from the configured provider."
                 if configured
@@ -292,6 +322,7 @@ def get_player_contract(player_id: str, db: Session = Depends(get_db)) -> dict:
     return {
         "player_id": player.id,
         "available": True,
+        **context,
         "contract_type": contract.contract_type,
         "signed_date": contract.signed_date.isoformat() if contract.signed_date else None,
         "no_trade_clause": contract.no_trade_clause,

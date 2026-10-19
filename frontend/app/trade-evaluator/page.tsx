@@ -21,7 +21,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -57,6 +56,9 @@ import { TeamPerspective } from "@/components/trade/perspective";
 import { SeasonBasisNotice } from "@/components/season-context";
 import { SectionHead } from "@/components/trade/section-head";
 import { ConsequenceSheet, type SheetAsset, type SheetSide } from "@/components/trade/sheet";
+import { SalaryAndContracts } from "@/components/trade/financials";
+import { StagedPlayerNotice } from "@/components/trade/staged-player";
+import { TRANSIENT_KEYS, parseInvestigation } from "@/lib/investigation";
 import { LEGALITY_VISUAL } from "@/components/trade/verdict";
 import {
   AddPartnerSlot,
@@ -112,6 +114,10 @@ function TradeEvaluator() {
   const loadTradeId = searchParams.get("load");
   const initialTeamId = searchParams.get("team");
   const sharedState = searchParams.get("state");
+  // R9.3A: a player carried from Player Explorer. Canonical ids only; verified against the roster below.
+  const investigation = useMemo(() => parseInvestigation(searchParams), [searchParams]);
+  const [stagedPlayerId, setStagedPlayerId] = useState<string | null>(null);
+  const [stagedContext, setStagedContext] = useState<ReturnType<typeof parseInvestigation>>(null);
 
   const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: () => api.get<Team[]>("/teams") });
   const { data: scenario } = useQuery({
@@ -149,6 +155,10 @@ function TradeEvaluator() {
       if (shared.name) setTradeName(shared.name);
     } else if (initialTeamId && teams.some((t) => t.id === initialTeamId)) {
       setTeamIds([initialTeamId]);
+      if (investigation) {
+        setStagedPlayerId(investigation.playerId);
+        setStagedContext(investigation);
+      }
     } else {
       const favorite = getFavoriteTeam();
       if (favorite && teams.some((t) => t.id === favorite.id)) setTeamIds([favorite.id]);
@@ -254,6 +264,21 @@ function TradeEvaluator() {
     return () => clearTimeout(handle);
   }, [teamIds, playerMoves, picks]);
 
+  // R9.3A: keep the deal in the address bar (replaceState, no navigation) so opening a participant's
+  // player file and pressing Back restores the scenario instead of an empty builder. Transient link
+  // parameters (a player carried from Player Explorer) are consumed into the state and dropped.
+  useEffect(() => {
+    if (!hydrated || !seeded || teamIds.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    for (const key of TRANSIENT_KEYS) params.delete(key);
+    params.delete("load");
+    params.set("state", encodeShareState({ teamIds, moves, picks, name: tradeName || undefined }));
+    const next = `${window.location.pathname}?${params.toString()}`;
+    if (next !== `${window.location.pathname}${window.location.search}`) {
+      window.history.replaceState(window.history.state, "", next);
+    }
+  }, [hydrated, seeded, teamIds, moves, picks, tradeName]);
+
   const evaluate = useMutation({
     mutationFn: () =>
       api.post<{ legality: LegalityResponse; evaluations: Record<string, TeamEvaluation> }>(
@@ -322,14 +347,17 @@ function TradeEvaluator() {
     onError: (e) => toast("error", `Could not save: ${String(e)}`),
   });
 
-  const addTeam = useCallback(
-    (id: string) => {
+  const addTeam = (id: string) => {
       setTeamIds((current) =>
         id && !current.includes(id) && current.length < 3 ? [...current, id] : current,
       );
-    },
-    [setTeamIds],
-  );
+      // R9.3A: the first partner a user adds receives the player carried from Player Explorer, so he
+      // does not have to be found again. Applied only if he is verifiably on the origin roster.
+      if (stagedPlayerId && teamIds.length === 1 && id !== teamIds[0] && originOf[stagedPlayerId] === teamIds[0]) {
+        setMoves((m) => (m[stagedPlayerId] ? m : { ...m, [stagedPlayerId]: id }));
+        setEvaluation(null);
+      }
+  };
 
   function removeTeam(id: string) {
     setTeamIds(teamIds.filter((t) => t !== id));
@@ -453,6 +481,22 @@ function TradeEvaluator() {
       />
 
       <div className="space-y-12">
+        {stagedPlayerId && stagedContext && (
+          <StagedPlayerNotice
+            playerId={stagedPlayerId}
+            context={stagedContext}
+            teams={loaded}
+            teamIds={teamIds}
+            rosterLoaded={!rosters.isPending}
+            rosterRow={playerIndex[stagedPlayerId]}
+            originTeamId={originOf[stagedPlayerId] ?? null}
+            movedTo={moves[stagedPlayerId] ?? null}
+            onDismiss={() => {
+              setStagedPlayerId(null);
+              setStagedContext(null);
+            }}
+          />
+        )}
         {teamIds.length === 0 ? (
           <StartHere teams={loaded} onAdd={addTeam} onPick={() => setPickerOpen(true)} />
         ) : (
@@ -517,12 +561,21 @@ function TradeEvaluator() {
               aside="The rules engine re-checks the deal every time an asset moves. When it is settled, evaluate it for every side."
             />
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
-              <RulesCheck
-                className="self-start"
-                validation={validation}
-                validating={validating}
-                hasMoves={hasMoves}
-              />
+              <div className="min-w-0 space-y-4 self-start">
+                <RulesCheck
+                  validation={validation}
+                  validating={validating}
+                  hasMoves={hasMoves}
+                />
+                {validation?.financial_analysis && (
+                  <SalaryAndContracts
+                    analysis={validation.financial_analysis}
+                    teamNames={Object.fromEntries(
+                      Object.entries(validation.teams).map(([id, t]) => [id, t.abbreviation]),
+                    )}
+                  />
+                )}
+              </div>
               <div>
                 <div className="space-y-4 lg:sticky lg:top-6">
                   <RunIt

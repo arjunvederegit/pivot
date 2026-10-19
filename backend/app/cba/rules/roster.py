@@ -92,6 +92,16 @@ class RosterSizeRule:
                     )
                 confidence = "medium"
 
+            if context.roster_provisional and status == "fail":
+                # R9.3A: the count is of a provisional snapshot (camp invitees, Exhibit 10 and two-way players
+                # are indistinguishable from the final roster), so a count-based failure is not a verified one.
+                status = "warning"
+                message += (
+                    " The roster is a provisional preseason snapshot, so this count may not be the final "
+                    "roster and is reported as a warning, not a verified failure."
+                )
+                confidence = "low"
+
             results.append(
                 RuleResult(
                     rule_code=self.code,

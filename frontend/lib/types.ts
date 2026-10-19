@@ -63,6 +63,11 @@ export interface RosterPlayer {
   contract_years_remaining: number | null;
   /** null means the provider does not report contract type — never assume "standard". */
   contract_type: string | null;
+  /** R9.3A: the season `salary` is the cap hit for (null when no cap hit is on file). */
+  salary_season?: string | null;
+  /** True when `contract_years_remaining` is a floor: the last row read is the last season loaded. */
+  contract_years_is_lower_bound?: boolean | null;
+  contract_final_season?: string | null;
 }
 
 /**
@@ -228,6 +233,8 @@ export interface TeamLegality {
 }
 
 export interface LegalityResponse {
+  /** R9.3A: the financial picture and the inspectable checked / failed / unverified account. */
+  financial_analysis?: import("@/lib/financials").TradeFinancialAnalysis;
   league_year: string;
   overall_status: LegalityStatus;
   teams: Record<string, TeamLegality>;
@@ -513,8 +520,12 @@ export interface SeasonTotalsResponse {
 export interface CapOutlookContractSeason {
   season: string;
   salary: number;
-  player_option: boolean;
-  team_option: boolean;
+  base_salary?: number | null;
+  total_cash?: number | null;
+  salary_basis?: string | null;
+  /** Always null for BALLDONTLIE rows: options are free text there and are not parsed. */
+  player_option: boolean | null;
+  team_option: boolean | null;
 }
 
 export interface CapOutlookPlayer {
@@ -526,6 +537,11 @@ export interface CapOutlookPlayer {
   no_trade_clause: boolean;
   source_name: string | null;
   source_date: string | null;
+  /** R9.3A */
+  contract_length_known?: boolean;
+  contract_end?: import("@/lib/financials").ContractEnd | null;
+  financials?: import("@/lib/financials").PlayerFinancialsRecord | null;
+  retrieved_at?: string | null;
 }
 
 export interface CapParameters {
@@ -553,6 +569,8 @@ export interface CapOutlookAvailable {
   players: CapOutlookPlayer[];
   cap_parameters: CapParameters | null;
   note: string;
+  /** R9.3A: the shared financial summary (subtotal label, coverage, withheld conclusions). */
+  financials?: import("@/lib/financials").TeamFinancialSummary;
 }
 
 export type CapOutlookResponse = CapOutlookUnavailable | CapOutlookAvailable;

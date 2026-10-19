@@ -120,7 +120,7 @@ class TwoWayExclusionRule:
         results = []
         for team in context.teams:
             moved = team.outgoing + team.incoming
-            unknown = [p.name for p in moved if p.contract_type is None]
+            unknown = [p.name for p in moved if p.matching_class is None]
             if unknown:
                 # The exclusion cannot be applied to a contract whose type is unknown, and
                 # the failure is permissive: an unrecognised two-way salary inflates the
@@ -141,7 +141,7 @@ class TwoWayExclusionRule:
                     )
                 )
                 continue
-            two_way = [p.name for p in moved if p.contract_type == "two-way"]
+            two_way = [p.name for p in moved if p.matching_class == "two-way"]
             if two_way:
                 results.append(
                     RuleResult(

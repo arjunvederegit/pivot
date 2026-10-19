@@ -63,7 +63,7 @@ class SalaryDataAvailabilityRule:
                 )
                 continue
             missing = [p.name for p in moved if p.salary is None]
-            unknown_types = [p.name for p in moved if p.contract_type is None]
+            unknown_types = [p.name for p in moved if p.matching_class is None]
             if missing:
                 provider_note = (
                     "no contract provider is configured"
@@ -108,13 +108,27 @@ class SalaryDataAvailabilityRule:
                     )
                 )
             else:
+                inferred = [p for p in moved if p.contract_type is None]
                 results.append(
                     RuleResult(
                         rule_code=self.code,
                         status="pass",
                         team_id=team.team_id,
-                        message="Contract salary and type present for all traded players.",
+                        message=(
+                            "Contract salary and type present for all traded players."
+                            if not inferred
+                            else "Contract salary present for all traded players; for "
+                            + ", ".join(p.name for p in inferred)
+                            + " the type is not stated but the cap hit exceeds the two-way salary, "
+                            "so the contract is not a two-way deal (a deduction, not a source field)."
+                        ),
+                        calculation=(
+                            {"contract_type_deduced_not_two_way": [p.name for p in inferred]}
+                            if inferred
+                            else {}
+                        ),
                         source_reference=CBA_REF,
+                        confidence="high" if not inferred else "medium",
                     )
                 )
         return results
@@ -128,18 +142,16 @@ class SalaryMatchingRule:
         params = context.params
         outgoing = team.outgoing_salary
         incoming = team.incoming_salary
-        if outgoing is None or incoming is None or team.payroll_before is None:
-            # R2c: the payroll figure may now be disclosable even here — say what is
-            # known and what is missing, but do not turn a lower bound into a verdict.
-            coverage = team.coverage_before
+        coverage = team.coverage_before
+        if outgoing is None or incoming is None:
             detail = f" {coverage.disclosure()}" if coverage and not coverage.complete else ""
             return RuleResult(
                 rule_code=self.code,
                 status="unavailable",
                 team_id=team.team_id,
                 message=(
-                    "Salary matching not evaluated: contract data incomplete for this "
-                    f"team.{detail}"
+                    "Salary matching not evaluated: a traded salary or contract type is unknown "
+                    f"for this team.{detail}"
                 ),
                 calculation={
                     "payroll_known": team.payroll_known_before,
@@ -156,6 +168,8 @@ class SalaryMatchingRule:
                 calculation={"outgoing_salary": outgoing, "incoming_salary": 0},
                 source_reference=CBA_REF,
             )
+        if team.payroll_before is None:
+            return self._partial_payroll_result(team, context, outgoing, incoming)
         if outgoing == 0 and incoming > 0:
             # Taking in salary with none outgoing requires cap room, which needs full
             # league-wide contract data to verify precisely; we check against the cap.
@@ -179,6 +193,27 @@ class SalaryMatchingRule:
             )
 
         payroll_after = team.payroll_after or 0
+        if payroll_after <= params.salary_cap:
+            # R9.3A: a team whose payroll after the trade is at or under the cap needs no matching
+            # at all (it is absorbing into cap room). Applying a matching band here would report a
+            # false failure for an under-the-cap team taking back more than 200% of what it sends.
+            return RuleResult(
+                rule_code=self.code,
+                status="pass",
+                team_id=team.team_id,
+                message=(
+                    f"Post-trade payroll ${payroll_after:,.0f} is at or under the salary cap "
+                    f"${params.salary_cap:,.0f}, so no salary matching is required."
+                ),
+                calculation={
+                    "outgoing_salary": outgoing,
+                    "incoming_salary": incoming,
+                    "post_trade_payroll": payroll_after,
+                    "salary_cap": params.salary_cap,
+                    "band": "under the cap after the trade",
+                },
+                source_reference=CBA_REF,
+            )
         status_after = team.apron_status(payroll_after, params)
         if status_after in ("above_first_apron", "above_second_apron"):
             maximum = max_incoming_at_or_above_first_apron(outgoing, params)
@@ -204,6 +239,101 @@ class SalaryMatchingRule:
                 "band": band,
             },
             source_reference=CBA_REF,
+        )
+
+    def _partial_payroll_result(
+        self, team: TeamContext, context: TradeContext, outgoing: int, incoming: int
+    ) -> RuleResult:
+        """Matching when the payroll is a floor: it may *indicate* a failure, it never passes (R2c policy).
+
+        Missing salaries can only raise the true payroll, so ``known_after`` is a lower bound on the
+        post-trade payroll. That indicates a failure in exactly two cases:
+
+        * the floor already exceeds the first apron -> the standard TPE binds (100% of outgoing +
+          allowance), and incoming is above it;
+        * incoming exceeds even the most generous limit (expanded TPE) and the floor already exceeds
+          the cap -> cap room is excluded, so the deal fails under every regime.
+
+        The result stays ``unavailable`` either way — the indication is carried in
+        ``calculation['indicated_failure']`` and surfaced by the trade's legality assessment — because the
+        floor is built from a roster snapshot, and a verdict that gates the basketball evaluation must not
+        rest on one. A deal whose
+        incoming salary is within the strictest limit, which every regime would accept: that is
+        reported in ``calculation['would_pass_under_every_regime']`` and in the message, but not as a
+        pass, because "partial data refutes but never passes" is a deliberate standard
+        (tests/unit/test_disclosed_coverage_payroll.py). Confidence is ``medium``: the floor is built
+        from the current roster snapshot, which in the preseason still holds camp contracts that may
+        be waived.
+        """
+        params = context.params
+        coverage = team.coverage_before
+        floor_after = team.payroll_known_after
+        strictest = max_incoming_at_or_above_first_apron(outgoing, params)
+        generous = max_incoming_below_first_apron(outgoing, params) if outgoing > 0 else 0.0
+        calc: dict = {
+            "outgoing_salary": outgoing,
+            "incoming_salary": incoming,
+            "strictest_maximum_incoming": round(strictest),
+            "most_generous_maximum_incoming": round(generous),
+            "payroll_known_after": floor_after,
+            "payroll_coverage": coverage.as_dict() if coverage else None,
+        }
+        disclosure = f" {coverage.disclosure()}" if coverage and not coverage.complete else ""
+        within_strictest = outgoing > 0 and incoming <= strictest
+        indication: dict | None = None
+        if floor_after is not None:
+            if outgoing > 0 and floor_after > params.first_apron and incoming > strictest:
+                indication = {
+                    "kind": "floor_above_first_apron",
+                    "limit": round(strictest),
+                    "explanation": (
+                        f"Incoming ${incoming:,.0f} exceeds ${strictest:,.0f} (standard TPE: 100% of outgoing + "
+                        f"allowance), and the known salaries alone leave the team above the first apron "
+                        f"(${floor_after:,.0f} > ${params.first_apron:,.0f}), so that limit would bind "
+                        "whatever the missing salaries are."
+                    ),
+                }
+            elif incoming > generous and floor_after > params.salary_cap:
+                indication = {
+                    "kind": "above_most_generous_limit_and_floor_over_cap",
+                    "limit": round(generous),
+                    "explanation": (
+                        f"Incoming ${incoming:,.0f} exceeds even the most generous matching limit "
+                        f"${generous:,.0f}, and the known salaries alone leave the team over the cap "
+                        f"(${floor_after:,.0f} > ${params.salary_cap:,.0f}), so cap room cannot absorb it."
+                    ),
+                }
+        if indication:
+            message = (
+                f"Salary matching not verified: payroll is incomplete. {indication['explanation']}{disclosure} "
+                "This is an indication from a floor, reported as unverified: it can be wrong only if the roster "
+                "snapshot is (the preseason roster still holds camp contracts)."
+            )
+        elif within_strictest:
+            message = (
+                f"Salary matching not verified: payroll is incomplete. Incoming ${incoming:,.0f} is within the "
+                f"strictest limit ${strictest:,.0f} (100% of outgoing + allowance), which every matching regime "
+                f"would accept — but a verdict needs the full payroll.{disclosure}"
+            )
+        else:
+            message = (
+                "Salary matching not evaluated: the verdict depends on this team's full payroll "
+                f"(incoming ${incoming:,.0f} is above the strictest limit ${strictest:,.0f}).{disclosure}"
+            )
+        return RuleResult(
+            rule_code=self.code,
+            status="unavailable",
+            team_id=team.team_id,
+            message=message,
+            calculation={
+                "payroll_known": team.payroll_known_before,
+                "payroll_coverage": coverage.as_dict() if coverage else None,
+                "would_pass_under_every_regime": within_strictest,
+                "indicated_failure": indication,
+                **calc,
+            },
+            source_reference=CBA_REF,
+            confidence="medium" if indication else "high",
         )
 
     def evaluate(self, context: TradeContext) -> list[RuleResult]:

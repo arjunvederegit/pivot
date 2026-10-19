@@ -679,10 +679,15 @@ export function SalaryTimeline({
   seasons,
   capLine,
   taxLine,
+  title = "Committed payroll by season",
+  lineYear,
 }: {
   seasons: { season: string; total: number; players?: number }[];
   capLine?: number;
   taxLine?: number;
+  title?: string;
+  /** The league year the cap and tax lines belong to; named in the chart's summary so they are not read across seasons. */
+  lineYear?: string;
 }) {
   const data = seasons.map((s) => ({ ...s, millions: s.total / 1_000_000 }));
   // The scale reaches the cap and tax lines even when committed money is low, so the reference
@@ -697,12 +702,14 @@ export function SalaryTimeline({
   const refLabel = { fill: "var(--chalk-dim)", fontSize: 11, fontFamily: FONT, position: "right" as const };
   return (
     <ChartFrame
-      title="Committed payroll by season"
+      title={title}
       unit="$ millions"
       why="Where the money is already spoken for — and when the books clear."
-      summary={data
-        .map((d) => `${d.season}: $${d.millions.toFixed(1)}M across ${d.players ?? "?"} players`)
-        .join("; ")}
+      summary={
+        data
+          .map((d) => `${d.season}: $${d.millions.toFixed(1)}M known across ${d.players ?? "?"} players`)
+          .join("; ") + (lineYear ? `. The cap and tax lines are the ${lineYear} figures.` : "")
+      }
     >
       <ResponsiveContainer width="100%" height={224}>
         {/* right margin holds the cap/tax reference labels — without it they clip */}
@@ -721,7 +728,7 @@ export function SalaryTimeline({
           <Tooltip
             {...TOOLTIP}
             cursor={CURSOR}
-            formatter={(value) => [`$${Number(value).toFixed(1)}M`, "committed"]}
+            formatter={(value) => [`$${Number(value).toFixed(1)}M`, "known cap hits"]}
           />
           <Bar dataKey="millions" fill="var(--signal)" fillOpacity={0.85} radius={END_TOP} maxBarSize={28} />
           {/* Dashed on purpose: the page's caption names them "dashed lines". */}

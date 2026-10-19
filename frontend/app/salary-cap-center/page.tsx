@@ -23,6 +23,7 @@ import { api } from "@/lib/api";
 import { useHydrated } from "@/lib/hydrated";
 import { dataHealthSchema } from "@/lib/schemas";
 import { count, formatDate, money } from "@/lib/format";
+import { contractLength, dollars, type TeamFinancialSummary } from "@/lib/financials";
 import { teamIdentity } from "@/lib/teamIdentity";
 import type {
   CapOutlookAvailable,
@@ -875,12 +876,19 @@ function CapOutlookView({
   accent: string;
   teamName: string;
 }) {
+  const fin = outlook.financials;
   const seasons = outlook.seasons.map((season) => season.season);
-  const missing = outlook.roster_size - outlook.players_with_contracts;
   const params = outlook.cap_parameters;
   const sourceName = outlook.players.find((player) => player.source_name)?.source_name ?? null;
-  const sourceDate = outlook.players.find((player) => player.source_date)?.source_date ?? null;
-  const firstSeason = outlook.seasons[0];
+  const sourceDate =
+    fin?.retrieved_at ?? outlook.players.find((player) => player.source_date)?.source_date ?? null;
+  const firstSeason = outlook.seasons.find((season) => season.season === outlook.cap_league_year) ?? outlook.seasons[0];
+  const priced = fin?.coverage.priced ?? outlook.players_with_contracts;
+  const rosterSize = fin?.coverage.roster_size ?? outlook.roster_size;
+  const missing = rosterSize - priced;
+  const complete = fin?.coverage.complete ?? outlook.complete;
+  const subtotalLabel = fin?.subtotal_label ?? (complete ? "Payroll" : "Known salary subtotal");
+  const horizonSeasons = fin?.horizon.seasons_loaded ?? [];
 
   const capParamBlocks = params
     ? ([
@@ -893,27 +901,37 @@ function CapOutlookView({
 
   const figures: { label: string; value: React.ReactNode; note: string; tone?: string }[] = [
     {
-      label: `Committed ${firstSeason?.season ?? ""}`,
+      label: `${subtotalLabel} · ${outlook.cap_league_year}`,
       value: firstSeason
-        ? outlook.complete
-          ? money(firstSeason.total)
-          : `≥ ${money(firstSeason.total)}`
+        ? complete
+          ? money(fin?.payroll ?? firstSeason.total)
+          : `≥ ${money(fin?.known_subtotal ?? firstSeason.total)}`
         : "—",
-      note: outlook.complete ? "sum of imported salaries" : "floor — contracts missing",
+      note: complete
+        ? "every rostered contract is priced"
+        : `a floor — ${count(missing, "rostered player")} not priced`,
     },
     {
-      label: "Contracts imported",
-      value: `${outlook.players_with_contracts}/${outlook.roster_size}`,
-      note: "rostered players covered",
-      tone: outlook.complete ? "var(--legal)" : "var(--conditional)",
+      label: "Cap hits on file",
+      value: `${priced}/${rosterSize}`,
+      note: `rostered players priced for ${outlook.cap_league_year}`,
+      tone: complete ? "var(--legal)" : "var(--conditional)",
     },
     {
-      label: "Seasons committed",
-      value: outlook.seasons.length,
-      note: "league years with money on the books",
+      label: "Contract years loaded",
+      value: horizonSeasons.length || outlook.seasons.length,
+      note: horizonSeasons.length
+        ? `${horizonSeasons[0]} through ${horizonSeasons[horizonSeasons.length - 1]}`
+        : "seasons with money on the books",
     },
-    { label: "Cap league year", value: outlook.cap_league_year, note: "thresholds below" },
+    {
+      label: "Cap league year",
+      value: outlook.cap_league_year,
+      note: params ? "thresholds are for this year only" : "no thresholds loaded",
+    },
   ];
+
+  const unpriced = fin?.unpriced_players ?? [];
 
   return (
     <div className="space-y-6">
@@ -922,11 +940,11 @@ function CapOutlookView({
           team={team}
           leagueYear={outlook.cap_league_year}
           status={
-            outlook.complete ? (
-              <Badge status="pass">all {outlook.roster_size} rostered players have contract data</Badge>
+            complete ? (
+              <Badge status="pass">all {rosterSize} rostered players priced</Badge>
             ) : (
               <Badge status="incomplete">
-                {outlook.players_with_contracts} of {outlook.roster_size} players covered
+                {priced} of {rosterSize} players priced
               </Badge>
             )
           }
@@ -934,7 +952,9 @@ function CapOutlookView({
         <dl className="grid grid-cols-2 gap-px border-b border-hairline bg-hairline lg:grid-cols-4">
           {figures.map((cell) => (
             <div key={cell.label} className="min-w-0 bg-panel px-5 py-4">
-              <dt className="eyebrow truncate">{cell.label}</dt>
+              <dt className="eyebrow truncate" title={cell.label}>
+                {cell.label}
+              </dt>
               <dd
                 className="stat-serif mt-2 text-[2.1rem] leading-none text-foreground"
                 style={cell.tone ? { color: cell.tone } : undefined}
@@ -950,23 +970,20 @@ function CapOutlookView({
             <CoverageSlots players={roster} />
           </div>
         )}
-        {!outlook.complete && (
+        {!complete && (
           <p className="px-5 py-3.5 text-[12.5px] leading-relaxed text-muted">
-            {count(missing, "contract")} missing — season totals are partial and the cap position
-            is withheld rather than estimated.
+            {count(missing, "rostered player")} {missing === 1 ? "has" : "have"} no{" "}
+            {outlook.cap_league_year} cap hit on file, so the figure above is a{" "}
+            <strong className="font-medium text-foreground">known salary subtotal</strong>, not a
+            payroll. Payroll, cap space and apron position are withheld rather than estimated.
           </p>
         )}
       </Panel>
 
+      {fin && <FinancialScope fin={fin} />}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <Panel accent={accent}>
-          {!outlook.complete && (
-            <p className="mb-3 flex items-start gap-2 text-[12px] leading-snug text-conditional">
-              <span aria-hidden className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-conditional" />
-              Sum of imported contract salaries per season — partial roster coverage, so every bar
-              is a floor.
-            </p>
-          )}
           {outlook.seasons.length === 0 ? (
             <EmptyState
               title="No contract years found"
@@ -978,18 +995,19 @@ function CapOutlookView({
                 seasons={outlook.seasons}
                 capLine={params?.salary_cap}
                 taxLine={params?.luxury_tax}
+                title="Known cap hits by season"
+                lineYear={outlook.cap_league_year}
               />
-              {params && (
-                <p className="mt-2 text-[12px] leading-relaxed text-muted">
-                  Dashed lines are the league cap and tax for {outlook.cap_league_year}. They apply
-                  to that league year only — later seasons are shown for contract context, not as a
-                  cap projection.
-                </p>
-              )}
+              <p className="mt-2 text-[12px] leading-relaxed text-muted">
+                {fin?.commitments_note ??
+                  "Sum of imported contract salaries per season — partial roster coverage, so every bar is a floor."}{" "}
+                {params &&
+                  `Dashed lines are the ${outlook.cap_league_year} cap and tax; they do not apply to later seasons, which are shown as contract commitments, not a cap projection.`}
+              </p>
             </>
           )}
           <SourceRail
-            source={sourceName ? `${sourceName} (imported snapshot)` : "imported contract snapshot"}
+            source={sourceName ? `${sourceName} (cap-hit basis)` : "imported contract snapshot"}
             retrievedAt={sourceDate}
           />
         </Panel>
@@ -1012,20 +1030,22 @@ function CapOutlookView({
               reason={`No league cap parameters are loaded for ${outlook.cap_league_year}, so no cap, tax or apron lines are drawn.`}
             />
           )}
+          {fin?.thresholds?.source_name && (
+            <p className="mt-3 text-[11.5px] leading-relaxed text-faint">
+              Source: {fin.thresholds.source_name}
+              {fin.thresholds.verified_at ? ` · verified ${formatDate(fin.thresholds.verified_at)}` : ""}
+            </p>
+          )}
           <p className="mt-3 border-t border-hairline pt-3 text-[12px] leading-relaxed text-muted">
             {outlook.note}
-          </p>
-          <p className="mt-2 text-[12px] leading-relaxed text-unavail">
-            Cap space, apron position and tax bills are not derived here — Pivot reports only what
-            the import contains.
           </p>
         </Panel>
       </div>
 
       <Panel
         title="Contracts"
-        subtitle={`${count(outlook.players.length, "imported contract")} · PO = player option, TO = team option`}
-        actions={!outlook.complete ? <Badge status="incomplete">partial coverage</Badge> : undefined}
+        subtitle={`${count(outlook.players.length, "priced contract")} · cap hit by season, contract length from the loaded seasons`}
+        actions={!complete ? <Badge status="incomplete">partial coverage</Badge> : undefined}
       >
         {outlook.players.length === 0 ? (
           <EmptyState
@@ -1040,9 +1060,9 @@ function CapOutlookView({
         ) : (
           <>
             <div className="scroll-thin overflow-x-auto">
-              <table className="w-full min-w-[820px] border-collapse">
+              <table className="w-full min-w-[860px] border-collapse">
                 <caption className="sr-only">
-                  Imported contracts for {teamName} by season, with option and expiring markers
+                  Contracts for {teamName}: cap hit by season, contract length and source
                 </caption>
                 <thead>
                   <tr className="border-b border-line">
@@ -1052,17 +1072,22 @@ function CapOutlookView({
                         {season}
                       </Th>
                     ))}
-                    <Th>Status</Th>
+                    <Th>Contract</Th>
                     <Th>Source</Th>
                   </tr>
                 </thead>
                 <tbody>
                   {outlook.players.map((player) => {
                     const bySeason = new Map(player.seasons.map((s) => [s.season, s]));
+                    const end = player.contract_end ?? player.financials?.contract_end ?? null;
                     return (
                       <tr key={player.player_id} className="border-b border-hairline hover:bg-panel2/60">
                         <Td>
-                          <span className="flex items-center gap-2.5">
+                          <Link
+                            href={`/players/${player.player_id}`}
+                            className="flex items-center gap-2.5 hover:text-signal"
+                            title={`Open ${player.name} in the Player Explorer`}
+                          >
                             <PlayerPhoto
                               nbaPlayerId={nbaIdByPlayer[player.player_id] ?? null}
                               name={player.name}
@@ -1071,51 +1096,51 @@ function CapOutlookView({
                             <span className="whitespace-nowrap font-medium text-foreground">
                               {player.name}
                             </span>
-                          </span>
+                          </Link>
                         </Td>
                         {seasons.map((season) => {
                           const year = bySeason.get(season);
+                          const detail = year
+                            ? `Cap hit ${dollars(year.salary)} · base salary ${dollars(year.base_salary)} · total cash ${dollars(year.total_cash)}`
+                            : "no contract year on file";
                           return (
                             <Td key={season} numeric>
                               {year ? (
-                                <span className="whitespace-nowrap">
+                                <span className="whitespace-nowrap" title={detail}>
                                   {money(year.salary)}
                                   {year.player_option && (
-                                    <span
-                                      className="ml-1 text-[10.5px] font-semibold text-signal"
-                                      title="Player option"
-                                    >
+                                    <span className="ml-1 text-[10.5px] font-semibold text-signal" title="Player option">
                                       PO
                                     </span>
                                   )}
                                   {year.team_option && (
-                                    <span
-                                      className="ml-1 text-[10.5px] font-semibold text-conditional"
-                                      title="Team option"
-                                    >
+                                    <span className="ml-1 text-[10.5px] font-semibold text-conditional" title="Team option">
                                       TO
                                     </span>
                                   )}
                                 </span>
                               ) : (
-                                <span className="text-unavail">—</span>
+                                <span className="text-unavail" title={detail}>
+                                  —
+                                </span>
                               )}
                             </Td>
                           );
                         })}
                         <Td>
-                          <span className="flex flex-wrap gap-1">
+                          <span className="flex flex-wrap items-center gap-1" title={end?.basis}>
                             {player.expiring && <Badge status="warning">expiring</Badge>}
-                            {player.no_trade_clause && <Badge status="info">no-trade</Badge>}
-                            {!player.expiring && !player.no_trade_clause && (
-                              <span className="text-[12px] text-faint">—</span>
-                            )}
+                            <span className="whitespace-nowrap text-[12px] text-muted">
+                              {contractLength(end)}
+                            </span>
                           </span>
                         </Td>
                         <Td>
                           <span className="whitespace-nowrap text-[12px] text-faint">
                             {player.source_name ?? "unknown"}
-                            {player.source_date ? ` · ${formatDate(player.source_date)}` : ""}
+                            {player.retrieved_at || player.source_date
+                              ? ` · ${formatDate(player.retrieved_at ?? player.source_date)}`
+                              : ""}
                           </span>
                         </Td>
                       </tr>
@@ -1125,17 +1150,104 @@ function CapOutlookView({
               </table>
             </div>
             <Explainer summary="Reading this table" className="mt-3">
-              A dash means no salary is recorded for that player in that season — it is not a zero.
-              Option years are shown at their stated value; Pivot does not model whether an option
-              will be exercised.
+              A dash means no contract year is on file for that player and season — it is not a
+              zero. Amounts are cap hits (hover a cell for base salary and total cash, which are
+              different quantities). A length marked “through ≥” means the last row read is the
+              last season loaded, so the contract may run longer. Option years, guarantees and
+              no-trade clauses are not loaded and are not shown.
             </Explainer>
           </>
         )}
+
+        {unpriced.length > 0 && (
+          <div className="mt-5 border-t border-hairline pt-4">
+            <h3 className="title-sm text-foreground">
+              Not priced for {outlook.cap_league_year} ({unpriced.length})
+            </h3>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted">
+              Rostered players with no {outlook.cap_league_year} cap hit on file. They are unknown,
+              never $0, and are not in any total above.
+            </p>
+            <ul className="mt-3 divide-y divide-hairline">
+              {unpriced.map((p) => (
+                <li key={p.player_id} className="grid gap-x-4 gap-y-0.5 py-2 text-[12.5px] sm:grid-cols-[11rem_minmax(0,1fr)]">
+                  <Link href={`/players/${p.player_id}`} className="font-medium text-foreground hover:text-signal">
+                    {p.name}
+                  </Link>
+                  <span className="text-muted [overflow-wrap:anywhere]">{p.reason}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <SourceRail
-          source={sourceName ? `${sourceName} (imported snapshot)` : "imported contract snapshot"}
+          source={sourceName ? `${sourceName} (cap-hit basis)` : "imported contract snapshot"}
           retrievedAt={sourceDate}
         />
       </Panel>
     </div>
+  );
+}
+
+/**
+ * What this page can and cannot conclude for this team, from the backend's own account — the
+ * supported statements, the conclusions it withholds and why, and how fresh the evidence is.
+ */
+function FinancialScope({ fin }: { fin: TeamFinancialSummary }) {
+  return (
+    <Panel
+      title="What this page can say"
+      subtitle={`Financial season ${fin.financial_season} · roster ${fin.roster_season}${fin.roster_is_provisional ? " (provisional preseason snapshot)" : ""}`}
+    >
+      <div className="grid gap-x-8 gap-y-5 md:grid-cols-2">
+        <div>
+          <h3 className="eyebrow">Supported</h3>
+          <ul className="mt-2.5 space-y-2 text-[13px] leading-relaxed text-muted">
+            {fin.supported.map((line) => (
+              <li key={line} className="flex gap-2.5">
+                <span aria-hidden className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-legal" />
+                {line}
+              </li>
+            ))}
+            {fin.thresholds_cleared_by_known_subtotal.length > 0 && (
+              <li className="flex gap-2.5">
+                <span aria-hidden className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-legal" />
+                The known salaries alone already exceed the{" "}
+                {fin.thresholds_cleared_by_known_subtotal.join(" and ").toLowerCase()} — missing
+                salaries can only add to it.
+              </li>
+            )}
+          </ul>
+        </div>
+        <div>
+          <h3 className="eyebrow">Withheld — and why</h3>
+          <ul className="mt-2.5 space-y-2 text-[13px] leading-relaxed text-muted">
+            {fin.withheld.map((w) => (
+              <li key={w.conclusion} className="flex gap-2.5">
+                <span aria-hidden className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-unavail" />
+                <span>
+                  <span className="font-medium text-foreground">{w.conclusion}.</span> {w.reason}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <Explainer summary="Definitions and what is not on file" className="mt-4">
+        <p>{fin.definitions}</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          {Object.entries(fin.not_on_file).map(([key, text]) => (
+            <li key={key}>{text}</li>
+          ))}
+        </ul>
+        {fin.roster_is_provisional && (
+          <p className="mt-2">
+            The roster is the provisional preseason snapshot: it can hold training-camp and
+            two-way players and omits later moves, so the subtotal describes this snapshot, not
+            the final 15.
+          </p>
+        )}
+      </Explainer>
+    </Panel>
   );
 }

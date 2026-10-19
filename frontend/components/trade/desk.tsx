@@ -24,6 +24,7 @@ import {
   SourceRail,
   UnavailableNotice,
 } from "@/components/ui";
+import { LegalityAssessment } from "@/components/trade/financials";
 import { LEGALITY_VISUAL, RULE_STATUS_WORD, RuleItem } from "@/components/trade/verdict";
 
 /* -------------------------------------------------------------- rules check */
@@ -123,6 +124,9 @@ export function RulesCheck({
               </p>
             )}
           </KeyFrame>
+
+          {/* ------------------------------ R9.3A: what was checked, failed, unverified */}
+          {validation.financial_analysis && <LegalityAssessment analysis={validation.financial_analysis} />}
 
           {/* ------------------------------------- what could not be checked */}
           {!validation.contract_provider_configured && (

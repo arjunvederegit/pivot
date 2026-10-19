@@ -21,12 +21,10 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { use, useState } from "react";
 import { ApiError, api } from "@/lib/api";
-import { money } from "@/lib/format";
 import { playerIntelligenceSchema } from "@/lib/schemas";
 import { teamVars } from "@/lib/teamIdentity";
 import type { ArchetypeAssignment, ComparablePlayer, PlayerIntelligence } from "@/lib/types";
 import {
-  Badge,
   ButtonLink,
   ErrorState,
   PageHeader,
@@ -35,8 +33,6 @@ import {
   SkeletonRows,
   SourceRail,
   Tabs,
-  Td,
-  Th,
   UnavailableNotice,
 } from "@/components/ui";
 import {
@@ -47,6 +43,13 @@ import {
 } from "@/components/players/career";
 import { PlayerFileHeader, type PlayerRecord } from "@/components/players/file-header";
 import type { SeasonContext } from "@/lib/types";
+import { BackToDeal } from "@/components/players/back-to-deal";
+import { ContractFile, type PlayerContractPayload } from "@/components/players/contract-file";
+import {
+  ObservedPerformancePanel,
+  ResearchPreviewPanel,
+  ShotProfilePanel,
+} from "@/components/players/skill-evidence";
 import {
   FitCard,
   ImpactPanel,
@@ -70,21 +73,7 @@ interface PlayerStats {
   source: string;
 }
 
-interface PlayerContract {
-  available: boolean;
-  reason?: string;
-  contract_type?: string;
-  source_name?: string;
-  source_date?: string;
-  no_trade_clause?: boolean | null;
-  years?: {
-    season: string;
-    salary: number;
-    player_option: boolean | null;
-    team_option: boolean | null;
-  }[];
-  note?: string;
-}
+type PlayerContract = PlayerContractPayload;
 
 type FileTab = "overview" | "performance" | "advanced" | "contract";
 
@@ -153,6 +142,7 @@ export default function PlayerPage({ params }: { params: Promise<{ playerId: str
 
   return (
     <div style={teamVars(team?.abbreviation)}>
+      <BackToDeal />
       <PlayerFileHeader
         player={player}
         impact={data.impact}
@@ -235,12 +225,26 @@ export default function PlayerPage({ params }: { params: Promise<{ playerId: str
 
         {tab === "advanced" && (
           <div className="space-y-4">
+            {/* R9.3A: measured performance and shot profile first, then the closed-by-default research
+                preview; the legacy percentile skill profile keeps its place below. */}
+            <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+              <ObservedPerformancePanel playerId={playerId} />
+              <ShotProfilePanel playerId={playerId} />
+            </div>
+            <ResearchPreviewPanel playerId={playerId} />
             <SkillsPanel intelligence={intelligence} error={intelligenceError} />
             <UnmeasuredPanel intelligence={intelligence} />
           </div>
         )}
 
-        {tab === "contract" && <ContractSection contract={contract} error={contractError} />}
+        {tab === "contract" && (
+          <ContractFile
+            contract={contract}
+            error={contractError}
+            playerId={playerId}
+            statsSeason={data.season_context?.performance?.season ?? null}
+          />
+        )}
       </div>
     </div>
   );
@@ -334,119 +338,6 @@ function PlayerNotFound({ playerId }: { playerId: string }) {
         </div>
       </section>
     </div>
-  );
-}
-
-/**
- * The Contract tab: the imported contract, or the notice that there is none — and in
- * either case where else in Pivot this one record is read, so the reader knows what an
- * import changes. Nothing here is estimated.
- */
-function ContractSection({
-  contract,
-  error,
-}: {
-  contract: PlayerContract | undefined;
-  error: unknown;
-}) {
-  const available = contract?.available === true;
-  return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
-      <ContractPanel contract={contract} error={error} />
-      <Panel as="aside" title="Where this contract is read" className="min-w-0">
-        <ul className="-mt-2.5 divide-y divide-hairline text-[13px] leading-relaxed text-muted">
-          <li className="py-2.5">
-            <Link href="/trade-evaluator" className="font-medium text-foreground hover:text-signal">
-              Trade Evaluator
-            </Link>{" "}
-            — salary matching and apron rules for any deal he is in.
-          </li>
-          <li className="py-2.5">
-            <Link href="/salary-cap-center" className="font-medium text-foreground hover:text-signal">
-              Cap Center
-            </Link>{" "}
-            — his team&apos;s payroll by season, options and expiring money.
-          </li>
-        </ul>
-        <p className="mt-1 border-t border-hairline pt-3 text-[12px] leading-relaxed text-faint">
-          {!contract
-            ? "Checking for an imported contract…"
-            : available
-              ? "Both read this same imported snapshot."
-              : "Until contracts are imported, both report these checks as unavailable — Pivot never estimates a salary."}
-        </p>
-      </Panel>
-    </div>
-  );
-}
-
-function ContractPanel({
-  contract,
-  error,
-}: {
-  contract: PlayerContract | undefined;
-  error: unknown;
-}) {
-  return (
-    <Panel
-      title="Contract"
-      subtitle="Salary by season, options and trade restrictions — from an imported contract snapshot"
-      className="min-w-0"
-    >
-      {error ? (
-        <ErrorState message={`Could not load the contract: ${String(error)}`} />
-      ) : !contract ? (
-        <SkeletonRows rows={3} height="h-8" />
-      ) : contract.available ? (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {contract.contract_type && <Badge status="info">{contract.contract_type}</Badge>}
-            {contract.no_trade_clause && <Badge status="warning">no-trade clause</Badge>}
-          </div>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-line">
-                <Th>Season</Th>
-                <Th numeric>Salary</Th>
-                <Th>Option</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {contract.years?.map((year) => (
-                <tr key={year.season} className="border-b border-hairline">
-                  <Td className="numeral whitespace-nowrap text-[14px]">{year.season}</Td>
-                  <Td numeric>{money(year.salary)}</Td>
-                  <Td className="text-xs text-muted">
-                    {year.player_option ? "player" : year.team_option ? "team" : "—"}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {contract.note && (
-            <p className="text-[11.5px] leading-relaxed text-faint">{contract.note}</p>
-          )}
-          <SourceRail
-            source={contract.source_name ?? "user-imported contract snapshot"}
-            retrievedAt={contract.source_date ?? null}
-          />
-        </div>
-      ) : (
-        <UnavailableNotice
-          reason={contract.reason ?? "Contract data has not been imported."}
-          steps={
-            <p className="text-[12px] leading-relaxed text-muted">
-              Until a contract provider is configured, salary-matching rules report{" "}
-              <em>unavailable</em> everywhere — see{" "}
-              <Link href="/data-health" className="text-signal underline">
-                Data Health
-              </Link>{" "}
-              for the exact next step.
-            </p>
-          }
-        />
-      )}
-    </Panel>
   );
 }
 

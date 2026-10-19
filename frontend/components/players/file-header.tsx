@@ -17,6 +17,7 @@ import { height } from "@/lib/format";
 import { QUALIFY_MIN } from "@/lib/playerStats";
 import { teamIdentity } from "@/lib/teamIdentity";
 import type { ArchetypeAssignment, Provenance, SeasonContext, Team } from "@/lib/types";
+import { tradeEvaluatorLink } from "@/lib/investigation";
 import { SeasonContextLine } from "@/components/season-context";
 import { PercentileFigure, useImpactPlacement } from "@/components/impact";
 import { PlayerPhoto, TeamLogo } from "@/components/media";
@@ -74,6 +75,13 @@ export function PlayerFileHeader({
 }) {
   const team = player.current_team;
   const identity = teamIdentity(team?.abbreviation);
+  // R9.3A: the canonical player id, the team he is on in the roster snapshot, and the statistics season behind
+  // the evidence on this page — nothing else travels (lib/investigation.ts).
+  const tradeLink = tradeEvaluatorLink({
+    playerId: player.id,
+    teamId: team?.id ?? null,
+    statsSeason: seasonContext?.performance?.season ?? null,
+  });
   const scored = impact.tei !== undefined && impact.tei !== null;
   const position = positionName(player.position);
   const role = archetype?.label
@@ -169,7 +177,12 @@ export function PlayerFileHeader({
             </dl>
             {team && (
               <div className="flex flex-wrap gap-2">
-                <ButtonLink href={`/trade-evaluator?team=${team.id}`} variant="primary" size="sm">
+                {tradeLink && (
+                  <ButtonLink href={tradeLink} variant="primary" size="sm">
+                    Evaluate {player.full_name} in a trade
+                  </ButtonLink>
+                )}
+                <ButtonLink href={`/trade-evaluator?team=${team.id}`} size="sm">
                   Open {team.abbreviation} in Trade Evaluator
                 </ButtonLink>
                 <ButtonLink href={`/player-explorer?team=${team.id}`} size="sm">

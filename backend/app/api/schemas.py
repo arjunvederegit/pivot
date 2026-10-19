@@ -78,6 +78,13 @@ class RosterPlayerOut(BaseModel):
     salary: int | None = None
     contract_years_remaining: int | None = None
     contract_type: str | None = None
+    # R9.3A: what the salary and years above are, and how sure the length is. `salary` is the
+    # cap hit for `salary_season`; `contract_years_remaining` counts seasons on file from that
+    # season and is a LOWER BOUND when `contract_years_is_lower_bound` is true (the last row read
+    # is the last season loaded). `contract_final_season` is None unless a row says so.
+    salary_season: str | None = None
+    contract_years_is_lower_bound: bool | None = None
+    contract_final_season: str | None = None
 
 
 class PlayerOut(BaseModel):

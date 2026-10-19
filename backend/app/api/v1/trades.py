@@ -14,6 +14,7 @@ from app.api.schemas import (
 )
 from app.cba.builder import build_trade_context
 from app.cba.engine import TradeLegalityEngine
+from app.canonical.tool_seasons import tool_seasons
 from app.core.errors import DomainError, NotFoundError
 from app.core.provenance import describe_providers
 from app.db.base import get_db
@@ -33,6 +34,7 @@ from app.services.candidates import generate_candidates
 from app.services.comparables import ComparableTradeService
 from app.services.evaluation import EvaluationService
 from app.services.reports import build_report_markdown, memo_payload, report_to_html
+from app.services.trade_financials import trade_financial_analysis
 
 router = APIRouter(prefix="/trades", tags=["trades"])
 
@@ -60,12 +62,25 @@ def _scenario_weights(db: Session, scenario_id: str | None) -> tuple[str, dict |
     )
 
 
+def _financial_analysis(db: Session, context, legality: dict) -> dict:  # type: ignore[no-untyped-def]
+    seasons = tool_seasons(db)
+    return trade_financial_analysis(
+        context,
+        legality,
+        roster_basis=seasons.get("roster"),
+        stats_label=(seasons.get("performance") or {}).get("label"),
+    )
+
+
 @router.post("/validate")
 def validate_trade(payload: ValidateRequest, db: Session = Depends(get_db)) -> dict:
     """Backend-authoritative legality check (the frontend never decides legality)."""
     player_moves, pick_moves = _moves_from_payload(payload)
     context = build_trade_context(db, payload.team_ids, player_moves, pick_moves)
-    return TradeLegalityEngine().evaluate(context)
+    legality = TradeLegalityEngine().evaluate(context)
+    # R9.3A: additive. The engine result is returned exactly as before, plus the financial picture
+    # and the inspectable checked / failed / unverified account the live rules panel renders.
+    return {**legality, "financial_analysis": _financial_analysis(db, context, legality)}
 
 
 @router.post("/evaluate")
@@ -91,6 +106,8 @@ def evaluate_trade(payload: EvaluateRequest, db: Session = Depends(get_db)) -> d
         "evaluations": evaluations,
         # R8.2: which season each input came from (roster / statistics / needs / contracts).
         "season_basis": service.season_basis(),
+        # R9.3A: verified contract facts, salary comparison, and the inspectable legality assessment.
+        "financial_analysis": _financial_analysis(db, context, legality),
     }
 
 
@@ -298,6 +315,7 @@ def _trade_detail(db: Session, trade_id: str, persist_results: bool = False) -> 
         "assets": assets,
         "legality": legality,
         "evaluations": evaluations,
+        "financial_analysis": _financial_analysis(db, context, legality),
     }
 
 
