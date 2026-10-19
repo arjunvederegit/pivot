@@ -42,7 +42,7 @@ def weighted_corr(x: np.ndarray, y: np.ndarray, w: np.ndarray) -> float:
 
 
 def main(path: str) -> dict:
-    with Session(create_engine(f"sqlite:///{path}")) as db:
+    with Session(create_engine(f"sqlite:///file:{path}?mode=ro&uri=true")) as db:
         raw = build_player_season_features(db)
     panel = PlayerSeasonPanel.from_frame(raw)
     seasons = ["2023-24", "2024-25", "2025-26"]

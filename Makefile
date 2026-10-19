@@ -60,12 +60,13 @@ test-backend:
 test-frontend:
 	cd $(FRONTEND) && npm run test -- --run
 
-backtest: ## R9.1 rolling-origin backtest (read-only on the DB): make backtest STAGE=development TARGET=impact_proxy|all [OUT=dir]
-	cd $(BACKEND) && .venv/bin/python -m app.cli backtest $(STAGE) $(if $(TARGET),--target $(TARGET),) $(if $(OUT),--out $(OUT),) $(if $(DECISIONS),--decisions $(DECISIONS),)
+backtest: ## R9.1 rolling-origin backtest (read-only on the DB): make backtest BT_STAGE=development|holdout BT_TARGET=impact_proxy|all [BT_OUT=dir]
+	@test -n "$(BT_STAGE)" || (echo "usage: make backtest BT_STAGE=development|holdout [BT_TARGET=impact_proxy|all] [BT_OUT=dir]"; exit 2)
+	cd $(BACKEND) && .venv/bin/python -m app.cli backtest $(BT_STAGE) $(if $(BT_TARGET),--target $(BT_TARGET),) $(if $(BT_OUT),--out $(BT_OUT),)
 
-train-candidate: ## R9.1 candidate-only training (never changes an active model): make train-candidate MODEL=ridge_boxscore TARGET=impact_proxy [ORIGIN=2025-26]
-	@test -n "$(MODEL)" -a -n "$(TARGET)" || (echo "usage: make train-candidate MODEL=<name> TARGET=<target> [ORIGIN=<season>] [EXPERIMENT=<dir>]"; exit 2)
-	cd $(BACKEND) && .venv/bin/python -m app.cli train-candidate --model $(MODEL) --target $(TARGET) $(if $(ORIGIN),--origin $(ORIGIN),) $(if $(EXPERIMENT),--experiment $(EXPERIMENT),)
+train-candidate: ## R9.1 candidate-only training (never changes an active model): make train-candidate CAND_MODEL=ridge_boxscore CAND_TARGET=impact_proxy [CAND_ORIGIN=2025-26] [CAND_EXPERIMENT=dir]
+	@test -n "$(CAND_MODEL)" -a -n "$(CAND_TARGET)" || (echo "usage: make train-candidate CAND_MODEL=<name> CAND_TARGET=<target> [CAND_ORIGIN=<season>] [CAND_EXPERIMENT=<dir>]"; exit 2)
+	cd $(BACKEND) && .venv/bin/python -m app.cli train-candidate --model $(CAND_MODEL) --target $(CAND_TARGET) $(if $(CAND_ORIGIN),--origin $(CAND_ORIGIN),) $(if $(CAND_EXPERIMENT),--experiment $(CAND_EXPERIMENT),)
 
 candidates: ## List candidate and rejected model versions
 	cd $(BACKEND) && .venv/bin/python -m app.cli candidates

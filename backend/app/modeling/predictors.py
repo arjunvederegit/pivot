@@ -12,8 +12,11 @@ Baselines (answer "is the candidate better than something trivial?"):
 * ``persistence``                — the player's own value last season, uncorrected.
 * ``regressed_persistence``      — OLS ``a + b * last_season``: regression toward the mean.
 * ``regressed_persistence_age``  — the same plus an age curve (``a + b*x + c*age + d*age^2``).
+* ``ols_history``                — least squares on last season, the windowed history and age: the simple
+                                   baseline with the candidates' own information.
 * ``incumbent_tei``              — the production TEI, as shipped (impact_proxy only).
-* ``incumbent_tei_recalibrated`` — the same ranking information put on the target's scale by OLS.
+* ``incumbent_tei_recalibrated`` — the same ranking information put on the target's scale by OLS
+                                   (every target: what does the existing Pivot estimate know about it?).
 
 Candidates (answer "does anything beat the baselines?"):
 
@@ -61,12 +64,20 @@ class Predictor(ABC):
     name: str
     family: str  # "baseline" | "candidate"
     description: str
+    #: The frame columns this predictor reads — recorded on a candidate as its feature list, so the
+    #: record states what the model actually used and not a guess from column names.
+    inputs: tuple[str, ...] = ()
 
     def applies_to(self, target: TargetSpec) -> bool:
         return True
 
     def spec(self) -> dict:
-        return {"name": self.name, "family": self.family, "description": self.description}
+        return {
+            "name": self.name,
+            "family": self.family,
+            "description": self.description,
+            "inputs": list(self.inputs),
+        }
 
     @abstractmethod
     def fit(self, train: pd.DataFrame, ctx: FitContext) -> Fitted: ...
@@ -138,6 +149,7 @@ class _Constant(Fitted):
 class LeagueMean(Predictor):
     name = "league_mean"
     family = "baseline"
+    inputs = ()
     description = "Training-period mean of the target among eligible players"
 
     def fit(self, train: pd.DataFrame, ctx: FitContext) -> Fitted:
@@ -156,6 +168,7 @@ class _Persistence(Fitted):
 class Persistence(Predictor):
     name = "persistence"
     family = "baseline"
+    inputs = ("x_t", "x_bar")
     description = (
         "Last season's value, uncorrected (a player who missed the season uses the mean of the seasons "
         "they played; with no evidence at all, the training mean)"
@@ -180,6 +193,7 @@ class _Linear(Fitted):
 class RegressedPersistence(Predictor):
     name = "regressed_persistence"
     family = "baseline"
+    inputs: tuple[str, ...] = ("x_t", "x_bar")
     description = "OLS y = a + b*last_season: regression toward the mean"
     with_age = False
 
@@ -201,7 +215,39 @@ class RegressedPersistence(Predictor):
 class RegressedPersistenceAge(RegressedPersistence):
     name = "regressed_persistence_age"
     description = "OLS y = a + b*last_season + c*age + d*age^2: persistence with an age curve"
+    inputs = ("x_t", "x_bar", "age")
     with_age = True
+
+
+class HistoryOLS(Predictor):
+    """The strongest *simple* baseline: unpenalised least squares on the candidates' own information.
+
+    Added after the methodology review (amendment 1): the baselines used only last season and age,
+    while the candidates also read the windowed history and the evidence behind it, so 'beats the
+    best simple baseline' could mean no more than 'uses more than last season'. Four parameters
+    and no tuning: anything that beats this has found something beyond additional history."""
+
+    name = "ols_history"
+    family = "baseline"
+    inputs = ("x_t", "x_bar", "age")
+    description = (
+        "OLS y = a + b*last_season + c*windowed_history + d*age + e*age^2: simple regression with the same "
+        "history the candidates see"
+    )
+
+    def fit(self, train: pd.DataFrame, ctx: FitContext) -> Fitted:
+        fill_last = float(np.nanmean(train["x_t"].astype(float)))
+        fill_bar = float(np.nanmean(train["x_bar"].astype(float)))
+
+        def design(frame: pd.DataFrame) -> np.ndarray:
+            last = _last_value(frame, fill_last)
+            bar = frame["x_bar"].astype(float).fillna(pd.Series(last, index=frame.index)).fillna(fill_bar).to_numpy()
+            age, age2 = _age_terms(frame)
+            return np.column_stack([np.ones(len(frame)), last, bar, age, age2])
+
+        beta = ols(design(train), _y(train))
+        names = ["intercept", "last_season", "windowed_history", "age", "age_sq"]
+        return _Linear(beta, design, {n: float(b) for n, b in zip(names, beta, strict=True)})
 
 
 class _Incumbent(Fitted):
@@ -221,6 +267,7 @@ class _Incumbent(Fitted):
 class IncumbentTEI(Predictor):
     name = "incumbent_tei"
     family = "baseline"
+    inputs = ("tei_window",)
     description = "The production TEI at the cutoff, as shipped (TEI / 2.5, the scale its own validation used)"
 
     def applies_to(self, target: TargetSpec) -> bool:
@@ -233,10 +280,11 @@ class IncumbentTEI(Predictor):
 class IncumbentTEIRecalibrated(Predictor):
     name = "incumbent_tei_recalibrated"
     family = "baseline"
-    description = "OLS y = a + b*TEI: the incumbent's ranking information on the target's own scale"
-
-    def applies_to(self, target: TargetSpec) -> bool:
-        return target.name == "impact_proxy"
+    inputs = ("tei_window",)
+    description = (
+        "OLS y = a + b*TEI: the incumbent's ranking information put on the target's own scale "
+        "(applies to every target: it asks what the existing Pivot estimate knows about this quantity)"
+    )
 
     def fit(self, train: pd.DataFrame, ctx: FitContext) -> Fitted:
         fill = float(np.nanmean(train["tei_window"].astype(float)))
@@ -294,6 +342,7 @@ def _eb_fit(train: pd.DataFrame, k: float) -> tuple[np.ndarray, float]:
 class EmpiricalBayesShrinkage(Predictor):
     name = "eb_shrinkage"
     family = "candidate"
+    inputs = ("x_bar", "window_exposure", "age")
     description = (
         "Prior = age-adjusted league mean; prediction = prior + b * E/(E+k) * (windowed history - prior), "
         "where E is the evidence (minutes or attempts) behind the history and k is chosen by "
@@ -403,6 +452,7 @@ class RidgeHistory(RidgeModel):
     name = "ridge_history"
     description = "Ridge on the player's own history only: last 3 values, windowed mean, evidence, age curve"
     columns = ["x_t", "x_lag1", "x_lag2", "x_bar", "log_window_exposure", "age", "age_sq"]
+    inputs = ("x_t", "x_lag1", "x_lag2", "x_bar", "window_exposure", "age")
 
 
 class RidgeBoxscore(RidgeModel):
@@ -415,6 +465,10 @@ class RidgeBoxscore(RidgeModel):
         "x_t", "x_lag1", "x_lag2", "x_bar", "log_window_exposure", "age", "age_sq",
         *[f"z_{c}" for c in Z_FEATURES],
     ]
+    inputs = (
+        "x_t", "x_lag1", "x_lag2", "x_bar", "window_exposure", "age",
+        *[f"z_{c}" for c in Z_FEATURES],
+    )
 
 
 ALL_PREDICTORS: tuple[Predictor, ...] = (
@@ -422,6 +476,7 @@ ALL_PREDICTORS: tuple[Predictor, ...] = (
     Persistence(),
     RegressedPersistence(),
     RegressedPersistenceAge(),
+    HistoryOLS(),
     IncumbentTEI(),
     IncumbentTEIRecalibrated(),
     EmpiricalBayesShrinkage(),

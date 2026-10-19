@@ -1,0 +1,7 @@
+{
+  "candidates": {},
+  "confirmed": [],
+  "family": "confirmatory",
+  "reference_baseline_from_development": "ols_history",
+  "target": "impact_proxy"
+}

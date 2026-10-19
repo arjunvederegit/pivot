@@ -56,3 +56,45 @@ def test_the_migration_reverses_and_reapplies(tmp_sqlite_url, monkeypatch):
         command.check(config)  # no drift between the models and the migrations
     finally:
         get_settings.cache_clear()
+
+
+def _version_length(url: str) -> int:
+    columns = {c["name"]: c for c in inspect(create_engine(url)).get_columns("model_versions")}
+    return columns["version"]["type"].length
+
+
+def test_the_version_column_is_widened_for_candidate_ids_and_restored_on_downgrade(tmp_sqlite_url, monkeypatch):
+    try:
+        config = _config(tmp_sqlite_url, monkeypatch)
+        command.upgrade(config, "head")
+        assert _version_length(tmp_sqlite_url) == 64
+        command.downgrade(config, "e8b3f5c2a914")
+        assert _version_length(tmp_sqlite_url) == 30
+    finally:
+        get_settings.cache_clear()
+
+
+def test_a_downgrade_that_would_orphan_candidates_is_refused(tmp_sqlite_url, monkeypatch):
+    """Dropping `status` would leave candidate rows looking like retired models with no estimates."""
+    import pytest
+
+    try:
+        config = _config(tmp_sqlite_url, monkeypatch)
+        command.upgrade(config, "head")
+        engine = create_engine(tmp_sqlite_url)
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "insert into model_versions (id, model_name, version, algorithm, feature_list, validation_metrics,"
+                    " is_active, status, config, lineage, created_at, updated_at) values ('c1', 'player_forecast_ts_pct',"
+                    " 'cand-ridge_boxscore-impact_proxy-0123456789ab', 'a', '[]', '{}', 0, 'candidate', '{}', '{}',"
+                    " '2026-01-01', '2026-01-01')"
+                )
+            )
+        with pytest.raises(RuntimeError, match="refusing to downgrade"):
+            command.downgrade(config, "e8b3f5c2a914")
+        with engine.connect() as conn:
+            assert conn.execute(text("select count(*) from model_versions where status = 'candidate'")).scalar_one() == 1
+        assert "candidate_estimates" in inspect(create_engine(tmp_sqlite_url)).get_table_names()
+    finally:
+        get_settings.cache_clear()

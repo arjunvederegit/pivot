@@ -113,6 +113,14 @@ def validate_panel(df: pd.DataFrame) -> None:
                     f"{col} has a rotation median of {median:.3f}; NBA.com publishes it in percentage "
                     "points (expected roughly 10) — was it divided by 100?"
                 )
+    per_season = df.groupby("season").size()
+    if len(per_season) >= 3:
+        thin = per_season[per_season < 0.5 * per_season.median()]
+        if len(thin):
+            problems.append(
+                f"season(s) {sorted(thin.index)} hold under half the median number of players "
+                f"({int(per_season.median())}) — partially ingested?"
+            )
     if problems:
         raise PanelValidationError("; ".join(problems))
 
@@ -195,10 +203,13 @@ def _sort_key(col: pd.Series) -> pd.Series:
 
 
 def replace_future(panel: PlayerSeasonPanel, after: str, rng: np.random.Generator) -> PlayerSeasonPanel:
-    """A copy whose numeric statistics are scrambled for every season *after* ``after``.
+    """A copy in which everything after ``after`` has been destroyed.
 
-    Used by the leakage audit: if a fold's predictions change when the future is scrambled, the
-    fold read the future. Identity, season and team columns are kept so joins still work."""
+    For every later season: numeric statistics are permuted and rescaled; the rows are re-assigned
+    to other players (identity permuted within the season) and other teams; and a third of them are
+    deleted. Used by the leakage audit: if a fold's forecasts, scored population or eligibility
+    change when the future is destroyed, the fold read the future — including through *which
+    players exist* or *where they played*, not just through their statistics."""
     frame = panel.frame.copy()
     later = frame["season"].map(season_key) > season_key(after)
     protected = {"player_id", "season", "team_id", "full_name", "nba_player_id"}
@@ -208,6 +219,10 @@ def replace_future(panel: PlayerSeasonPanel, after: str, rng: np.random.Generato
         scrambled = rng.permutation(frame.loc[later, col].to_numpy(dtype=float)) * rng.uniform(0.5, 1.5)
         frame[col] = frame[col].astype(float)
         frame.loc[later, col] = scrambled
-    # Keep the panel internally consistent so validation of the scrambled copy still passes.
     frame.loc[later, "total_minutes"] = frame.loc[later, "GP"] * frame.loc[later, "MIN"]
-    return PlayerSeasonPanel(frame)
+    for season in frame.loc[later, "season"].unique():
+        rows = frame.index[frame["season"] == season]
+        for col in ("player_id", "team_id"):
+            frame.loc[rows, col] = rng.permutation(frame.loc[rows, col].to_numpy())
+    drop = frame.index[later][rng.random(int(later.sum())) < 1 / 3]
+    return PlayerSeasonPanel(frame.drop(index=drop).reset_index(drop=True))

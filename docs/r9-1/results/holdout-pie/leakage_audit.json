@@ -1,0 +1,18 @@
+[
+  {
+    "any_nan_forecast": false,
+    "max_abs_difference": 0.0,
+    "origin": "2024-25",
+    "passed": true,
+    "perturbations": [
+      "later numeric statistics permuted and rescaled",
+      "later rows re-assigned to other players and teams",
+      "one third of later rows deleted"
+    ],
+    "rows_compared": 3660,
+    "same_scored_players": true,
+    "scrambled_seasons": [
+      "2025-26"
+    ]
+  }
+]

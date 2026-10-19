@@ -50,29 +50,45 @@ Candidate rows live in:
 
 `registry.train_candidate` runs this protocol:
 
-1. `protected_fingerprint(db)` — row count and SHA-256 of the content of **every table except `candidate_estimates`**, with
-   `model_versions` restricted to non-candidate rows. (Every table: models, estimates, archetypes, needs, scenarios, saved
-   trades, statistics, rosters, identity, contracts, provenance.)
-2. Read the statistics, fit on training pairs only, forecast.
-3. Insert the candidate `model_versions` row and its `candidate_estimates`.
-4. Fingerprint again. **Any difference ⇒ `rollback()` and `ProtectedStateViolation`.** Otherwise commit.
+1. **Refuse a dirty session** (uncommitted ORM changes would be discarded by a rollback).
+2. **Compute under a read-only guard.** Reading the statistics, fitting and forecasting happen with a `before_cursor_execute` hook on
+   the session's connection that raises `ProtectedStateViolation` for any `INSERT/UPDATE/DELETE/REPLACE/DROP/ALTER/CREATE/TRUNCATE`.
+   The computation is read-only by construction and is enforced as such; other connections (a concurrent `make score`) are not
+   affected, so a legitimate writer cannot cause a false alarm during the minutes-long computation.
+3. **Finite-ness**: NaN/inf estimates or intervals are refused before anything is stored (PostgreSQL would store a NaN silently).
+4. **Fingerprint immediately before the write**: `protected_fingerprint(db)` — row count and SHA-256 of the content of **every table**,
+   *including every existing candidate* (`model_versions` of every status, `candidate_estimates`).
+5. Insert the candidate `model_versions` row and its `candidate_estimates`; flush.
+6. **Post-write invariants** (`_assert_isolated`): the new model is `status = candidate`, `is_active = false`, named
+   `player_forecast_*`, and no `player_impact_estimates` row references it.
+7. **Fingerprint again**, excluding only the new model's own rows. **Any difference ⇒ `ProtectedStateViolation`.** Any exception
+   at all, violation or not, ⇒ `rollback()` (the session stays usable). Otherwise commit.
 
-The same specification on the same data yields the same version string (a hash of spec + config + data fingerprint), so a
-repeat is a no-op that returns the existing candidate; nothing is rewritten or deleted.
+The same specification on the same data yields the same version string (a hash of spec + config + data fingerprint). A repeat is a
+no-op **provided it still produces the same numbers** — if the code or a library has changed so that it would not, it refuses
+(`CandidateError`) rather than return stale estimates under an unchanged id. The one thing a repeat may do is record a newer
+*evaluation* on the candidate's own row, under the same fingerprint guard.
 
-### What the tests prove (`tests/unit/test_modeling_registry.py`)
+### What the tests prove (`tests/unit/test_modeling_registry.py`, `test_modeling_migration.py`)
 
 | Test | Failure it would catch |
 | --- | --- |
 | snapshot active versions + all estimates, train two candidates, compare byte-for-byte | candidate training changing active state |
-| mutation: a sabotaged run **deletes** an active estimate | the guard not firing — expects `ProtectedStateViolation`, a rollback, and the estimate restored |
-| mutation: a sabotaged run **edits** an active `tei` by 0.001 | silent value drift |
-| mutation: a sabotaged run **deactivates** the active model | an `is_active` flip |
-| candidate is `is_active = false`, absent from `player_impact_estimates`, named `player_forecast_*` | accidental serving |
-| the incumbent run through the candidate path equals the stored active estimates to 1e-9 | the evaluation pipeline drifting from production |
-| legacy `train` default still deletes superseded estimates (documented); `--preserve-history` keeps them | an unannounced change to legacy behaviour; a missing escape hatch |
-| legacy garbage collection cannot touch candidates | cross-contamination the other way |
-| unknown model / season / inapplicable target are refused **before any write** | partial writes on bad input |
+| mutation: a sabotaged computation **writes** to any of players, player_season_stats, teams, player_archetypes, an active model's metrics, or deletes an active estimate (parametrised, 6 statements) | the read-only guard / fingerprint not firing — each must raise `ProtectedStateViolation` with the session left unchanged |
+| mutation: a sabotaged run deletes all of an **earlier candidate's** estimates and blanks its lineage | candidates being outside the protection (a defect in the first version of the guard, found by review) |
+| `_assert_isolated` refuses an active candidate, a candidate named `player_impact`, a `retired`-status row, and a serving estimate referencing the candidate | a candidate becoming reachable by a serving reader |
+| an error after the write rolls back and the session still works; NaN estimates; a dirty session; too little data | partial writes; a session stuck in a failed transaction |
+| reuse refuses when retraining would give different numbers; the version changes when the data changes; an evaluation can be attached later without touching anything else | stale estimates under an unchanged id; silent reuse |
+| `evaluation_from_experiment`: development-advanced → `development_only`, failed → `failed_development_rule`, a baseline → `not_evaluated_as_candidate`, holdout confirmed/not, other data → `stale:*`, other target → refusal | a candidate being labelled better evaluated than it was |
+| the incumbent run through the candidate path equals the stored active estimates to 1e-9; a candidate forecast at a non-final cutoff equals the backtest's, bit for bit | the evaluation pipeline drifting from production, or from the backtest |
+| legacy `train` default still deletes superseded estimates (documented); `--preserve-history` keeps them; GC cannot touch candidates | an unannounced change to legacy behaviour; a missing escape hatch |
+| every candidate version string fits `model_versions.version` (64) | PostgreSQL rejecting the insert (SQLite never checks) |
+| migration: status backfilled from `is_active`; upgrade/downgrade/upgrade and `alembic check`; **downgrade refuses while candidates exist** | data-orphaning downgrades; model/migration drift |
+
+On a copy of the development database (38 tables, 71 MB), training two candidates left **every one of the 38 protected tables
+byte-identical** under an independent `sqlite3` hash that does not use the code under test, and added 1,264 `candidate_estimates`
+and two `candidate` model rows. One fingerprint pass took ≈ 0.6 s on that copy (measured before the candidate tables were included in it), so the guard is
+cheap relative to a fit.
 
 ## 5. What a candidate records (reproducibility)
 
@@ -84,7 +100,10 @@ repeat is a no-op that returns the existing candidate; nothing is rewritten or d
   independent), seasons and row counts, library versions (numpy/pandas/scipy/scikit-learn/SQLAlchemy), Python and platform,
   code commit and dirty flag, the fitted parameters (ridge coefficients, shrinkage constant, age curve, interval model),
   training-pair counts, and the **active version it should be compared against**.
-* **validation_metrics** — the experiment's decision (or `evaluation_status: unevaluated`).
+* **validation_metrics** — what the experiment's artifacts say about *this model* (`evaluation_status`: `development_only`,
+  `failed_development_rule`, `holdout_confirmed`, `holdout_not_confirmed`, `not_evaluated_as_candidate`, `stale:*`, or
+  `unevaluated`), the experiment id, and the decision record. Read from the files, never assumed.
+* **feature_list** — the columns the predictor actually reads (`Predictor.inputs`), not a guess from column names.
 * **data_snapshot_id** — `ds-<16 hex>` (the column existed since R1 and was unused).
 
 Random seeds: no model in R9.1 uses randomness in fitting (closed-form least squares and ridge); the seed governs only the
@@ -104,19 +123,27 @@ Per-player predictions are not committed (derived from licensed statistics); agg
 ## 7. Operating it
 
 ```bash
-make migrate                       # on a COPY of the database first
-make backtest STAGE=development TARGET=impact_proxy
-make train-candidate MODEL=ridge_boxscore TARGET=impact_proxy EXPERIMENT=models/experiments/<dir>
-make candidates                    # list candidates / rejected
+make migrate                                       # on a COPY of the database first (adds status/config/lineage, widens version, adds candidate_estimates)
+make backtest BT_STAGE=development BT_TARGET=all   # writes models/experiments/exp-development-*/
+make backtest BT_STAGE=holdout BT_TARGET=all       # needs exactly one development run per target in the same directory; recorded in holdout_ledger.json
+make train-candidate CAND_MODEL=ridge_boxscore CAND_TARGET=impact_proxy CAND_EXPERIMENT=models/experiments/exp-development-impact_proxy-<id>
+make candidates                                    # list candidate / rejected models
 ```
 
-`make train` is labelled LEGACY in the Makefile. It is unchanged except for the opt-in `ARGS=--preserve-history`.
+`make train` is labelled LEGACY in the Makefile. It is unchanged except for the opt-in `ARGS=--preserve-history`; note that flag is
+undone by the next plain `make train`, and that the data-provenance page's impact-estimate count then includes every kept version.
+The Makefile variables are prefixed (`BT_*`, `CAND_*`) so that an exported `TARGET` or `MODEL` in the environment cannot bind silently.
 
 ## 8. Known limits of the guarantee
 
-* The guard protects *database* state. It does not protect the owner's file system or a process that bypasses the
-  registry; it is a property of `train_candidate`, not of the database.
+* The guard protects *database* state. It does not protect the owner's file system or a process that bypasses the registry; it is a
+  property of `train_candidate`, not of the database.
 * The fingerprint covers table content, not schema. A candidate cannot alter a schema, but this check would not notice one.
-* The fingerprint reads every protected table twice; on the 71 MB development database that is a few seconds, which is the
-  price of the guarantee.
-* `status` is advisory for any writer that bypasses both the ORM default and `_register_model` (none exists today).
+* A legitimate writer **on another connection** that commits between the two fingerprints (milliseconds) would be reported as a
+  violation and the candidate rolled back — a safe failure, not a data loss. The read-only guard only constrains this session's connection.
+* The holdout ledger lives in the experiments directory; a different directory has a different ledger. It is discipline, not
+  access control.
+* `status` is advisory for any writer that bypasses both the ORM default and `_register_model` (none exists today); a raw-SQL insert
+  with `is_active = 1` would be `retired`.
+* PostgreSQL has not been exercised: it was not available. The static length check, the `String(64)` widening and the existing
+  PG-compat pattern cover the known class of failure, but a PG run of `make migrate` + `make train-candidate` is still owed.

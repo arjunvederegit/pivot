@@ -32,7 +32,16 @@ from .targets import TargetSpec, get_target
 from .team_gate import team_gate
 
 SEED = 20260719
-REFERENCE_MODELS = ("regressed_persistence_age", "incumbent_tei_recalibrated")
+MIN_TRAINING_ROWS = 40
+
+
+class InsufficientDataError(ValueError):
+    """Too little training data to fit anything honestly."""
+
+
+class NonFiniteForecastError(FloatingPointError):
+    """A model produced NaN or infinite forecasts; every comparison built on them would be unreliable."""
+REFERENCE_MODELS = ("ols_history", "regressed_persistence_age", "incumbent_tei_recalibrated")
 
 
 @dataclass(frozen=True)
@@ -63,6 +72,10 @@ class BacktestConfig:
     #: this to separate development folds from the locked holdout.
     test_origins: tuple[str, ...] | None = None
     min_train_transitions: int = 2
+    #: Minimum target-season minutes for a row to be *evaluated*. ``None`` = the training rule
+    #: (``features.min_target_minutes``). Setting it changes the evaluation population only; training
+    #: keeps its own rule, so a sensitivity run isolates the effect of the evaluation cut.
+    eval_min_target_minutes: float | None = None
     interval_level: float = 0.8
     bootstrap_draws: int = BOOTSTRAP_DRAWS
     seed: int = SEED
@@ -75,6 +88,7 @@ class BacktestConfig:
             "models": list(self.models) if self.models else None,
             "test_origins": list(self.test_origins) if self.test_origins else None,
             "min_train_transitions": self.min_train_transitions,
+            "eval_min_target_minutes": self.eval_min_target_minutes,
             "interval_level": self.interval_level,
             "bootstrap_draws": self.bootstrap_draws,
             "seed": self.seed,
@@ -93,6 +107,7 @@ class BacktestResult:
     attrition: pd.DataFrame
     summary: dict
     runtime_seconds: float
+    standings: pd.DataFrame | None = None
 
     def eval_rows(self) -> pd.DataFrame:
         return self.predictions[self.predictions["target_eligible"]]
@@ -102,11 +117,17 @@ def _fit_and_predict(
     predictors, train: pd.DataFrame, test: pd.DataFrame, ctx: FitContext, level: float
 ) -> tuple[list[pd.DataFrame], dict]:
     frames, params = [], {}
+    if len(train) < MIN_TRAINING_ROWS:
+        raise InsufficientDataError(f"{len(train)} training rows; at least {MIN_TRAINING_ROWS} are needed")
     for predictor in predictors:
         fitted = predictor.fit(train, ctx)
         pred = fitted.predict(test)
+        if not np.isfinite(pred).all():
+            raise NonFiniteForecastError(f"{predictor.name} produced non-finite forecasts")
         interval = fit_interval(loto_residuals(predictor, train, ctx), level)
         lo, hi = interval.apply(pred, test["window_exposure"].to_numpy(dtype=float))
+        if not (np.isfinite(pred).all() and np.isfinite(lo).all() and np.isfinite(hi).all()):
+            raise NonFiniteForecastError(f"{predictor.name} produced non-finite forecasts or intervals")
         native = fitted.native_interval(test)
         frame = pd.DataFrame(
             {
@@ -150,6 +171,12 @@ def run_backtest(
         assert (train_all["target_season"].map(season_key) <= season_key(fold.origin)).all()
         train = train_all[train_all["target_eligible"]].reset_index(drop=True)
         test = cache.pairs(fold.origin, target).reset_index(drop=True)
+        if config.eval_min_target_minutes is not None:
+            test["target_eligible"] = (
+                test["target_observed"].astype(bool)
+                & test["y"].notna()
+                & (test["y_minutes"] >= config.eval_min_target_minutes)
+            )
         frames, params = _fit_and_predict(predictors, train, test, ctx, config.interval_level)
         fitted_params[fold.origin] = params
         meta_cols = [
@@ -186,6 +213,7 @@ def run_backtest(
         attrition=attrition_df,
         summary=summary,
         runtime_seconds=round(time.perf_counter() - started, 2),
+        standings=standings,
     )
 
 
@@ -214,9 +242,30 @@ def paired_comparison(
     result["per_fold_mean_diff"] = per_fold
     result["folds_improved"] = int(sum(v < 0 for v in per_fold.values()))
     result["folds"] = len(per_fold)
+    result["reference_mae"] = float(loss_b.mean())
+    result["relative_diff"] = result["mean_diff"] / float(loss_b.mean())
+    result["fold_level"] = _fold_level_interval(list(per_fold.values()))
     result["model"], result["reference"] = model, reference
     result["metric"] = "MAE difference (model - reference); negative = model better"
     return result
+
+
+def _fold_level_interval(diffs: list[float]) -> dict | None:
+    """t-interval over the per-fold mean differences.
+
+    The player-cluster bootstrap treats the evaluated *seasons* as fixed and resamples players. The
+    seasons are a sample too (and a dependent one: adjacent seasons share players and a league
+    environment), so the fold-level interval — wide, because it has k - 1 degrees of freedom — is
+    reported beside it and the pre-registered rule requires both."""
+    from scipy import stats
+
+    k = len(diffs)
+    if k < 3:
+        return None
+    mean = float(np.mean(diffs))
+    se = float(np.std(diffs, ddof=1) / np.sqrt(k))
+    half = float(stats.t.ppf(0.975, k - 1)) * se
+    return {"mean": mean, "ci95": [mean - half, mean + half], "df": k - 1}
 
 
 def subgroup_masks(rows: pd.DataFrame) -> dict[str, pd.Series]:
@@ -275,6 +324,13 @@ def _summarise(
 
 # ------------------------------------------------------------------------------ leakage audit
 
+#: Fold outputs that must be known at the cutoff: forecasts, intervals, and everything that decides
+#: who is scored and with what inputs. Outcomes (``y*``, ``target_*``) are deliberately absent.
+CUTOFF_KNOWN_COLUMNS = (
+    "pred", "lo", "hi", "native_lo", "native_hi", "age", "origin_minutes", "window_minutes",
+    "window_exposure", "team_id", "prior_seasons", "new_to_corpus", "has_origin_row", "z_REB_PCT",
+)
+
 
 def leakage_audit(
     panel: PlayerSeasonPanel,
@@ -283,34 +339,54 @@ def leakage_audit(
     cache_factory=PairCache,
     seed: int = 7,
 ) -> dict:
-    """Prove a fold reads nothing after its cutoff.
+    """A falsification test for temporal leakage in one fold. Passing is evidence, not proof.
 
-    Runs the fold on the real panel and on a copy in which every statistic of every later season
-    has been scrambled. Forecasts and intervals must match to the last bit. If a feature builder or
-    model reads the future, the two runs disagree and the audit fails."""
+    Runs the fold on the real panel and on a copy in which everything after the cutoff has been
+    destroyed: every later numeric statistic is permuted and rescaled, later rows are re-assigned to
+    other players and other teams, and a third of them are deleted outright. The two runs must agree
+    on **who is scored, with which inputs, and every forecast and interval, bit for bit**. A feature
+    or model that reads later statistics, later team membership, or *which players appear later*
+    (survivorship) makes them disagree.
+
+    What it cannot detect: a leak that is identical in both runs, i.e. one that reads only
+    information that survives the scrambling (the cutoff season itself or earlier), or one that
+    needs row *order*. The structural guards (``AsOfPanel``) cover those."""
     narrow = replace(config, test_origins=(origin,))
     real = run_backtest(panel, narrow, cache=cache_factory(panel, config.features))
     scrambled_panel = replace_future(panel, origin, np.random.default_rng(seed))
     fake = run_backtest(
         scrambled_panel, narrow, cache=cache_factory(scrambled_panel, config.features)
     )
-    cols = ["model", "player_id", "pred", "lo", "hi"]
-    a = real.predictions[cols].sort_values(["model", "player_id"]).reset_index(drop=True)
-    b = fake.predictions[cols].sort_values(["model", "player_id"]).reset_index(drop=True)
-    identical_index = a[["model", "player_id"]].equals(b[["model", "player_id"]])
-    max_diff = (
-        float(np.nanmax(np.abs(a[["pred", "lo", "hi"]].to_numpy() - b[["pred", "lo", "hi"]].to_numpy())))
-        if identical_index and len(a)
-        else float("inf")
-    )
+    keys = ["model", "player_id"]
+    cols = [c for c in CUTOFF_KNOWN_COLUMNS if c in real.predictions.columns]
+    a = real.predictions[keys + cols].sort_values(keys).reset_index(drop=True)
+    b = fake.predictions[keys + cols].sort_values(keys).reset_index(drop=True)
+    same_population = bool(a[keys].equals(b[keys]))
+    numeric = [c for c in cols if pd.api.types.is_numeric_dtype(a[c]) and not pd.api.types.is_bool_dtype(a[c])]
+    if same_population and len(a):
+        diff = np.abs(a[numeric].to_numpy(dtype=float) - b[numeric].to_numpy(dtype=float))
+        max_diff = float(np.nanmax(diff)) if diff.size else 0.0
+        nan_pattern_equal = bool((a[numeric].isna().to_numpy() == b[numeric].isna().to_numpy()).all())
+        flags_equal = all(a[c].equals(b[c]) for c in cols if c not in numeric)
+        any_nan_forecast = bool(a[["pred", "lo", "hi"]].isna().any().any())
+    else:
+        max_diff, nan_pattern_equal, flags_equal, any_nan_forecast = float("inf"), False, False, False
     return {
         "origin": origin,
         "scrambled_seasons": [
             season_label(y)
             for y in range(season_key(origin) + 1, season_key(panel.seasons[-1]) + 1)
         ],
+        "perturbations": [
+            "later numeric statistics permuted and rescaled",
+            "later rows re-assigned to other players and teams",
+            "one third of later rows deleted",
+        ],
         "rows_compared": int(len(a)),
-        "same_scored_players": bool(identical_index),
+        "same_scored_players": same_population,
         "max_abs_difference": max_diff,
-        "passed": bool(identical_index and max_diff == 0.0),
+        "any_nan_forecast": any_nan_forecast,
+        "passed": bool(
+            same_population and max_diff == 0.0 and nan_pattern_equal and flags_equal and not any_nan_forecast
+        ),
     }

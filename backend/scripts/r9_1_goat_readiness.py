@@ -60,7 +60,7 @@ def load(db: Session) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
 
 
 def main(path: str) -> dict:
-    engine = create_engine(f"sqlite:///{path}")
+    engine = create_engine(f"sqlite:///file:{path}?mode=ro&uri=true")
     with Session(engine) as db:
         frames, links = load(db)
         panel = PlayerSeasonPanel.from_db(db)

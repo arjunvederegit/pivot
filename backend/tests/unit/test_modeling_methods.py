@@ -15,7 +15,14 @@ from app.modeling.metrics import (
     spearman,
     summarise,
 )
-from app.modeling.predictors import EmpiricalBayesShrinkage, FitContext, RegressedPersistence, ols
+from app.modeling.predictors import (
+    PREDICTORS,
+    EmpiricalBayesShrinkage,
+    FitContext,
+    HistoryOLS,
+    RegressedPersistence,
+    ols,
+)
 from app.modeling.provenance import DataSnapshot, frame_fingerprint
 from app.modeling.targets import get_target
 
@@ -117,6 +124,28 @@ class TestPredictors:
         fitted = RegressedPersistence().fit(train, FitContext(get_target("impact_proxy")))
         assert fitted.params["slope_last_season"] == pytest.approx(0.6, abs=0.03)
         assert fitted.params["intercept"] == pytest.approx(0.4, abs=0.03)
+
+    def test_the_history_ols_recovers_a_planted_two_regressor_relationship(self):
+        rng = np.random.default_rng(4)
+        n = 3000
+        last, bar = rng.normal(0, 1, n), rng.normal(0, 1, n)
+        train = pd.DataFrame({"origin": "a", "x_t": last, "x_bar": bar, "age": rng.uniform(20, 36, n)})
+        train["y"] = 0.2 + 0.3 * last + 0.5 * bar + rng.normal(0, 0.1, n)
+        fitted = HistoryOLS().fit(train, FitContext(get_target("pie")))
+        assert fitted.params["last_season"] == pytest.approx(0.3, abs=0.02)
+        assert fitted.params["windowed_history"] == pytest.approx(0.5, abs=0.02)
+
+    def test_the_history_ols_handles_a_player_who_missed_the_season(self):
+        train = self._train()
+        fitted = HistoryOLS().fit(train, FitContext(get_target("pie")))
+        returner = pd.DataFrame({"x_t": [np.nan], "x_bar": [1.0], "age": [29.0], "window_exposure": [900.0]})
+        assert np.isfinite(fitted.predict(returner)).all()
+
+    def test_the_recalibrated_incumbent_is_offered_for_every_target_but_the_shipped_one_only_for_its_own(self):
+        for name in ("impact_proxy", "pie", "ts_pct", "reb_pct"):
+            assert PREDICTORS["incumbent_tei_recalibrated"].applies_to(get_target(name))
+        assert PREDICTORS["incumbent_tei"].applies_to(get_target("impact_proxy"))
+        assert not PREDICTORS["incumbent_tei"].applies_to(get_target("pie"))
 
     def test_least_squares_helper_leaves_the_intercept_unpenalised(self):
         X = np.column_stack([np.ones(5), np.arange(5.0)])

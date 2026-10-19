@@ -15,7 +15,7 @@ from app.modeling.pairs import FeatureConfig, PairCache
 from app.modeling.panel import season_key
 from app.modeling.predictors import PREDICTORS
 
-from .modeling_support import make_panel, make_standings
+from .modeling_support import make_frame, make_panel, make_standings
 
 FAST = {"bootstrap_draws": 200}
 
@@ -116,6 +116,57 @@ def _next(label: str) -> str:
     return season_label(season_key(label) + 1)
 
 
+class TestTheAuditCatchesTheSubtlerLeaks:
+    """Review finding M1: the first audit only scrambled numbers, so it could not see these."""
+
+    def test_restricting_the_scored_players_to_those_who_appear_next_season_is_caught(self, panel, monkeypatch):
+        original = PairCache.features
+
+        def survivorship(self, origin, target):
+            feats = original(self, origin, target)
+            alive = set(self.panel.frame.loc[self.panel.frame["season"] == _next(origin), "player_id"])
+            return feats[feats["player_id"].isin(alive)].reset_index(drop=True)
+
+        monkeypatch.setattr(PairCache, "features", survivorship)
+        audit = leakage_audit(panel, BacktestConfig(target="ts_pct", models=("persistence",), **FAST), panel.seasons[3])
+        assert audit["passed"] is False and audit["same_scored_players"] is False
+
+    def test_a_feature_shifted_by_next_seasons_team_is_caught(self, panel, monkeypatch):
+        original = PairCache.features
+
+        def team_leak(self, origin, target):
+            feats = original(self, origin, target).copy()
+            nxt = self.panel.frame[self.panel.frame["season"] == _next(origin)].set_index("player_id")["team_id"]
+            code = feats["player_id"].map(nxt).map(lambda t: float(str(t)[-2:]) if isinstance(t, str) else 0.0)
+            feats["x_t"] = feats["x_t"] + 0.001 * code.fillna(0.0)
+            return feats
+
+        monkeypatch.setattr(PairCache, "features", team_leak)
+        audit = leakage_audit(panel, BacktestConfig(target="ts_pct", models=("persistence",), **FAST), panel.seasons[3])
+        assert audit["passed"] is False
+
+    def test_a_clean_run_passes_every_origin(self, panel):
+        config = BacktestConfig(target="ts_pct", models=("persistence", "ridge_boxscore"), **FAST)
+        for fold in rolling_origin_folds(panel.seasons, 2)[:3]:
+            assert leakage_audit(panel, config, fold.origin)["passed"]
+
+
+class TestReturnersAndNewcomers:
+    def test_a_player_who_missed_the_cutoff_season_is_still_scored(self, result):
+        p = result.predictions
+        returners = p[~p["has_origin_row"].astype(bool)]
+        assert len(returners) > 0, "the generator plants players who miss a season"
+        assert returners["pred"].notna().all() and returners[["lo", "hi"]].notna().all().all()
+        assert (returners["origin_minutes"] == 0).all()
+        assert returners["x_bar"].notna().all() if "x_bar" in returners else True
+
+    def test_every_model_forecasts_every_scored_player(self, result):
+        p = result.predictions
+        assert p[["pred", "lo", "hi"]].notna().all().all()
+        counts = p.groupby("model").size()
+        assert counts.nunique() == 1
+
+
 class TestPopulationAndAttrition:
     def test_every_model_is_scored_on_exactly_the_same_rows(self, result):
         rows = result.eval_rows()
@@ -189,3 +240,35 @@ def test_a_target_with_no_signal_gets_no_candidate_credit():
     res = run_backtest(noisy, BacktestConfig(target="reb_pct", models=("league_mean", "ridge_boxscore"), **FAST))
     cmp = paired_comparison(res.eval_rows(), "ridge_boxscore", "league_mean", 300)
     assert not (cmp["ci95"][1] < 0), "a noise target must not show a convincing improvement"
+
+
+def test_paired_comparison_resamples_players_not_rows(result):
+    rows = result.eval_rows()
+    cmp = paired_comparison(rows, "regressed_persistence", "league_mean", 100)
+    assert cmp["n_clusters"] == rows["player_id"].nunique() < cmp["n"]
+
+
+def test_recency_weighting_favours_the_more_recent_season():
+    """x_bar is a weighted mean in which last season counts more than the one before."""
+    import pandas as pd
+
+    from app.modeling.pairs import origin_features
+    from app.modeling.panel import PlayerSeasonPanel
+    from app.modeling.targets import get_target
+
+    frame = make_frame(n_players=60, n_seasons=5, seed=2).copy()
+    frame["TS_PCT"] = 0.5
+    last = frame["season"].max()
+    previous = sorted(frame["season"].unique())[-2]
+    frame.loc[frame["season"] == last, "TS_PCT"] = 0.6
+    frame.loc[frame["season"] == previous, "TS_PCT"] = 0.4
+    # equal exposure so only the recency weights matter
+    frame["FGA"], frame["FTA"], frame["GP"] = 10.0, 0.0, 60
+    frame["MIN"] = 25.0
+    frame["total_minutes"] = 60 * 25.0
+    panel = PlayerSeasonPanel.from_frame(frame)
+    feats = origin_features(panel.as_of(last), get_target("ts_pct"), FeatureConfig())
+    both = feats[feats["x_lag1"].notna() & feats["x_t"].notna()]
+    assert len(both) > 10
+    assert ((both["x_bar"] > 0.5) & (both["x_bar"] < 0.6)).all(), "recent 0.6 must outweigh older 0.4"
+    assert isinstance(feats, pd.DataFrame)

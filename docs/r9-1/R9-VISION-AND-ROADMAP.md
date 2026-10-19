@@ -31,9 +31,11 @@ The scientific and engineering foundation: the ability to say, with reproducible
 improves Pivot's understanding or prediction of basketball performance — without risking anything already in use.
 
 Built: as-of data views that make temporal leakage structurally impossible; a rolling-origin backtest harness with
-paired, player-clustered uncertainty; transparent baselines (including the incumbent TEI, run through production's own
+paired uncertainty over players and seasons; transparent baselines (including the incumbent TEI, run through production's own
 code); candidate-only training with a fingerprint guard that proves active state is untouched; a pre-registered
-development/holdout protocol with a read ledger; a typed output contract. Evidence and results:
+development/holdout protocol with a read ledger; a typed output contract. **First findings:** the incumbent TEI forecasts its own
+target no better than a simple regression on the player's own history (10.8 % worse on the holdout) and its likely-range band
+covers 57 % against a nominal 80 %; none of three interpretable candidates cleared the pre-registered rule (0 of 18). Evidence and results:
 [evaluation-architecture.md](evaluation-architecture.md), [model-versioning-and-safety.md](model-versioning-and-safety.md),
 [candidate-experiment-results.md](candidate-experiment-results.md).
 

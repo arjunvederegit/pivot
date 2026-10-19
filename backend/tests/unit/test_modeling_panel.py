@@ -79,13 +79,51 @@ def test_a_fringe_player_with_an_extreme_rate_is_not_mistaken_for_a_unit_error()
     validate_panel(frame)
 
 
-def test_scrambling_the_future_leaves_the_past_untouched():
+def test_destroying_the_future_leaves_the_past_untouched_and_changes_everything_after():
     panel = make_panel()
     scrambled = replace_future(panel, "2019-20", np.random.default_rng(0))
-    past = panel.frame["season"].map(season_key) <= season_key("2019-20")
-    pd.testing.assert_frame_equal(
-        panel.frame[past].reset_index(drop=True),
-        scrambled.frame[past].reset_index(drop=True),
-        check_dtype=False,
+
+    def past(frame):
+        return frame[frame["season"].map(season_key) <= season_key("2019-20")].reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(past(panel.frame), past(scrambled.frame), check_dtype=False)
+    later_real = panel.frame[panel.frame["season"].map(season_key) > season_key("2019-20")]
+    later_fake = scrambled.frame[scrambled.frame["season"].map(season_key) > season_key("2019-20")]
+    assert len(later_fake) < len(later_real), "later rows are deleted, so survivorship cannot be inferred"
+    assert not np.allclose(later_real["PIE"].mean(), later_fake["PIE"].mean(), atol=0, rtol=0)
+    # identity and team assignment are shuffled within each later season
+    real_pairs = set(zip(later_real["player_id"], later_real["season"], later_real["team_id"], strict=True))
+    fake_pairs = set(zip(later_fake["player_id"], later_fake["season"], later_fake["team_id"], strict=True))
+    assert len(fake_pairs & real_pairs) < 0.5 * len(fake_pairs)
+
+
+def test_a_partially_ingested_season_is_refused():
+    """A season with a fraction of its players would silently shift every league moment."""
+    frame = make_frame(n_players=160, n_seasons=6, seed=3).reset_index(drop=True)
+    victim = frame["season"].iloc[-1]
+    keep = frame[frame["season"] != victim]
+    thin = frame[frame["season"] == victim].head(12)
+    with pytest.raises(PanelValidationError, match="partially ingested"):
+        validate_panel(pd.concat([keep, thin], ignore_index=True))
+
+
+def test_playoff_and_other_season_types_never_enter_the_regular_season_panel(db):
+    """Wrong season type: a playoff row for the same player-season must not be folded in."""
+    from sqlalchemy import select
+
+    from app.db.models import PlayerSeasonStats
+
+    from .modeling_support import populate_db
+
+    populate_db(db, make_frame(n_players=40, n_seasons=4, seed=3))
+    before = PlayerSeasonPanel.from_db(db).frame
+    donor = db.scalars(select(PlayerSeasonStats).where(PlayerSeasonStats.stat_type == "advanced")).first()
+    db.add(
+        PlayerSeasonStats(
+            player_id=donor.player_id, team_id=donor.team_id, season=donor.season, season_type="playoffs",
+            stat_type="advanced", games_played=5, minutes=40.0, stats={**donor.stats, "PIE": 0.9, "NET_RATING": 99.0},
+        )
     )
-    assert not np.allclose(panel.frame.loc[~past, "PIE"], scrambled.frame.loc[~past, "PIE"])
+    db.commit()
+    after = PlayerSeasonPanel.from_db(db).frame
+    pd.testing.assert_frame_equal(before, after)

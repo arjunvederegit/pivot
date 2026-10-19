@@ -1,0 +1,434 @@
+{
+  "groups": {
+    "clutch/base": {
+      "constant_fields": [],
+      "fields": 32,
+      "fields_over_5pct_null": {},
+      "games_played_distribution_reference": {
+        "median": 17.0,
+        "p10": 5.0,
+        "share_under_10": 0.24
+      },
+      "identity": {
+        "coverage_if_high_only": 0.9736,
+        "high": 369,
+        "manual": 0,
+        "medium": 10,
+        "no_link_row": 0
+      },
+      "independent_dimensions_after_clustering": 25,
+      "player_rows": 485,
+      "redundant_clusters_abs_spearman_ge_0.9": [
+        [
+          "w",
+          "gp"
+        ],
+        [
+          "fgm",
+          "pts"
+        ],
+        [
+          "fta",
+          "ftm",
+          "pfd"
+        ],
+        [
+          "reb",
+          "dreb"
+        ],
+        [
+          "fp_high_score",
+          "nba_fantasy_pts"
+        ]
+      ],
+      "reference_coverage": 1.0,
+      "reference_minutes_share_without_row": 0.0,
+      "reference_players_with_row": 379
+    },
+    "defense/overall": {
+      "constant_fields": [
+        "freq"
+      ],
+      "fields": 7,
+      "fields_over_5pct_null": {},
+      "games_played_distribution_reference": {
+        "median": 62.0,
+        "p10": 38.800000000000004,
+        "share_under_10": 0.0
+      },
+      "identity": {
+        "coverage_if_high_only": 0.9736,
+        "high": 369,
+        "manual": 0,
+        "medium": 10,
+        "no_link_row": 0
+      },
+      "independent_dimensions_after_clustering": 4,
+      "player_rows": 570,
+      "redundant_clusters_abs_spearman_ge_0.9": [
+        [
+          "d_fga",
+          "d_fgm"
+        ],
+        [
+          "d_fg_pct",
+          "pct_plusminus"
+        ]
+      ],
+      "reference_coverage": 1.0,
+      "reference_minutes_share_without_row": 0.0,
+      "reference_players_with_row": 379
+    },
+    "general/advanced": {
+      "constant_fields": [],
+      "fields": 39,
+      "fields_over_5pct_null": {},
+      "games_played_distribution_reference": {
+        "median": 64.0,
+        "p10": 40.800000000000004,
+        "share_under_10": 0.0
+      },
+      "identity": {
+        "coverage_if_high_only": 0.9736,
+        "high": 369,
+        "manual": 0,
+        "medium": 10,
+        "no_link_row": 0
+      },
+      "independent_dimensions_after_clustering": 23,
+      "player_rows": 570,
+      "redundant_clusters_abs_spearman_ge_0.9": [
+        [
+          "fga",
+          "fgm"
+        ],
+        [
+          "pace",
+          "e_pace",
+          "pace_per40",
+          "sp_work_pace"
+        ],
+        [
+          "fga_pg",
+          "fgm_pg"
+        ],
+        [
+          "ts_pct",
+          "efg_pct"
+        ],
+        [
+          "reb_pct",
+          "dreb_pct"
+        ],
+        [
+          "usg_pct",
+          "e_usg_pct"
+        ],
+        [
+          "e_tov_pct",
+          "tm_tov_pct"
+        ],
+        [
+          "def_rating",
+          "e_def_rating",
+          "sp_work_def_rating"
+        ],
+        [
+          "net_rating",
+          "e_net_rating",
+          "sp_work_net_rating"
+        ],
+        [
+          "off_rating",
+          "e_off_rating",
+          "sp_work_off_rating"
+        ]
+      ],
+      "reference_coverage": 1.0,
+      "reference_minutes_share_without_row": 0.0,
+      "reference_players_with_row": 379
+    },
+    "general/base": {
+      "constant_fields": [],
+      "fields": 32,
+      "fields_over_5pct_null": {},
+      "games_played_distribution_reference": {
+        "median": 64.0,
+        "p10": 40.800000000000004,
+        "share_under_10": 0.0
+      },
+      "identity": {
+        "coverage_if_high_only": 0.9736,
+        "high": 369,
+        "manual": 0,
+        "medium": 10,
+        "no_link_row": 0
+      },
+      "independent_dimensions_after_clustering": 21,
+      "player_rows": 570,
+      "redundant_clusters_abs_spearman_ge_0.9": [
+        [
+          "fga",
+          "fgm",
+          "pts",
+          "fp_high_score"
+        ],
+        [
+          "fta",
+          "ftm",
+          "pfd"
+        ],
+        [
+          "min",
+          "pts",
+          "fp_high_score",
+          "nba_fantasy_pts"
+        ],
+        [
+          "reb",
+          "dreb"
+        ],
+        [
+          "fg3a",
+          "fg3m"
+        ]
+      ],
+      "reference_coverage": 1.0,
+      "reference_minutes_share_without_row": 0.0,
+      "reference_players_with_row": 379
+    },
+    "hustle": {
+      "constant_fields": [],
+      "fields": 24,
+      "fields_over_5pct_null": {},
+      "games_played_distribution_reference": {
+        "median": 62.0,
+        "p10": 38.0,
+        "share_under_10": 0.0
+      },
+      "identity": {
+        "coverage_if_high_only": 0.9736,
+        "high": 369,
+        "manual": 0,
+        "medium": 10,
+        "no_link_row": 0
+      },
+      "independent_dimensions_after_clustering": 16,
+      "player_rows": 570,
+      "redundant_clusters_abs_spearman_ge_0.9": [
+        [
+          "box_outs",
+          "def_boxouts",
+          "box_out_player_rebs",
+          "box_out_player_team_rebs"
+        ],
+        [
+          "off_boxouts",
+          "pct_box_outs_def",
+          "pct_box_outs_off"
+        ],
+        [
+          "screen_assists",
+          "screen_ast_pts"
+        ],
+        [
+          "contested_shots",
+          "contested_shots_2pt"
+        ],
+        [
+          "pct_loose_balls_recovered_def",
+          "pct_loose_balls_recovered_off"
+        ]
+      ],
+      "reference_coverage": 1.0,
+      "reference_minutes_share_without_row": 0.0,
+      "reference_players_with_row": 379,
+      "spearman_with_minutes_per_game": {
+        "box_outs": 0.187,
+        "charges_drawn": 0.06,
+        "contested_shots": 0.427,
+        "contested_shots_2pt": 0.294,
+        "contested_shots_3pt": 0.61,
+        "def_boxouts": 0.243,
+        "deflections": 0.515,
+        "loose_balls_recovered": 0.617,
+        "off_boxouts": -0.024,
+        "screen_assists": 0.117
+      }
+    },
+    "shooting/by_zone": {
+      "constant_fields": [
+        "backcourt_fga",
+        "backcourt_fgm"
+      ],
+      "fields": 24,
+      "fields_over_5pct_null": {},
+      "identity": {
+        "coverage_if_high_only": 0.9736,
+        "high": 369,
+        "manual": 0,
+        "medium": 10,
+        "no_link_row": 0
+      },
+      "independent_dimensions_after_clustering": 14,
+      "player_rows": 570,
+      "redundant_clusters_abs_spearman_ge_0.9": [
+        [
+          "corner_3_fga",
+          "corner_3_fgm",
+          "left_corner_3_fga",
+          "right_corner_3_fga"
+        ],
+        [
+          "mid-range_fga",
+          "mid-range_fgm"
+        ],
+        [
+          "restricted_area_fga",
+          "restricted_area_fgm"
+        ],
+        [
+          "above_the_break_3_fga",
+          "above_the_break_3_fgm"
+        ],
+        [
+          "in_the_paint_(non-ra)_fga",
+          "in_the_paint_(non-ra)_fgm"
+        ]
+      ],
+      "reference_coverage": 1.0,
+      "reference_minutes_share_without_row": 0.0,
+      "reference_players_with_row": 379
+    },
+    "tracking/possessions": {
+      "constant_fields": [],
+      "fields": 17,
+      "fields_over_5pct_null": {},
+      "games_played_distribution_reference": {
+        "median": 64.0,
+        "p10": 40.800000000000004,
+        "share_under_10": 0.0
+      },
+      "identity": {
+        "coverage_if_high_only": 0.9736,
+        "high": 369,
+        "manual": 0,
+        "medium": 10,
+        "no_link_row": 0
+      },
+      "independent_dimensions_after_clustering": 13,
+      "player_rows": 570,
+      "redundant_clusters_abs_spearman_ge_0.9": [
+        [
+          "min",
+          "points"
+        ],
+        [
+          "touches",
+          "time_of_poss",
+          "front_ct_touches"
+        ],
+        [
+          "avg_sec_per_touch",
+          "avg_drib_per_touch"
+        ]
+      ],
+      "reference_coverage": 1.0,
+      "reference_minutes_share_without_row": 0.0,
+      "reference_players_with_row": 379
+    }
+  },
+  "identity_verification_general_base": {
+    "high": {
+      "both_equal": 555,
+      "games_played_equal": 555,
+      "minutes_per_game_equal": 555,
+      "players": 555
+    },
+    "medium": {
+      "both_equal": 14,
+      "games_played_equal": 14,
+      "minutes_per_game_equal": 14,
+      "players": 14
+    }
+  },
+  "incremental_information_cross_section": {
+    "fields": {
+      "defense/overall:d_fg_pct": {
+        "adj_r2_on_existing_box_score_features": 0.273,
+        "n": 379
+      },
+      "defense/overall:pct_plusminus": {
+        "adj_r2_on_existing_box_score_features": 0.428,
+        "n": 379
+      },
+      "hustle:box_outs/36min": {
+        "adj_r2_on_existing_box_score_features": 0.747,
+        "n": 379
+      },
+      "hustle:charges_drawn/36min": {
+        "adj_r2_on_existing_box_score_features": 0.084,
+        "n": 379
+      },
+      "hustle:contested_shots/36min": {
+        "adj_r2_on_existing_box_score_features": 0.752,
+        "n": 379
+      },
+      "hustle:deflections/36min": {
+        "adj_r2_on_existing_box_score_features": 0.789,
+        "n": 379
+      },
+      "hustle:loose_balls_recovered/36min": {
+        "adj_r2_on_existing_box_score_features": 0.3,
+        "n": 379
+      },
+      "hustle:screen_assists/36min": {
+        "adj_r2_on_existing_box_score_features": 0.723,
+        "n": 379
+      },
+      "shooting/by_zone:above_the_break_3_fg_pct": {
+        "adj_r2_on_existing_box_score_features": 0.251,
+        "n": 379
+      },
+      "shooting/by_zone:mid-range_fg_pct": {
+        "adj_r2_on_existing_box_score_features": 0.118,
+        "n": 379
+      },
+      "shooting/by_zone:restricted_area_fg_pct": {
+        "adj_r2_on_existing_box_score_features": 0.391,
+        "n": 379
+      },
+      "tracking/possessions:avg_drib_per_touch": {
+        "adj_r2_on_existing_box_score_features": 0.79,
+        "n": 379
+      },
+      "tracking/possessions:avg_sec_per_touch": {
+        "adj_r2_on_existing_box_score_features": 0.765,
+        "n": 379
+      },
+      "tracking/possessions:paint_touches/36min": {
+        "adj_r2_on_existing_box_score_features": 0.902,
+        "n": 379
+      },
+      "tracking/possessions:pts_per_touch": {
+        "adj_r2_on_existing_box_score_features": 0.827,
+        "n": 379
+      },
+      "tracking/possessions:touches/36min": {
+        "adj_r2_on_existing_box_score_features": 0.866,
+        "n": 379
+      }
+    },
+    "note": "adjusted R^2 of each GOAT field on 13 existing NBA.com box-score features (one season, rotation players). A low value means 'not explained by what Pivot already has' \u2014 which is new information OR noise; without a prior season there is no reliability estimate to tell them apart."
+  },
+  "medium_confidence_in_reference": {
+    "players": 10,
+    "share_of_reference_minutes": 0.0255,
+    "share_of_reference_players": 0.0264
+  },
+  "reference_population": {
+    "definition": "NBA.com players with >= 500 minutes in 2025-26",
+    "n": 379
+  },
+  "season": "2025-26"
+}

@@ -51,14 +51,14 @@ class Calibration(BaseModel):
     model_config = ConfigDict(frozen=True)
     folds: int = Field(ge=1)
     n: int = Field(ge=1)
-    empirical_coverage: float = Field(ge=0, le=1)
+    empirical_coverage: float = Field(ge=0, le=1, allow_inf_nan=False)
     evaluation_ref: str  # experiment id whose artifacts hold the numbers
 
 
 class Interval(BaseModel):
     model_config = ConfigDict(frozen=True)
-    low: float
-    high: float
+    low: float = Field(allow_inf_nan=False)
+    high: float = Field(allow_inf_nan=False)
     nominal_level: float = Field(gt=0, lt=1)
     method: str
     #: ``None`` means no calibration evidence: the level is a design target, not a measurement, and
@@ -123,7 +123,7 @@ class PlayerIntelligenceRecord(BaseModel):
     quantity: str  # e.g. "ts_pct"
     unit: str
     output_kind: OutputKind
-    value: float
+    value: float = Field(allow_inf_nan=False)
     period: Period
     #: ``projected`` only: the period the value is a forecast of.
     target_period: Period | None = None

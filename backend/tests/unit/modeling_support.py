@@ -16,7 +16,10 @@ def make_frame(n_players: int = 220, n_seasons: int = 8, seed: int = 1, first_ye
     talent = rng.normal(0.0, 1.0, n_players)  # latent overall impact
     shoot = rng.normal(0.0, 0.03, n_players)  # latent true-shooting skill (fraction)
     birth_age = rng.integers(19, 33, n_players)
-    start = rng.integers(0, max(n_seasons - 3, 1), n_players)  # entry season index
+    # Entry season: half the league is already there at the start, the rest arrive over time and
+    # attrition removes players, so every season holds a similar number of players (as the real
+    # league does) and a thin season is a genuine anomaly.
+    start = np.where(rng.random(n_players) < 0.5, 0, rng.integers(0, max(n_seasons - 3, 1), n_players))
     team_of = rng.integers(0, 12, n_players)
     rows = []
     for i in range(n_players):
@@ -25,6 +28,8 @@ def make_frame(n_players: int = 220, n_seasons: int = 8, seed: int = 1, first_ye
             age = birth_age[i] + (s - start[i])
             if age > 38 or (s > start[i] + 2 and rng.random() < 0.06):
                 break
+            if s > start[i] and rng.random() < 0.04:
+                continue  # misses a whole season (injury) but returns later: a returner
             season_talent = 0.85 * season_talent + 0.15 * rng.normal() + (0.12 if age < 25 else -0.05 if age > 30 else 0.0)
             minutes_pg = float(np.clip(18 + 6 * season_talent + rng.normal(0, 5), 3, 38))
             gp = int(np.clip(rng.normal(60, 18), 8, 82))

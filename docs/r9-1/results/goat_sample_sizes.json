@@ -1,0 +1,37 @@
+{
+ "restricted_area": {
+  "median_season_attempts": 127.4,
+  "share_under_50_attempts": 0.111,
+  "share_under_100": 0.367
+ },
+ "in_the_paint_(non-ra)": {
+  "median_season_attempts": 81.0,
+  "share_under_50_attempts": 0.306,
+  "share_under_100": 0.573
+ },
+ "mid-range": {
+  "median_season_attempts": 31.2,
+  "share_under_50_attempts": 0.641,
+  "share_under_100": 0.823
+ },
+ "corner_3": {
+  "median_season_attempts": 52.0,
+  "share_under_50_attempts": 0.464,
+  "share_under_100": 0.858
+ },
+ "above_the_break_3": {
+  "median_season_attempts": 137.7,
+  "share_under_50_attempts": 0.177,
+  "share_under_100": 0.343
+ },
+ "defense_defended_attempts_season": {
+  "median": 488.0,
+  "p10": 249.0,
+  "share_under_300": 0.164
+ },
+ "clutch_minutes_season": {
+  "median": 46.2,
+  "p10": 7.4,
+  "share_under_30_min": 0.348
+ }
+}

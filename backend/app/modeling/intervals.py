@@ -1,8 +1,10 @@
-"""Prediction intervals, calibrated out-of-time on the training window only.
+"""Prediction intervals, calibrated on held-out *training* transitions only.
 
 The method is deliberately plain: take the residuals a model makes on *held-out training
-transitions* (leave-one-transition-out, so each residual is out-of-sample), model their spread as a
-function of the evidence behind the estimate,
+transitions* (leave-one-transition-out: each residual is out-of-sample for the model that made it,
+but this is cross-validation, not forward chaining — a held-out transition can be earlier than some
+of the data its model was fitted on), model their spread as a function of the evidence behind the
+estimate,
 
     s^2(E) = a + b / E            (E = window exposure; a, b >= 0, least squares on squared residuals)
 
@@ -14,8 +16,12 @@ What the interval is, and is not:
 * It is a **forecast interval for the next-season observed value**, so it includes the player's
   true year-to-year change *and* the noise in a single season's statistic.
 * The ``level`` is **nominal**. Whether it is delivered is an empirical question answered by the
-  backtest (coverage per fold and per subgroup); a number printed beside an interval that this
-  module produced is a design target until a backtest says otherwise.
+  backtest on the held-out *test* folds (coverage per fold and per subgroup) — that, not the
+  calibration, is the out-of-time evidence. Every model shares this one calibrator, so pooled
+  coverage near the level is expected of all of them and says little about a particular model;
+  mean width at that coverage is what distinguishes them.
+* It describes the **evaluated population** only (players who played at least the minimum next
+  season); it makes no statement about players who do not.
 """
 
 from __future__ import annotations
@@ -86,6 +92,8 @@ def fit_interval(residuals: pd.DataFrame, level: float = 0.8) -> IntervalModel:
     e = residuals["exposure"].to_numpy(dtype=float)
     ok = np.isfinite(r) & np.isfinite(e) & (e > 0)
     r, e = r[ok], e[ok]
+    if len(r) == 0:
+        raise ValueError("no finite out-of-sample residuals to calibrate on")
     floor = float(np.percentile(e, 5)) if len(e) else 1.0
     e = np.maximum(e, floor)
     design = np.column_stack([np.ones_like(e), 1.0 / e])

@@ -1,0 +1,109 @@
+{
+  "covid_note": "2019-20 (bubble, ~64-73 games) and 2020-21 (72 games) are included; per-minute and rate quantities are unaffected by schedule length, season totals are not",
+  "index_composition": {
+    "NET_RATING_in_index": "z_NET_RATING is computed but has weight 0 in INDEX_WEIGHTS",
+    "share_of_total_abs_weight_on_PIE": 0.1207,
+    "target_weight_on_NET_RATING": 0.4,
+    "target_weight_on_PIE": 0.6,
+    "weight_on_PIE": 0.14
+  },
+  "same_season_overlap_rotation": {
+    "corr_index_vs_season_target": 0.8641595437845029,
+    "corr_index_vs_z_NET_RATING": 0.3171527145593038,
+    "corr_index_vs_z_PIE": 0.9576488751298079,
+    "n": 375
+  },
+  "scale": {
+    "calibration_intercept": -0.10316952089666119,
+    "calibration_slope_of_target_on_index": 0.6636962969695225,
+    "mae_index_as_shipped": 0.6453992790689473,
+    "mae_index_linearly_recalibrated": 0.6458155189632596,
+    "mae_persistence": 0.7169001776235159,
+    "n": 464,
+    "note": "a slope far from 1 means the index is not on the target's scale; compare the two MAEs below to see whether that matters for absolute error",
+    "sd_of_index_prediction": 0.6800799502636861,
+    "sd_of_next_season_target": 1.0879056019537903,
+    "share_with_under_500_next_season_minutes": 0.27801724137931033
+  },
+  "seasons": [
+    "2016-17",
+    "2017-18",
+    "2018-19",
+    "2019-20",
+    "2020-21",
+    "2021-22",
+    "2022-23",
+    "2023-24",
+    "2024-25",
+    "2025-26"
+  ],
+  "stored_validation": {
+    "index_mae": 0.6453992790689473,
+    "n_valid": 464,
+    "persistence_mae": 0.7169001776235159,
+    "validation_transition": "2024-25->2025-26"
+  },
+  "year_over_year_stability_rotation_players": {
+    "ast_pct": {
+      "mean_yoy_pearson": 0.9,
+      "mean_yoy_spearman": 0.877,
+      "min_max_yoy_pearson": [
+        0.876,
+        0.912
+      ],
+      "player_season_pairs": 2575
+    },
+    "impact_proxy": {
+      "mean_yoy_pearson": 0.754,
+      "mean_yoy_spearman": 0.707,
+      "min_max_yoy_pearson": [
+        0.708,
+        0.782
+      ],
+      "player_season_pairs": 2575
+    },
+    "pie": {
+      "mean_yoy_pearson": 0.849,
+      "mean_yoy_spearman": 0.814,
+      "min_max_yoy_pearson": [
+        0.803,
+        0.873
+      ],
+      "player_season_pairs": 2575
+    },
+    "reb_pct": {
+      "mean_yoy_pearson": 0.946,
+      "mean_yoy_spearman": 0.93,
+      "min_max_yoy_pearson": [
+        0.932,
+        0.956
+      ],
+      "player_season_pairs": 2575
+    },
+    "tei_single_season_index": {
+      "mean_yoy_pearson": 0.819,
+      "min_max_yoy_pearson": [
+        0.787,
+        0.849
+      ]
+    },
+    "ts_pct": {
+      "mean_yoy_pearson": 0.593,
+      "mean_yoy_spearman": 0.556,
+      "min_max_yoy_pearson": [
+        0.544,
+        0.667
+      ],
+      "player_season_pairs": 2575
+    },
+    "usg_pct": {
+      "mean_yoy_pearson": 0.879,
+      "mean_yoy_spearman": 0.854,
+      "min_max_yoy_pearson": [
+        0.861,
+        0.898
+      ],
+      "player_season_pairs": 2575
+    }
+  }
+}

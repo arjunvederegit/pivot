@@ -4,10 +4,12 @@
 one ``model_versions`` row with ``status = 'candidate'`` and ``is_active = False``, and the
 candidate's rows in ``candidate_estimates``. It never updates or deletes anything else.
 
-That promise is enforced, not hoped for: the function fingerprints **every table except the
-candidate-owned ones** (and the non-candidate rows of ``model_versions``) before it does anything,
-fingerprints them again before it commits, and rolls back and raises ``ProtectedStateViolation`` if a
-single byte differs. The legacy ``make train`` deletes the previous version's impact estimates and
+That promise is enforced, not hoped for: the function fingerprints **every table, including every
+existing candidate** (all of ``model_versions`` and ``candidate_estimates`` except the rows it is
+creating) immediately before it writes, fingerprints them again before it commits, and rolls back and
+raises ``ProtectedStateViolation`` if a single byte differs. The expensive computation happens
+*before* the first fingerprint, so the window in which an unrelated writer can cause a (safe, rolled
+back) false alarm is the few milliseconds of the write itself. The legacy ``make train`` deletes the previous version's impact estimates and
 retires every active model; this path cannot, and a regression test fails if that ever changes.
 
 Training and promotion are separate. Nothing here sets ``is_active``; ``promotion_blockers`` lists
@@ -18,15 +20,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Base, CandidateEstimate, ModelVersion, Standing
+from app.db.models import Base, CandidateEstimate, ModelVersion, PlayerImpactEstimate, Standing
 
 from .intervals import fit_interval, loto_residuals
 from .pairs import FeatureConfig, PairCache
@@ -35,9 +40,9 @@ from .predictors import PREDICTORS, FitContext
 from .provenance import DataSnapshot, config_hash, environment
 from .targets import get_target
 
-#: Tables the candidate path owns. Everything else is protected.
-CANDIDATE_OWNED_TABLES = frozenset({"candidate_estimates"})
 CANDIDATE_MODEL_PREFIX = "player_forecast_"
+#: Estimates must be finite before they are stored: PostgreSQL would accept a NaN silently.
+MIN_TRAINING_ROWS = 40
 
 
 class ProtectedStateViolation(RuntimeError):
@@ -48,15 +53,20 @@ class CandidateError(ValueError):
     """The request cannot be honoured safely."""
 
 
-def protected_fingerprint(db: Session) -> dict[str, dict]:
-    """Row count and content hash of every protected table (candidate-owned rows excluded)."""
+def protected_fingerprint(db: Session, exclude_model_id: str | None = None) -> dict[str, dict]:
+    """Row count and content hash of every table.
+
+    ``exclude_model_id`` leaves out the one candidate being created (its ``model_versions`` row and
+    its ``candidate_estimates``) so that a *new* candidate is not mistaken for tampering — while every
+    OTHER candidate, and everything else, is protected."""
     result: dict[str, dict] = {}
     for table in Base.metadata.sorted_tables:
-        if table.name in CANDIDATE_OWNED_TABLES:
-            continue
         query = select(*table.c)
-        if table.name == "model_versions":
-            query = query.where(table.c.status != "candidate")
+        if exclude_model_id is not None:
+            if table.name == "model_versions":
+                query = query.where(table.c.id != exclude_model_id)
+            elif table.name == "candidate_estimates":
+                query = query.where(table.c.model_version_id != exclude_model_id)
         keys = list(table.primary_key.columns) or list(table.c)
         query = query.order_by(*keys)
         digest = hashlib.sha256()
@@ -91,6 +101,32 @@ class CandidateRecord:
     snapshot_id: str
 
 
+_WRITE_VERBS = frozenset({"INSERT", "UPDATE", "DELETE", "REPLACE", "DROP", "ALTER", "CREATE", "TRUNCATE"})
+
+
+@contextmanager
+def _read_only_computation(db: Session) -> Iterator[None]:
+    """Make the session's connection refuse any write while the candidate is being computed.
+
+    Fingerprinting the protected tables around the minutes-long computation would raise a false
+    alarm whenever an unrelated process legitimately writes meanwhile. The computation is read-only
+    by construction, so that is enforced directly instead: a statement that would modify anything,
+    issued on this session's connection, raises before it executes. Other connections (another
+    process, another thread) are unaffected."""
+    connection = db.connection()
+
+    def guard(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+        head = statement.lstrip().split(None, 1)[0].upper() if statement.strip() else ""
+        if head in _WRITE_VERBS:
+            raise ProtectedStateViolation(f"a write was attempted during read-only computation: {statement.strip()[:160]}")
+
+    event.listen(connection, "before_cursor_execute", guard)
+    try:
+        yield
+    finally:
+        event.remove(connection, "before_cursor_execute", guard)
+
+
 def _forward_estimates(
     panel: PlayerSeasonPanel, spec: str, target_name: str, origin: str, features: FeatureConfig,
     seed: int, level: float,
@@ -107,15 +143,61 @@ def _forward_estimates(
         raise CandidateError(f"{len(origins)} training transitions at {origin}; at least 2 are needed")
     train_all = pd.concat([cache.pairs(s, target) for s in origins], ignore_index=True)
     train = train_all[train_all["target_eligible"]].reset_index(drop=True)
+    if len(train) < MIN_TRAINING_ROWS:
+        raise CandidateError(f"{len(train)} training rows at {origin}; at least {MIN_TRAINING_ROWS} are needed")
     ctx = FitContext(target=target, seed=seed)
     fitted = predictor.fit(train, ctx)
     scoring = cache.features(origin, target).reset_index(drop=True)
     pred = fitted.predict(scoring)
-    interval = fit_interval(loto_residuals(predictor, train, ctx), level)
+    if not np.isfinite(pred).all():
+        raise CandidateError(f"{spec} produced non-finite estimates for {target_name} at {origin}; nothing was stored")
+    try:
+        interval = fit_interval(loto_residuals(predictor, train, ctx), level)
+    except ValueError as exc:
+        raise CandidateError(f"{spec}: cannot calibrate an interval ({exc}); nothing was stored") from exc
     lo, hi = interval.apply(pred, scoring["window_exposure"].to_numpy(dtype=float))
+    if not (np.isfinite(lo).all() and np.isfinite(hi).all()):
+        raise CandidateError(f"{spec} produced non-finite intervals for {target_name} at {origin}; nothing was stored")
     out = scoring.assign(pred=pred, lo=lo, hi=hi)
     return out, {"fitted": fitted.params, "interval": interval.params()}, {
         "training_pairs": int(len(train)), "training_origins": origins, "scored": int(len(scoring)),
+    }
+
+
+def evaluation_from_experiment(experiment_dir: Path, spec: str, target: str, data_fingerprint: str) -> dict:
+    """What an experiment's artifacts actually say about ``spec`` — never more than they say.
+
+    ``data_fingerprint`` is the fingerprint of the full panel as it stands now.
+
+    The status is read from the decision files, not assumed: a candidate that did not advance is
+    ``failed_development_rule``, not ``development_only``; a baseline was never a candidate; a
+    development run made on different data than the candidate was trained on is ``stale``."""
+    try:
+        decisions = json.loads((experiment_dir / "decisions.json").read_text())
+        config = json.loads((experiment_dir / "config.json").read_text())
+        recorded = json.loads((experiment_dir / "data_snapshot.json").read_text())
+    except (OSError, ValueError) as exc:
+        raise CandidateError(f"cannot read the experiment artifacts in {experiment_dir}: {exc}") from exc
+    if decisions.get("target") != target:
+        raise CandidateError(f"{experiment_dir.name} evaluated {decisions.get('target')!r}, not {target!r}")
+    stage = config.get("stage")
+    entry = (decisions.get("candidates") or {}).get(spec)
+    if entry is None:
+        status = "not_evaluated_as_candidate"
+    elif stage == "holdout":
+        status = "holdout_confirmed" if entry.get("confirmed") else "holdout_not_confirmed"
+    else:
+        status = "development_only" if entry.get("advance") else "failed_development_rule"
+    if recorded.get("fingerprint") != data_fingerprint:
+        status = f"stale:{status}"
+    return {
+        "evaluation_status": status,
+        "experiment": experiment_dir.name,
+        "stage": stage,
+        "family": decisions.get("family"),
+        "decision": entry,
+        "experiment_data_fingerprint": recorded.get("fingerprint"),
+        "current_data_fingerprint": data_fingerprint,
     }
 
 
@@ -128,20 +210,40 @@ def train_candidate(
     seed: int = 20260719,
     level: float = 0.8,
     features: FeatureConfig | None = None,
+    experiment_dir: Path | None = None,
     evaluation: dict | None = None,
 ) -> CandidateRecord:
-    """Train a candidate and persist it — and nothing else — under ``status = 'candidate'``."""
+    """Train a candidate and persist it — and nothing else — under ``status = 'candidate'``.
+
+    ``experiment_dir`` (a development or holdout run) is read to record, truthfully, how the model
+    fared. ``evaluation`` is accepted for callers that already hold that record."""
     features = features or FeatureConfig()
     if spec not in PREDICTORS:
         raise CandidateError(f"unknown model {spec!r}; registered: {sorted(PREDICTORS)}")
-    before = protected_fingerprint(db)
+    if db.new or db.deleted or any(db.is_modified(o) for o in db.dirty):
+        raise CandidateError(
+            "the session holds uncommitted changes; commit or roll them back first (a protected-state "
+            "violation rolls the whole session back, which would discard them)"
+        )
 
-    panel = PlayerSeasonPanel.from_db(db)
-    if origin not in panel.seasons:
-        raise CandidateError(f"no statistics for {origin}; ingested seasons: {panel.seasons}")
-    scoring, params, counts = _forward_estimates(panel, spec, target, origin, features, seed, level)
-    snapshot = DataSnapshot.of_panel(panel.as_of(origin).frame)
-    target_season = season_label(season_key(origin) + 1)
+    # 1. Everything that is expensive or can fail happens BEFORE any write — under a read-only guard.
+    try:
+        with _read_only_computation(db):
+            panel = PlayerSeasonPanel.from_db(db)
+            if origin not in panel.seasons:
+                raise CandidateError(f"no statistics for {origin}; ingested seasons: {panel.seasons}")
+            scoring, params, counts = _forward_estimates(panel, spec, target, origin, features, seed, level)
+            snapshot = DataSnapshot.of_panel(panel.as_of(origin).frame)
+            target_season = season_label(season_key(origin) + 1)
+            if experiment_dir is not None:
+                # Staleness is judged against the data as it is NOW (the whole panel the experiment saw),
+                # not against the possibly earlier cutoff this candidate was trained at.
+                evaluation = evaluation_from_experiment(
+                    experiment_dir, spec, target, DataSnapshot.of_panel(panel.frame).fingerprint
+                )
+    except BaseException:
+        db.rollback()
+        raise
 
     config = {
         "spec": spec, "target": target, "origin": origin, "target_season": target_season,
@@ -150,74 +252,125 @@ def train_candidate(
     }
     version = f"cand-{spec}-{target}-{config_hash({**config, 'data': snapshot.fingerprint})[:12]}"
     model_name = f"{CANDIDATE_MODEL_PREFIX}{target}"
+    estimates = {str(r.player_id): float(r.pred) for r in scoring.itertuples(index=False)}
 
     existing = db.scalar(
         select(ModelVersion).where(ModelVersion.model_name == model_name, ModelVersion.version == version)
     )
     if existing is not None:
-        # Deterministic: the same specification on the same data is the same candidate. Nothing is
-        # rewritten and nothing is deleted.
-        n = len(db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == existing.id)).all())
-        return CandidateRecord(existing.id, version, model_name, spec, target, origin, target_season, n, True, snapshot.snapshot_id)
+        return _reuse(db, existing, estimates, evaluation, version, model_name, spec, target, origin, target_season, snapshot)
 
     active = db.scalars(
         select(ModelVersion).where(ModelVersion.model_name == "player_impact", ModelVersion.is_active)
     ).first()
-    now = datetime.now(UTC)
-    model = ModelVersion(
-        model_name=model_name,
-        version=version,
-        algorithm=PREDICTORS[spec].description[:200],
-        training_period=f"{panel.seasons[0]}..{origin}",
-        feature_list=[c for c in scoring.columns if c.startswith(("x_", "z_")) or c in ("age", "window_exposure")],
-        target=target,
-        validation_metrics=evaluation or {"evaluation_status": "unevaluated"},
-        artifact_path=None,
-        trained_at=now,
-        code_commit=environment()["code"]["commit"],
-        data_snapshot_id=snapshot.snapshot_id,
-        is_active=False,
-        status="candidate",
-        config=config,
-        lineage={
-            "data_snapshot": snapshot.as_dict(),
-            "environment": environment(),
-            "seed": seed,
-            "fit": params,
-            "counts": counts,
-            "compared_against_active_version": active.version if active else None,
-            "promotion": "not promoted; see promotion_blockers()",
-        },
-    )
-    db.add(model)
-    db.flush()
-    rows = [
-        CandidateEstimate(
-            model_version_id=model.id,
-            player_id=str(r.player_id),
-            season=origin,
-            target_season=target_season,
-            target=target,
-            output_kind=get_target(target).output_kind,
-            estimate=float(r.pred),
-            interval_low=float(r.lo),
-            interval_high=float(r.hi),
-            interval_level=level,
-            exposure=float(r.window_exposure),
-            inputs={"x_t": _clean(r.x_t), "age": _clean(r.age), "window_minutes": _clean(r.window_minutes)},
-        )
-        for r in scoring.itertuples(index=False)
-    ]
-    db.add_all(rows)
-    db.flush()
+    env = environment()
 
-    after = protected_fingerprint(db)
-    changed = diff_fingerprints(before, after)
-    if changed:
+    # 2. Write, with the guard tightly around the write.
+    before = protected_fingerprint(db)
+    try:
+        model = ModelVersion(
+            model_name=model_name,
+            version=version,
+            algorithm=PREDICTORS[spec].description[:200],
+            training_period=f"{panel.seasons[0]}..{origin}",
+            feature_list=list(PREDICTORS[spec].inputs),
+            target=target,
+            validation_metrics=evaluation or {"evaluation_status": "unevaluated"},
+            artifact_path=None,
+            trained_at=datetime.now(UTC),
+            code_commit=env["code"]["commit"],
+            data_snapshot_id=snapshot.snapshot_id,
+            is_active=False,
+            status="candidate",
+            config=config,
+            lineage={
+                "data_snapshot": snapshot.as_dict(),
+                "environment": env,
+                "seed": seed,
+                "fit": params,
+                "counts": counts,
+                "compared_against_active_version": active.version if active else None,
+                "promotion": "not promoted; see promotion_blockers()",
+            },
+        )
+        db.add(model)
+        db.flush()
+        db.add_all(
+            [
+                CandidateEstimate(
+                    model_version_id=model.id,
+                    player_id=str(r.player_id),
+                    season=origin,
+                    target_season=target_season,
+                    target=target,
+                    output_kind=get_target(target).output_kind,
+                    estimate=float(r.pred),
+                    interval_low=float(r.lo),
+                    interval_high=float(r.hi),
+                    interval_level=level,
+                    exposure=float(r.window_exposure),
+                    inputs={"x_t": _clean(r.x_t), "age": _clean(r.age), "window_minutes": _clean(r.window_minutes)},
+                )
+                for r in scoring.itertuples(index=False)
+            ]
+        )
+        db.flush()
+        _assert_isolated(db, model)
+        changed = diff_fingerprints(before, protected_fingerprint(db, exclude_model_id=model.id))
+        if changed:
+            raise ProtectedStateViolation("candidate training changed protected state: " + "; ".join(changed))
+        db.commit()
+    except BaseException:
         db.rollback()
-        raise ProtectedStateViolation("candidate training changed protected state: " + "; ".join(changed))
-    db.commit()
-    return CandidateRecord(model.id, version, model_name, spec, target, origin, target_season, len(rows), False, snapshot.snapshot_id)
+        raise
+    return CandidateRecord(model.id, version, model_name, spec, target, origin, target_season, len(estimates), False, snapshot.snapshot_id)
+
+
+def _assert_isolated(db: Session, model: ModelVersion) -> None:
+    """Post-write invariants the fingerprint cannot express: the new row must be unreachable by serving."""
+    if model.is_active or model.status != "candidate" or not model.model_name.startswith(CANDIDATE_MODEL_PREFIX):
+        raise ProtectedStateViolation(
+            f"the new model is not isolated (is_active={model.is_active}, status={model.status}, name={model.model_name})"
+        )
+    leaked = db.scalar(
+        select(PlayerImpactEstimate.id).where(PlayerImpactEstimate.model_version_id == model.id).limit(1)
+    )
+    if leaked is not None:
+        raise ProtectedStateViolation("a serving estimate references the candidate model")
+
+
+def _reuse(
+    db: Session, existing: ModelVersion, estimates: dict[str, float], evaluation: dict | None,
+    version: str, model_name: str, spec: str, target: str, origin: str, target_season: str,
+    snapshot: DataSnapshot,
+) -> CandidateRecord:
+    """The same specification on the same data is the same candidate — but only if it still produces
+    the same numbers. If it does not (the code or a library changed), say so rather than return
+    stale estimates under an unchanged id. Nothing is deleted or rewritten except, when asked, this
+    candidate's own evaluation record."""
+    stored = {
+        e.player_id: e.estimate
+        for e in db.scalars(select(CandidateEstimate).where(CandidateEstimate.model_version_id == existing.id))
+    }
+    if stored.keys() != estimates.keys() or any(abs(stored[p] - estimates[p]) > 1e-9 for p in stored):
+        raise CandidateError(
+            f"{version} exists but retraining now gives different estimates: the code or environment "
+            "changed since it was trained. Nothing was modified; change the seed or configuration to "
+            "create a new candidate, or investigate the difference."
+        )
+    if evaluation is not None and existing.validation_metrics != evaluation:
+        before = protected_fingerprint(db, exclude_model_id=existing.id)
+        try:
+            existing.validation_metrics = evaluation
+            db.flush()
+            changed = diff_fingerprints(before, protected_fingerprint(db, exclude_model_id=existing.id))
+            if changed:
+                raise ProtectedStateViolation("recording an evaluation changed protected state: " + "; ".join(changed))
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+    return CandidateRecord(existing.id, version, model_name, spec, target, origin, target_season, len(stored), True, snapshot.snapshot_id)
 
 
 def _clean(value) -> float | None:  # type: ignore[no-untyped-def]

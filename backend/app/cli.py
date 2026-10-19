@@ -17,8 +17,9 @@ Commands
   train            Train impact model + archetypes; persist model versions
   score            Score current players, compute availability and team needs
   backtest         R9.1 rolling-origin backtest: backtest <development|holdout> [--target T|all]
-                   [--out DIR] [--decisions FILE] [--min-target-minutes N] [--acknowledge-reread].
-                   Read-only on the database; writes artifacts under models/experiments/.
+                   [--out DIR] [--eval-min-target-minutes N] [--acknowledge-reread]. A holdout run
+                   loads and verifies the development run in --out. Read-only on the database;
+                   writes artifacts under models/experiments/.
   train-candidate  R9.1 candidate-only training: train-candidate --model M --target T
                    [--origin SEASON] [--experiment DIR]. Writes a candidate model_versions row and
                    candidate_estimates only; refuses to change anything else.
@@ -438,86 +439,99 @@ def _balldontlie_evaluate(args: list[str]) -> int:
 
 
 def _modeling_command(command: str, args: list[str]) -> int:
-    """R9.1 evaluation and candidate-training commands (see ``app.modeling``)."""
+    """R9.1 evaluation and candidate-training commands (see ``app.modeling``).
+
+    Every refusal is a JSON object on stdout and exit code 2, like the other operator commands."""
     from pathlib import Path
+
+    from sqlalchemy.exc import OperationalError, ProgrammingError
 
     from app.config import BACKEND_DIR
     from app.modeling import registry
-    from app.modeling.experiment import HoldoutReadRefused, run_stage
+    from app.modeling.backtest import InsufficientDataError, NonFiniteForecastError
+    from app.modeling.experiment import HoldoutPrerequisiteError, HoldoutReadRefused, run_stage
     from app.modeling.panel import PanelValidationError, PlayerSeasonPanel
+    from app.modeling.predictors import PREDICTORS
     from app.modeling.targets import TARGETS
 
+    def refuse(error: str, message: str, **extra: object) -> int:
+        print(json.dumps({"error": error, "message": message, **extra}, indent=2, default=str))
+        return 2
+
     def option(name: str) -> str | None:
-        return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else None
+        if name not in args:
+            return None
+        i = args.index(name) + 1
+        # A value is never another flag: `--model --target x` is a missing value, not a model called "--target".
+        return args[i] if i < len(args) and not args[i].startswith("--") else None
 
-    with SessionLocal() as db:
-        if command == "candidates":
-            print(json.dumps(registry.list_candidates(db), indent=2, default=str))
-            return 0
-        if command == "train-candidate":
-            model, target = option("--model"), option("--target")
-            if not model or not target:
-                print(json.dumps({"error": "usage: train-candidate --model M --target T [--origin SEASON] [--experiment DIR]"}))
-                return 2
+    migration_hint = "run `make migrate` on a COPY of the database first"
+    try:
+        with SessionLocal() as db:
+            if command == "candidates":
+                print(json.dumps(registry.list_candidates(db), indent=2, default=str))
+                return 0
+            if command == "train-candidate":
+                model, target = option("--model"), option("--target")
+                if not model or not target:
+                    return refuse("usage", "train-candidate --model M --target T [--origin SEASON] [--experiment DIR]")
+                if model not in PREDICTORS:
+                    return refuse("CandidateError", f"unknown model {model!r}; registered: {sorted(PREDICTORS)}")
+                if target not in TARGETS:
+                    return refuse("CandidateError", f"unknown target {target!r}; registered: {sorted(TARGETS)}")
+                experiment = option("--experiment")
+                origin = option("--origin")
+                if origin is None:
+                    origin = PlayerSeasonPanel.from_db(db).seasons[-1]
+                record = registry.train_candidate(
+                    db, model, target, origin, experiment_dir=Path(experiment) if experiment else None
+                )
+                print(json.dumps(record.__dict__, indent=2, default=str))
+                return 0
+
+            stage = args[0] if args and not args[0].startswith("--") else None
+            if stage not in ("development", "holdout"):
+                return refuse("usage", "backtest <development|holdout> [--target T|all] [--out DIR] [--eval-min-target-minutes N]")
+            wanted = option("--target") or "impact_proxy"
+            if wanted != "all" and wanted not in TARGETS:
+                return refuse("CandidateError", f"unknown target {wanted!r}; registered: {sorted(TARGETS)}")
+            eval_raw = option("--eval-min-target-minutes")
             try:
-                panel = PlayerSeasonPanel.from_db(db)
-                origin = option("--origin") or panel.seasons[-1]
-                evaluation = None
-                if option("--experiment"):
-                    exp = Path(option("--experiment"))  # type: ignore[arg-type]
-                    decisions = json.loads((exp / "decisions.json").read_text())
-                    verdict = (decisions.get("candidates") or {}).get(model)
-                    evaluation = {
-                        "evaluation_status": "development_only",
-                        "experiment": exp.name,
-                        "decision": verdict,
-                    }
-                record = registry.train_candidate(db, model, target, origin, evaluation=evaluation)
-            except (PanelValidationError, registry.CandidateError, registry.ProtectedStateViolation) as exc:
-                print(json.dumps({"error": type(exc).__name__, "message": str(exc)}, indent=2))
-                return 2
-            except Exception as exc:  # a database without the R9.1 migration, for one
-                print(json.dumps({"error": type(exc).__name__, "message": str(exc)[:300],
-                                  "hint": "run `make migrate` on a COPY of the database first"}, indent=2))
-                return 2
-            print(json.dumps(record.__dict__, indent=2, default=str))
-            return 0
-
-        # backtest
-        stage = args[0] if args and not args[0].startswith("--") else None
-        if stage not in ("development", "holdout"):
-            print(json.dumps({"error": "usage: backtest <development|holdout> [--target T|all] [--out DIR]"}))
-            return 2
-        try:
+                eval_minutes = float(eval_raw) if eval_raw is not None else None
+            except ValueError:
+                return refuse("usage", f"--eval-min-target-minutes needs a number, got {eval_raw!r}")
             panel = PlayerSeasonPanel.from_db(db)
-        except PanelValidationError as exc:
-            print(json.dumps({"error": "PanelValidationError", "message": str(exc)}, indent=2))
-            return 2
-        standings = registry.league_standings(db)
+            standings = registry.league_standings(db)
+    except PanelValidationError as exc:
+        return refuse("PanelValidationError", str(exc))
+    except (registry.CandidateError, registry.ProtectedStateViolation, InsufficientDataError, NonFiniteForecastError) as exc:
+        return refuse(type(exc).__name__, str(exc))
+    except (OperationalError, ProgrammingError) as exc:
+        return refuse("DatabaseError", str(exc)[:300], hint=migration_hint)
+
     out = Path(option("--out") or BACKEND_DIR.parent / "models" / "experiments")
-    wanted = option("--target") or "impact_proxy"
     targets = list(TARGETS) if wanted == "all" else [wanted]
-    minutes = float(option("--min-target-minutes") or 500)
     summary = {}
     for name in targets:
-        advanced = None
+        development_dir = None
         if stage == "holdout":
-            path = option("--decisions")
-            if not path:
-                print(json.dumps({"error": "a holdout run needs --decisions <development experiment>/decisions.json"}))
-                return 2
-            advanced = json.loads(Path(path).read_text())
+            runs = sorted(out.glob(f"exp-development-{name}-*"))
+            if len(runs) != 1:
+                return refuse("HoldoutPrerequisiteError", f"a holdout run needs exactly one development run of {name} in {out}; found {len(runs)}")
+            development_dir = runs[0]
         try:
             outcome = run_stage(
                 panel, standings, stage, name, out,
-                advanced_from=advanced, min_target_minutes=minutes,
+                development_dir=development_dir, eval_min_target_minutes=eval_minutes,
                 acknowledge_reread="--acknowledge-reread" in args,
+                # The primary target is audited at every development origin; the rest at the last one.
+                audit_origins=None if name == "impact_proxy" else 1,
             )
-        except HoldoutReadRefused as exc:
-            print(json.dumps({"error": "HoldoutReadRefused", "message": str(exc)}, indent=2))
-            return 2
+        except (HoldoutReadRefused, HoldoutPrerequisiteError, InsufficientDataError, NonFiniteForecastError) as exc:
+            return refuse(type(exc).__name__, str(exc))
         summary[name] = {
             "directory": str(outcome.directory),
+            "family": outcome.decisions.get("family"),
             "reference_baseline": outcome.decisions.get("reference_baseline")
             or outcome.decisions.get("reference_baseline_from_development"),
             "advanced": outcome.decisions.get("advanced"),

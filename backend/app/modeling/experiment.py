@@ -4,26 +4,31 @@ An experiment is a *stage* of a fixed protocol, not a free-form notebook:
 
 ``development``  Runs every registered model on the development folds only. Applies the decision
                  rule below, and records which candidates advance.
-``holdout``      Runs once, after development, on the folds development never touched. Only the
-                 baselines and the candidates that advanced are evaluated, against the baseline that
-                 was best *on development* (not re-picked on the holdout). Each read is written to a
-                 ledger; a second read of the same holdout is refused unless explicitly acknowledged,
-                 and is then marked as a re-read.
+``holdout``      Runs after development, on the folds development never touched. Only the baselines
+                 and the candidates that advanced are evaluated, against the baseline that was best
+                 *in development* (not re-picked on the holdout). The development run it confirms is
+                 loaded from its artifacts and verified (same protocol version, same data
+                 fingerprint). Every read is written to a ledger that cannot be skipped; a second
+                 read of the same target's holdout is refused unless explicitly acknowledged, and is
+                 then recorded as a re-read.
 
 The protocol is a constant in this module (``PREREGISTRATION``) so that it is committed *before* the
-run that uses it and is copied verbatim into every artifact.
+run that uses it and is copied verbatim into every artifact. Amendments made after the first
+development run, with their reasons and direction, are listed in ``PREREGISTRATION["amendments"]``.
 
 **What the decision rule can and cannot support.** Passing it means "on these seasons, this
 candidate forecast this observed target with lower absolute error than the best simple baseline, by
-a margin the player-cluster bootstrap does not attribute to chance, and its intervals covered at
-about the nominal rate". It does not mean the candidate measures ability, that it will do so in
-future seasons, or that it should replace anything. Promotion is a separate human decision.
+a margin that is not attributable to chance *either across players or across seasons*, large enough
+to matter, with intervals that covered at about the nominal rate". It does not mean the candidate
+measures ability, that it will do so in future seasons, or that it should replace anything.
+Promotion is a separate human decision.
 """
 
 from __future__ import annotations
 
 import gzip
 import json
+import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,58 +44,121 @@ from .backtest import (
     run_backtest,
 )
 from .pairs import FeatureConfig, PairCache
-from .panel import PlayerSeasonPanel
+from .panel import PlayerSeasonPanel, season_key
 from .predictors import PREDICTORS
 from .provenance import DataSnapshot, config_hash, environment, feature_manifest
 from .targets import get_target
+from .team_gate import r2_difference
 
-#: Test origins whose outcomes development may see / may not see. With ten seasons of data the
-#: folds are origins 2018-19 … 2024-25; the last two are locked away.
-HOLDOUT_FOLDS = 2
+PROTOCOL_VERSION = "r9.1-prereg-2"
 
 PREREGISTRATION = {
-    "version": "r9.1-prereg-1",
-    "primary_target": "impact_proxy",
-    "secondary_targets": ["pie", "ts_pct", "ast_pct", "reb_pct", "usg_pct"],
+    "version": PROTOCOL_VERSION,
+    "confirmatory_target": "impact_proxy",
+    "exploratory_targets": ["pie", "ts_pct", "ast_pct", "reb_pct", "usg_pct"],
+    "multiplicity": (
+        "six targets x three candidates are examined. Only impact_proxy (the incumbent's own documented "
+        "target) is confirmatory; every other target is exploratory and is reported without correction"
+    ),
     "population": {
-        "scored": "players with >= 200 minutes over the last 3 seasons ending at the cutoff",
-        "evaluated": "scored players who played >= 500 minutes in the target season (same rows for every model)",
-        "sensitivity_min_target_minutes": [250, 1000],
+        "scored": "players with >= 200 minutes over the last 3 seasons ending at the cutoff (including those who missed the cutoff season)",
+        "evaluated": "scored players who played >= 500 minutes in the target season (same rows for every model); training uses the same rule",
+        "sensitivity": "evaluation-only cuts at 250 and 1000 target-season minutes, training unchanged",
     },
-    "folds": f"rolling origin; >= 2 training transitions; the last {HOLDOUT_FOLDS} folds are the locked holdout",
+    "folds": (
+        "rolling origin; >= 2 training transitions; development = origins 2018-19..2022-23; "
+        "locked holdout = origins 2023-24 and 2024-25 (hard-coded, independent of later ingestion)"
+    ),
     "reference_baseline": "the baseline with the lowest pooled development MAE for that target",
     "advance_if_all": {
-        "ci": "player-cluster bootstrap 95% interval of MAE(candidate) - MAE(reference) lies entirely below 0 on development folds",
-        "folds": "candidate has lower MAE than the reference in at least 4 of the 5 development folds",
+        "player_ci": "player-cluster bootstrap 95% interval of MAE(candidate) - MAE(reference) lies entirely below 0 on the development folds",
+        "season_ci": "the 95% t-interval (k-1 d.f.) of the per-fold MAE differences lies entirely below 0",
+        "folds": "candidate has lower MAE than the reference in at least 80% of development folds (4 of 5)",
+        "practical": "MAE is at least 2% lower than the reference's",
         "interval_coverage": "pooled development coverage of the nominal 80% interval lies in [0.75, 0.85]",
-        "team_gate": "for pie and impact_proxy: concurrent team win% R^2 is not more than 0.05 below the incumbent's",
+        "team_gate": (
+            "pie and impact_proxy only: the 95% team-season bootstrap interval of R2(candidate) - R2(reference) for "
+            "prospective roster-known win% is not entirely below 0; if it cannot be computed the check FAILS"
+        ),
     },
-    "confirm_on_holdout_if": "pooled holdout bootstrap interval vs the development-chosen reference lies entirely below 0, and the candidate improves MAE in every holdout fold",
+    "confirm_on_holdout_if": (
+        "pooled holdout player-cluster interval vs the development-chosen reference lies entirely below 0 "
+        "and the candidate improves MAE in every holdout fold"
+    ),
     "claims_not_made": [
         "that any model measures underlying ability",
         "that results hold for seasons after 2025-26",
         "that any candidate should be promoted",
+        "that the incumbent's score measures impact",
+    ],
+    "disclosures": [
+        "an engineering smoke test run before the development/holdout split was enforced in code scored all folds, "
+        "including the holdout, for impact_proxy with the then-registered models. No model, parameter or rule was "
+        "changed in response to it; but the impact_proxy holdout is NOT pristine and its confirmation is weaker evidence",
+        "the incumbent's own stored validation used the 2024-25 -> 2025-26 transition (one of the two holdout folds)",
+    ],
+    "amendments": [
+        {
+            "id": 1, "when": "after the first development run, before any holdout read",
+            "change": "added baseline ols_history (OLS on last season, windowed history, age); incumbent_tei_recalibrated now applies to every target",
+            "reason": "independent methodology review: the baselines lacked the candidates' own information, so 'beats the best baseline' could mean only 'uses more than last season'",
+            "direction": "more conservative (a stronger baseline set)",
+        },
+        {
+            "id": 2, "when": "same",
+            "change": "added season-level (fold) t-interval, a 2% practical-significance floor, and replaced the concurrent, incumbent-referenced team gate with a prospective, reference-baseline gate that fails closed",
+            "reason": "review: the gate was silently skipped for pie, compared a forecast with the TEI on a circular target, and the player bootstrap ignores season-to-season dependence",
+            "direction": "more conservative",
+        },
+        {
+            "id": 3, "when": "same",
+            "change": "holdout origins hard-coded; ledger mandatory and keyed by target; development decisions loaded and verified from artifacts; leakage audit strengthened (identity/team permutation, row deletion, population and eligibility compared) and run for every development origin of the primary target; sensitivity is evaluation-only",
+            "reason": "review: holdout lock was policy not enforcement; audit could not detect survivorship or identity leaks",
+            "direction": "more conservative / stricter process",
+        },
     ],
 }
 
-MIN_FOLDS_IMPROVED = 4
+#: Origins whose outcomes development may never see. Hard-coded: ingesting 2026-27 must not turn them
+#: into development data.
+HOLDOUT_ORIGINS = ("2023-24", "2024-25")
+MIN_FOLD_SHARE_IMPROVED = 0.8
+PRACTICAL_FLOOR = 0.02
 COVERAGE_BAND = (0.75, 0.85)
-TEAM_GATE_TOLERANCE = 0.05
 TEAM_GATE_TARGETS = ("impact_proxy", "pie")
+MIN_TEAM_SEASONS = 30
+
+
+@dataclass(frozen=True)
+class Protocol:
+    holdout_origins: tuple[str, ...] = HOLDOUT_ORIGINS
+
+
+DEFAULT_PROTOCOL = Protocol()
 
 
 class HoldoutReadRefused(RuntimeError):
     """The holdout for this target has been read already, and a re-read was not acknowledged."""
 
 
-def split_origins(panel: PlayerSeasonPanel, min_train_transitions: int = 2) -> tuple[list[str], list[str]]:
-    folds = rolling_origin_folds(panel.seasons, min_train_transitions)
-    origins = [f.origin for f in folds]
-    if len(origins) <= HOLDOUT_FOLDS + 2:
-        raise ValueError(
-            f"{len(origins)} folds are too few to keep {HOLDOUT_FOLDS} untouched; add seasons or lower the requirement"
-        )
-    return origins[:-HOLDOUT_FOLDS], origins[-HOLDOUT_FOLDS:]
+class HoldoutPrerequisiteError(RuntimeError):
+    """The development run a holdout claims to confirm is missing, altered or stale."""
+
+
+def split_origins(
+    panel: PlayerSeasonPanel, protocol: Protocol = DEFAULT_PROTOCOL, min_train_transitions: int = 2
+) -> tuple[list[str], list[str]]:
+    """(development origins, holdout origins). Any fold later than the holdout is not used here."""
+    origins = [f.origin for f in rolling_origin_folds(panel.seasons, min_train_transitions)]
+    holdout = list(protocol.holdout_origins)
+    missing = [o for o in holdout if o not in origins]
+    if missing:
+        raise ValueError(f"the protocol's holdout origins {missing} are not foldable in this panel ({origins})")
+    first = season_key(min(holdout, key=season_key))
+    development = [o for o in origins if season_key(o) < first]
+    if len(development) < 3:
+        raise ValueError(f"{len(development)} development folds are too few")
+    return development, holdout
 
 
 @dataclass
@@ -105,43 +173,56 @@ class StageOutcome:
 # ------------------------------------------------------------------------------ decisions
 
 
-def decide(result: BacktestResult, panel_target: str) -> dict:
+def decide(result: BacktestResult, target_name: str) -> dict:
     """Apply the pre-registered advance rule to a development run."""
     rows = result.eval_rows()
     overall = result.summary["overall"]
     baselines = [m for m in overall if PREDICTORS[m].family == "baseline"]
     candidates = [m for m in overall if PREDICTORS[m].family == "candidate"]
     reference = min(baselines, key=lambda m: overall[m]["mae"])
-    incumbent_r2 = None
-    gate = result.summary.get("team_gate", {})
-    if "incumbent_tei" in gate:
-        incumbent_r2 = gate["incumbent_tei"]["concurrent"]["r2_pooled"]
+    cfg = result.config
 
     verdicts = {}
     for cand in candidates:
-        cmp = paired_comparison(rows, cand, reference, result.config.bootstrap_draws, result.config.seed)
+        cmp = paired_comparison(rows, cand, reference, cfg.bootstrap_draws, cfg.seed)
         coverage = overall[cand].get("coverage")
+        fold_level = cmp.get("fold_level") if cmp else None
+        n_folds = cmp["folds"] if cmp else 0
         checks = {
-            "ci_below_zero": bool(cmp and cmp["ci95"][1] < 0),
-            "folds_improved": bool(cmp and cmp["folds_improved"] >= MIN_FOLDS_IMPROVED),
+            "player_ci_below_zero": bool(cmp and cmp["ci95"][1] < 0),
+            "season_ci_below_zero": bool(fold_level and fold_level["ci95"][1] < 0),
+            "folds_improved": bool(cmp and cmp["folds_improved"] >= math.ceil(MIN_FOLD_SHARE_IMPROVED * n_folds)),
+            "practical_floor": bool(cmp and cmp["relative_diff"] <= -PRACTICAL_FLOOR),
             "interval_coverage_in_band": bool(
                 coverage is not None and COVERAGE_BAND[0] <= coverage <= COVERAGE_BAND[1]
             ),
         }
-        if panel_target in TEAM_GATE_TARGETS and incumbent_r2 is not None and cand in gate:
-            r2 = gate[cand]["concurrent"]["r2_pooled"]
-            checks["team_gate"] = bool(r2 is not None and r2 >= incumbent_r2 - TEAM_GATE_TOLERANCE)
+        team = None
+        if target_name in TEAM_GATE_TARGETS:
+            team = (
+                r2_difference(result.predictions, result.standings, cand, reference, draws=cfg.bootstrap_draws, seed=cfg.seed)
+                if result.standings is not None
+                else None
+            )
+            # Fails closed: a gate that could not be computed is not a gate that passed.
+            checks["team_gate"] = bool(team is not None and team["ci95"][1] >= 0)
         verdicts[cand] = {
             "advance": all(checks.values()),
             "checks": checks,
             "vs_reference": cmp,
+            "team_gate": team,
+            "mean_width": overall[cand].get("mean_width"),
+            "reference_mean_width": overall[reference].get("mean_width"),
             "pooled_mae": overall[cand]["mae"],
         }
     return {
+        "target": target_name,
+        "family": "confirmatory" if target_name == PREREGISTRATION["confirmatory_target"] else "exploratory",
         "reference_baseline": reference,
         "reference_pooled_mae": overall[reference]["mae"],
         "candidates": verdicts,
         "advanced": [c for c, v in verdicts.items() if v["advance"]],
+        "examined_candidates": len(candidates),
     }
 
 
@@ -183,16 +264,10 @@ def write_artifacts(
     _write_json(directory / "environment.json", environment())
     _write_json(directory / "data_snapshot.json", snapshot.as_dict())
     _write_json(directory / "target.json", result.target.describe())
-    _write_json(
-        directory / "feature_manifest.json",
-        feature_manifest(cfg.features.window, cfg.features.decay),
-    )
+    _write_json(directory / "feature_manifest.json", feature_manifest(cfg.features.window, cfg.features.decay))
     _write_json(
         directory / "folds.json",
-        [
-            {"origin": f.origin, "target_season": f.target_season, "train_origins": list(f.train_origins)}
-            for f in result.folds
-        ],
+        [{"origin": f.origin, "target_season": f.target_season, "train_origins": list(f.train_origins)} for f in result.folds],
     )
     _write_json(directory / "models.json", [PREDICTORS[m].spec() for m in result.summary.get("models", [])])
     _write_json(directory / "metrics.json", result.summary)
@@ -213,6 +288,27 @@ def write_artifacts(
         result.predictions.to_csv(handle, index=False, float_format="%.10g")
 
 
+def load_development_decisions(directory: Path, snapshot: DataSnapshot, target: str) -> dict:
+    """Read and verify the development run a holdout stage is confirming."""
+    try:
+        decisions = json.loads((directory / "decisions.json").read_text())
+        config = json.loads((directory / "config.json").read_text())
+        recorded = json.loads((directory / "data_snapshot.json").read_text())
+    except (OSError, ValueError) as exc:
+        raise HoldoutPrerequisiteError(f"cannot read the development artifacts in {directory}: {exc}") from exc
+    if config.get("stage") != "development":
+        raise HoldoutPrerequisiteError(f"{directory} is not a development run (stage = {config.get('stage')!r})")
+    if config["preregistration"].get("version") != PROTOCOL_VERSION:
+        raise HoldoutPrerequisiteError("the development run was made under a different protocol version")
+    if decisions.get("target") != target:
+        raise HoldoutPrerequisiteError(f"the development run is for {decisions.get('target')!r}, not {target!r}")
+    if recorded["fingerprint"] != snapshot.fingerprint:
+        raise HoldoutPrerequisiteError(
+            "the data changed since the development run (fingerprint differs); re-run development first"
+        )
+    return decisions
+
+
 # ------------------------------------------------------------------------------ the stages
 
 
@@ -224,37 +320,44 @@ def run_stage(
     out_dir: Path | None,
     *,
     models: tuple[str, ...] | None = None,
-    advanced_from: dict | None = None,
-    min_target_minutes: float = 500.0,
+    development_dir: Path | None = None,
+    eval_min_target_minutes: float | None = None,
     bootstrap_draws: int = 2000,
     acknowledge_reread: bool = False,
-    audit_origins: int = 1,
+    audit_origins: int | None = 1,
+    protocol: Protocol = DEFAULT_PROTOCOL,
 ) -> StageOutcome:
+    """Run one stage. ``audit_origins``: how many of the stage's last origins get a leakage audit
+    (``None`` = all)."""
     if stage not in ("development", "holdout"):
         raise ValueError(f"unknown stage {stage!r}")
     get_target(target_name)
-    dev, hold = split_origins(panel)
-    features = FeatureConfig(min_target_minutes=min_target_minutes)
+    dev, hold = split_origins(panel, protocol)
+    snapshot = DataSnapshot.of_panel(panel.frame)
+    features = FeatureConfig()
+    dev_decisions: dict | None = None
 
     if stage == "holdout":
-        if advanced_from is None:
-            raise ValueError("a holdout run needs the development decisions it is confirming")
+        if out_dir is None:
+            raise ValueError("a holdout read must be recorded: out_dir is required")
+        if development_dir is None:
+            raise ValueError("a holdout run needs the development run it confirms (development_dir)")
+        dev_decisions = load_development_decisions(development_dir, snapshot, target_name)
         models = tuple(
             sorted(
                 {m for m in PREDICTORS if PREDICTORS[m].family == "baseline"}
-                | set(advanced_from["advanced"])
-                | {advanced_from["reference_baseline"]}
+                | set(dev_decisions["advanced"])
+                | {dev_decisions["reference_baseline"]}
             )
         )
         origins = tuple(hold)
-        ledger = out_dir / "holdout_ledger.json" if out_dir else None
-        if ledger is not None and ledger.exists() and not acknowledge_reread:
-            entries = json.loads(ledger.read_text())
-            if any(e["target"] == target_name and e["min_target_minutes"] == min_target_minutes for e in entries):
-                raise HoldoutReadRefused(
-                    f"the {target_name} holdout was already read; pass acknowledge_reread=True to read it again "
-                    "(the re-read will be recorded)"
-                )
+        ledger = out_dir / "holdout_ledger.json"
+        entries = json.loads(ledger.read_text()) if ledger.exists() else []
+        if any(e["target"] == target_name for e in entries) and not acknowledge_reread:
+            raise HoldoutReadRefused(
+                f"the {target_name} holdout was already read; pass acknowledge_reread=True to read it again "
+                "(the re-read will be recorded)"
+            )
     else:
         origins = tuple(dev)
 
@@ -262,30 +365,29 @@ def run_stage(
         target=target_name,
         models=models,
         test_origins=origins,
+        eval_min_target_minutes=eval_min_target_minutes,
         bootstrap_draws=bootstrap_draws,
         features=features,
     )
     cache = PairCache(panel, features)
     result = run_backtest(panel, config, standings=standings, cache=cache)
 
-    audits = [leakage_audit(panel, config, o) for o in list(origins)[-audit_origins:]] if audit_origins else []
+    audited = list(origins) if audit_origins is None else list(origins)[-audit_origins:] if audit_origins else []
+    audits = [leakage_audit(panel, config, o) for o in audited]
     if any(not a["passed"] for a in audits):
-        raise AssertionError(f"leakage audit failed: {audits}")
+        raise AssertionError(f"leakage audit failed: {[a for a in audits if not a['passed']]}")
 
     if stage == "development":
         decisions = decide(result, target_name)
     else:
-        assert advanced_from is not None  # checked above
-        decisions = _confirm(result, advanced_from)
-    snapshot = DataSnapshot.of_panel(panel.frame)
+        assert dev_decisions is not None
+        decisions = _confirm(result, dev_decisions)
 
     directory = None
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
-        directory = out_dir / experiment_id(
-            stage + (f"-min{int(min_target_minutes)}" if min_target_minutes != 500.0 else ""),
-            target_name, config, snapshot,
-        )
+        label = stage + (f"-evalmin{int(eval_min_target_minutes)}" if eval_min_target_minutes is not None else "")
+        directory = out_dir / experiment_id(label, target_name, config, snapshot)
         write_artifacts(directory, stage, result, snapshot, decisions, audits)
         if stage == "holdout":
             ledger = out_dir / "holdout_ledger.json"
@@ -294,12 +396,12 @@ def run_stage(
                 {
                     "experiment": directory.name,
                     "target": target_name,
-                    "min_target_minutes": min_target_minutes,
                     "models": list(models or ()),
                     "config_hash": config_hash(config.as_dict()),
                     "data_fingerprint": snapshot.fingerprint,
+                    "development_run": development_dir.name if development_dir else None,
                     "read_at": datetime.now(UTC).isoformat(),
-                    "reread": any(e["target"] == target_name and e["min_target_minutes"] == min_target_minutes for e in entries),
+                    "reread": any(e["target"] == target_name for e in entries),
                 }
             )
             _write_json(ledger, entries)
@@ -309,7 +411,13 @@ def run_stage(
 def _confirm(result: BacktestResult, dev_decisions: dict) -> dict:
     rows = result.eval_rows()
     reference = dev_decisions["reference_baseline"]
-    out = {"reference_baseline_from_development": reference, "candidates": {}, "confirmed": []}
+    out = {
+        "target": dev_decisions["target"],
+        "family": dev_decisions.get("family"),
+        "reference_baseline_from_development": reference,
+        "candidates": {},
+        "confirmed": [],
+    }
     for cand in dev_decisions["advanced"]:
         cmp = paired_comparison(rows, cand, reference, result.config.bootstrap_draws, result.config.seed)
         ok = bool(cmp and cmp["ci95"][1] < 0 and cmp["folds_improved"] == cmp["folds"])

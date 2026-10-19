@@ -521,7 +521,9 @@ class ModelVersion(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_pk)
     model_name: Mapped[str] = mapped_column(String(50), index=True)
-    version: Mapped[str] = mapped_column(String(30))
+    #: 64 since R9.1: candidate versions are ``cand-<model>-<target>-<12 hex>`` (up to ~57 characters; the
+    #: legacy content-hash versions are 21). SQLite never enforced the old 30, PostgreSQL does.
+    version: Mapped[str] = mapped_column(String(64))
     #: 200: the real labels run to 97 characters (SQLite never enforced the old 50; PostgreSQL does).
     algorithm: Mapped[str] = mapped_column(String(200))
     training_period: Mapped[str | None] = mapped_column(String(50))

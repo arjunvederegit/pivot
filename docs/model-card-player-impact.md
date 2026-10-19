@@ -118,3 +118,13 @@ under-credited).
 Retrain weekly or after each data refresh (`make train`); every run writes a new
 version and deactivates the old one; the UI's /data-health lists the active version
 and metrics.
+
+## R9.1 addendum — out-of-time evaluation (2026-10-19)
+
+R9.1 evaluated this model under a rolling-origin backtest (`docs/r9-1/`), without changing it. Measured as a forecaster of its own
+documented target on two locked holdout seasons: TEI beats raw "last season" (as stated above), but is **not distinguishable from
+regressing last season's value toward the mean with an age curve**, and is **10.8 % worse** (MAE 0.436 vs 0.394) than a four-parameter
+regression on the player's own recent history. The per-player "likely range" (10th–90th percentile band) contained **57 %** of
+holdout outcomes (61 % in development) against a nominal 80 %. The index correlates 0.96 with same-season PIE, which is 60 % of the
+target. These are statements about forecasting the proxy target, not about impact. Full tables and caveats:
+`docs/r9-1/current-model-assessment.md` and `docs/r9-1/candidate-experiment-results.md`.
