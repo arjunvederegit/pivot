@@ -61,6 +61,11 @@ and the pre-registration against commit `fdd7425`.
 | F12 | LOW | Role covariates imputed as league average / cutoff-season role applied to all history | **Not fixed; disclosed** (added after Round 3 found it undocumented) | methodology §7.2 |
 | F13 | LOW | Documentation inconsistencies (amendment count, rounding MAE, mixed models in a table, …) | **Fixed** | five amendments everywhere; numbers re-checked |
 
+**Late addendum from the Round 1 reviewer (timing of the pre-registration).** Run timestamps found afterwards show all three development runs started after the pre-registration commit `fdd7425`
+(02:17:51) — which supports the claim — but amendment 1's text ("after the three R9.2 development runs") is slightly wrong: it was committed at 02:26:49, about three minutes *before* the true-shooting development
+run finished (02:29:31); amendment 2 (02:29:54) was committed 47 s before the first holdout read (02:30:41). No consequence: amendment 1 only chooses among *confirmed* candidates and true shooting confirmed none. The embedded
+`"when"` string is part of the committed protocol record (changing it would change the experiment configuration hash) so it is left as written and corrected here. (Finding R1-F14, LOW; the `run.json` files are committed with the results.)
+
 Pre-registration and holdout integrity were also reviewed: the embedded pre-registration matched `fdd7425` byte for byte; the ledger times showed amendments 1–2 were committed before the first holdout read and 3–4 after
 (each only lowers a claim or adds a diagnostic); `ts_pct` is recorded as a **re-read**. The reviewer found no use of holdout information in design. Limits it noted: the order of development runs relative to the
 pre-registration commit cannot be externally proven from committed files (mitigated: `run.json` files are now committed).
