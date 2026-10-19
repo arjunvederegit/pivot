@@ -114,3 +114,8 @@ Provider-independent records, season/statistic definitions, identity crosswalk, 
 the optional BALLDONTLIE adapter are described in [r8/architecture.md](r8/architecture.md). **Licensing:**
 NBA.com's Terms of Use §9 restrict NBA statistics to private, non-commercial use absent consent — see
 [r8/resource-research.md](r8/resource-research.md) before any public launch.
+
+**R8.3 (October 2026):** BALLDONTLIE GOAT was exercised live (148 requests) and integrated behind the canonical
+layer for 2026-27 contracts, injuries and the clutch/defence/shot-zone/tracking/hustle families. Where it overlaps
+NBA.com it is numerically identical. What it covers, what it does not, and which provider serves which category:
+[r8-3/data-coverage-matrix.md](r8-3/data-coverage-matrix.md), [r8-3/provider-strategy.md](r8-3/provider-strategy.md).
