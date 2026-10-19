@@ -76,6 +76,16 @@ Commands
                    shuffled-feature nulls, leave-one-dimension-out, archetype recovery,
                    direction confusion, era structure and season concentration. Exits
                    non-zero when a stated threshold fails.
+  provider-data-activate --source <db> [--apply] [--backup-dir DIR]
+                   R9.3A. Copy the additive provider data (BALLDONTLIE identities, snapshots, contracts,
+                   injuries, their sync runs, R9.2 candidate models and estimates) from a verified source
+                   database into the one DATABASE_URL names. Dry run by default; --apply takes a verified
+                   backup first, refuses on any conflict or dangling id, and rolls back unless every other
+                   table is byte-identical afterwards. SQLite only.
+  r93a-readiness
+                   R9.3A: a read-only inventory of what the tools can serve today, by evidence class
+                   (verified display / experimental preview / partial / unavailable): rosters, statistics,
+                   contract coverage and horizon, injuries, and the stored player-intelligence candidates.
   contract-coverage
                    Report ROSTER-side contract coverage without importing anything:
                    how many rostered players have a salary for the cap league year,
@@ -388,6 +398,34 @@ def _refresh_balldontlie(args: list[str]) -> int:
     return status
 
 
+def _provider_data_activate(args: list[str]) -> int:
+    """R9.3A. Copy the additive provider data from a verified source database into THIS database (the one
+    ``DATABASE_URL`` names). Dry run unless ``--apply``; an apply takes a verified backup first."""
+    from pathlib import Path
+
+    from app.services import provider_data_activation as act
+
+    def option(name: str) -> str | None:
+        return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else None
+
+    source = option("--source")
+    if not source:
+        print(json.dumps({"error": "usage: provider-data-activate --source <db file> [--apply] [--backup-dir DIR]"}))
+        return 2
+    target_url = get_settings().database_url
+    try:
+        if "--apply" in args:
+            backup_dir = Path(option("--backup-dir") or (Path(act._sqlite_path(target_url)).parent / "backups"))
+            report = act.apply(Path(source), target_url, backup_dir)
+        else:
+            report = act.plan(Path(source), target_url)
+    except act.ActivationRefused as exc:
+        print(json.dumps({"refused": str(exc), "nothing_was_written": True}, indent=2))
+        return 2
+    print(json.dumps(report, indent=2, default=str))
+    return 0
+
+
 def _balldontlie_evaluate(args: list[str]) -> int:
     from pathlib import Path
 
@@ -654,6 +692,13 @@ def main() -> None:
                 default=str,
             )
         )
+    elif command == "provider-data-activate":
+        sys.exit(_provider_data_activate(sys.argv[2:]))
+    elif command == "r93a-readiness":
+        from app.services.operational_readiness import operational_readiness
+
+        with SessionLocal() as db:
+            print(json.dumps(operational_readiness(db), indent=2, default=str))
     elif command == "season-status":
         from app.canonical.tool_seasons import roster_verification, tool_seasons
         from app.services.data_provenance import dataset_freshness, rollover_readiness

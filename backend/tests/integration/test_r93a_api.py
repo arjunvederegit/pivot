@@ -256,3 +256,46 @@ class TestShotZones:
 
         monkeypatch.setattr(bdl.BalldontlieClient, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("network")))
         assert client.get(f"/api/v1/players/{world['star'].id}/shot-zones").status_code == 200
+
+
+class TestQueryBudgets:
+    """A tool that fans out per player (the N+1 the resolver exists to prevent) is a performance regression."""
+
+    def _count(self, db, fn) -> int:
+        from sqlalchemy import event
+
+        statements: list[str] = []
+
+        def before(conn, cursor, statement, parameters, context, executemany):  # noqa: ARG001
+            statements.append(statement)
+
+        engine = db.get_bind()
+        event.listen(engine, "before_cursor_execute", before)
+        try:
+            fn()
+        finally:
+            event.remove(engine, "before_cursor_execute", before)
+        return len(statements)
+
+    def test_roster_and_cap_outlook_do_not_scale_with_roster_size(self, client, db, world) -> None:
+        a = world["a"]
+        small = self._count(db, lambda: client.get(f"/api/v1/teams/{a.id}/cap-outlook"))
+        for i in range(12):
+            p = make_player(db, 900 + i, f"Bench {i}", a, salary=None, contract_type=None)
+            _contract(db, p, {"2026-27": 2_000_000 + i})
+        large = self._count(db, lambda: client.get(f"/api/v1/teams/{a.id}/cap-outlook"))
+        assert large <= small + 4, f"cap-outlook issued {large} statements for 16 players vs {small} for 4"
+        roster_small = self._count(db, lambda: client.get(f"/api/v1/teams/{world['b'].id}/roster"))
+        roster_large = self._count(db, lambda: client.get(f"/api/v1/teams/{a.id}/roster"))
+        assert roster_large <= roster_small + 6
+
+    def test_validate_issues_a_bounded_number_of_statements(self, client, db, world) -> None:
+        body = {
+            "team_ids": [world["a"].id, world["b"].id],
+            "player_moves": [
+                {"player_id": world["star"].id, "from_team_id": world["a"].id, "to_team_id": world["b"].id},
+                {"player_id": world["b1"].id, "from_team_id": world["b"].id, "to_team_id": world["a"].id},
+            ],
+            "pick_moves": [],
+        }
+        assert self._count(db, lambda: client.post("/api/v1/trades/validate", json=body)) <= 80

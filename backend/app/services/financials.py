@@ -114,15 +114,23 @@ class ContractHorizon:
         }
 
 
-def horizon(db: Session, financial_season: str) -> ContractHorizon:
+def contract_runs(db: Session) -> list[DataSyncRun]:
+    """Every successful contract sync run, oldest first — read once and shared by the horizon and the
+    recorded-unpriced lookup (the resolver memoizes it per request)."""
+    return list(
+        db.scalars(
+            select(DataSyncRun)
+            .where(DataSyncRun.job_name == CONTRACT_SYNC_JOB, DataSyncRun.status == "succeeded")
+            .order_by(DataSyncRun.started_at)
+        ).all()
+    )
+
+
+def horizon(db: Session, financial_season: str, runs: list[DataSyncRun] | None = None) -> ContractHorizon:
     """Contiguous league-wide contract seasons loaded from ``financial_season`` onward."""
     complete: dict[str, str] = {}
     partial: set[str] = set()
-    runs = db.scalars(
-        select(DataSyncRun)
-        .where(DataSyncRun.job_name == CONTRACT_SYNC_JOB, DataSyncRun.status == "succeeded")
-        .order_by(DataSyncRun.started_at)
-    ).all()
+    runs = contract_runs(db) if runs is None else runs
     for run in runs:
         detail = run.detail if isinstance(run.detail, dict) else {}
         season = detail.get("season")
@@ -251,7 +259,9 @@ def _end_basis(end_status: str, final_season: str | None) -> str:
     return "contract length is unknown (later seasons were not loaded for the whole league)"
 
 
-def unpriced_observations(db: Session, financial_season: str) -> dict[str, dict[str, Any]]:
+def unpriced_observations(
+    db: Session, financial_season: str, runs: list[DataSyncRun] | None = None
+) -> dict[str, dict[str, Any]]:
     """Provider rows for ``financial_season`` that carried **no cap hit**, as recorded by the sync run.
 
     The contract job never writes such a row (a missing cap hit is not a salary), but it lists them
@@ -259,11 +269,7 @@ def unpriced_observations(db: Session, financial_season: str) -> dict[str, dict[
     (80 players), so absence here means "not recorded", never "the provider had no row".
     """
     out: dict[str, dict[str, Any]] = {}
-    runs = db.scalars(
-        select(DataSyncRun)
-        .where(DataSyncRun.job_name == CONTRACT_SYNC_JOB, DataSyncRun.status == "succeeded")
-        .order_by(DataSyncRun.started_at)
-    ).all()
+    runs = contract_runs(db) if runs is None else runs
     for run in runs:  # later runs override earlier ones
         detail = run.detail if isinstance(run.detail, dict) else {}
         if detail.get("season") != financial_season:
@@ -278,9 +284,14 @@ def unpriced_observations(db: Session, financial_season: str) -> dict[str, dict[
     return out
 
 
-def two_way_salary(db: Session, financial_season: str) -> int | None:
-    """The league's two-way salary for the season, from the sourced cap-parameter row."""
-    row = db.scalar(select(LeagueCapParameters).where(LeagueCapParameters.league_year == financial_season))
+def two_way_salary(
+    db: Session, financial_season: str, row: LeagueCapParameters | None = None
+) -> int | None:
+    """The league's two-way salary for the season, from the sourced cap-parameter row.
+
+    ``row`` may be passed in (the resolver already holds it per request); read here otherwise."""
+    if row is None:
+        row = db.scalar(select(LeagueCapParameters).where(LeagueCapParameters.league_year == financial_season))
     extras = (row.extras if row and isinstance(row.extras, dict) else {}) or {}
     value = extras.get("two_way_salary")
     return int(value) if isinstance(value, int | float) and value > 0 else None

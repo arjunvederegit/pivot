@@ -266,6 +266,18 @@ def get_player_stats(player_id: str, db: Session = Depends(get_db)) -> dict:
     }
 
 
+@router.get("/{player_id}/injury")
+def get_player_injury(player_id: str, db: Session = Depends(get_db)) -> dict:
+    """R9.3A: the provider's injury status, dated by Pivot's retrieval time and framed as stale when it is.
+
+    Read-only; see ``app.services.injury_status``."""
+    from app.services.injury_status import injury_status
+
+    if db.get(Player, player_id) is None:
+        raise NotFoundError(f"player {player_id} not found")
+    return injury_status(db, player_id)
+
+
 @router.get("/{player_id}/shot-zones")
 def get_player_shot_zones(player_id: str, db: Session = Depends(get_db)) -> dict:
     """R9.3A: shot-zone distribution (BALLDONTLIE ``shooting/by_zone``), unit-reconciled or withheld.

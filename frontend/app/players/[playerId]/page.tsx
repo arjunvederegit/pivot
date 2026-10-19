@@ -43,6 +43,7 @@ import {
 } from "@/components/players/career";
 import { PlayerFileHeader, type PlayerRecord } from "@/components/players/file-header";
 import type { SeasonContext } from "@/lib/types";
+import { InjuryCard } from "@/components/players/injury-card";
 import { BackToDeal } from "@/components/players/back-to-deal";
 import { ContractFile, type PlayerContractPayload } from "@/components/players/contract-file";
 import {
@@ -182,6 +183,7 @@ export default function PlayerPage({ params }: { params: Promise<{ playerId: str
               intelligenceError={intelligenceError}
             />
             <div className="min-w-0 space-y-4">
+              <InjuryCard playerId={playerId} />
               <FitCard playerId={playerId} playerName={firstName} currentTeamId={team?.id ?? null} />
               <RolePanel
                 archetype={data.archetype}

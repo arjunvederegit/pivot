@@ -150,10 +150,11 @@ def financials(db: Session, players: dict[str, str], league_year: str) -> dict[s
     cache = _cache(db)["financials"]
     shared = _cache(db)["league_financial_inputs"]
     if league_year not in shared:
+        runs = fin.contract_runs(db)  # one read feeds both the horizon and the recorded-unpriced lookup
         shared[league_year] = (
-            fin.horizon(db, league_year),
-            fin.two_way_salary(db, league_year),
-            fin.unpriced_observations(db, league_year),
+            fin.horizon(db, league_year, runs),
+            fin.two_way_salary(db, league_year, cap_params_row(db, league_year)),
+            fin.unpriced_observations(db, league_year, runs),
         )
     info, two_way, observed = shared[league_year]
     missing = {pid: name for pid, name in players.items() if (pid, league_year) not in cache}
@@ -170,9 +171,17 @@ def roster_is_provisional(db: Session, season: str) -> bool:
     """Whether the roster snapshot for ``season`` is provisional (camp / offseason), memoized per session."""
     cache = _cache(db)["roster_provisional"]
     if season not in cache:
-        from app.canonical.tool_seasons import tool_seasons
+        # No database read: the calendar names what a roster taken now can honestly be called (the preseason
+        # and the offseason are provisional), and a roster that is not the league season's own is a fallback or
+        # historical snapshot — also not the final roster of the season being evaluated.
+        from app.canonical.tool_seasons import season_context_now
+        from app.canonical.seasons import Season
 
-        cache[season] = bool((tool_seasons(db, roster_season=season).get("roster") or {}).get("provisional"))
+        ctx = season_context_now()
+        cache[season] = Season.coerce(season) != ctx.league_season or ctx.roster_basis in (
+            "provisional_preseason",
+            "offseason_snapshot",
+        )
     return cache[season]
 
 

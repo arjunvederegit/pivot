@@ -443,10 +443,16 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
     by_season: dict[str, dict] = {}
     player_rows = []
     unknown_length = 0
+    # One batched read of every year of every contract (this was one query per contract).
+    years_by_contract: dict[str, list[ContractYear]] = {}
+    if contracts:
+        for year_row in db.scalars(
+            select(ContractYear).where(ContractYear.contract_id.in_([c.id for c in contracts]))
+        ).all():
+            years_by_contract.setdefault(year_row.contract_id, []).append(year_row)
+    records = {r.player_id: r for r in (*fin.priced, *fin.unpriced)}
     for contract in contracts:
-        years = db.scalars(
-            select(ContractYear).where(ContractYear.contract_id == contract.id)
-        ).all()
+        years = years_by_contract.get(contract.id, [])
         seasons_payload = []
         for year in sorted(years, key=lambda y: y.season):
             bucket = by_season.setdefault(year.season, {"total": 0, "players": 0})
@@ -464,9 +470,7 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
                 }
             )
         if seasons_payload:
-            record = next(
-                (r for r in (*fin.priced, *fin.unpriced) if r.player_id == contract.player_id), None
-            )
+            record = records.get(contract.player_id)
             end_status = record.end_status if record else "unknown"
             final_season = seasons_payload[-1]["season"]
             # R9.3A: the final season is a claim only when the league-wide horizon backs it

@@ -36,6 +36,16 @@ from app.integrations.nba_api.health import get_provider_health
 from app.services.data_provenance import dataset_freshness
 
 
+def _horizon_phrase(db: Session) -> str:
+    """R9.3A: which contract seasons were loaded for the whole league (empty when only the financial season was)."""
+    from app.services.financials import horizon
+
+    info = horizon(db, get_settings().cap_league_year)
+    if len(info.seasons) < 2:
+        return ""
+    return f" · contract years {info.seasons[0]} to {info.seasons[-1]} loaded"
+
+
 def _aware(value: datetime | None) -> datetime | None:
     """Normalize to tz-aware UTC.
 
@@ -341,6 +351,7 @@ def data_health(db: Session) -> dict:
                     if contracts_partial and isinstance(contracts_cov, dict)
                     else ""
                 )
+                + _horizon_phrase(db)
                 if contracts_rows
                 else (
                     "no contracts imported yet"

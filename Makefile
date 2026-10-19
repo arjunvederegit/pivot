@@ -15,6 +15,7 @@ E2E_DB ?= $(CURDIR)/backend/rosterlab-e2e.db
         transaction-coverage comparable-validation acquisition-validation lineup-availability \
         adversarial-validation \
         backtest train-candidate candidates materialise-skills \
+        preview-up preview-down preview-status preview-reset preview-verify r93a-readiness activate-provider-data \
         data-status season-status refresh link-balldontlie refresh-balldontlie balldontlie-plan balldontlie-preflight balldontlie-evaluate \
         assistant-setup assistant-models assistant-dev assistant-test assistant-eval \
         assistant-eval-selftest assistant-eval-retrieval assistant-eval-conversations
@@ -70,6 +71,28 @@ train-candidate: ## R9.1 candidate-only training (never changes an active model)
 
 materialise-skills: ## R9.2 store the validation registry's recommended models as candidates (never promotes; run on a COPY): make materialise-skills [SKILL_ORIGIN=2025-26]
 	cd $(BACKEND) && .venv/bin/python -m app.cli materialise-skills $(if $(SKILL_ORIGIN),--origin $(SKILL_ORIGIN),)
+
+preview-up: ## R9.3A isolated preview (backend :8093, frontend :3093) on a COPY of the data; touches nothing else
+	scripts/r93a-preview.sh up
+
+preview-down: ## Stop only the processes preview-up started
+	scripts/r93a-preview.sh down
+
+preview-status: ## Is the R9.3A preview running, and on which ports?
+	scripts/r93a-preview.sh status
+
+preview-reset: ## Restore the preview database from its checksum-verified snapshot (stops the preview first)
+	scripts/r93a-preview.sh reset
+
+preview-verify: ## Check the preview snapshot against its recorded checksum (read-only)
+	scripts/r93a-preview.sh verify
+
+r93a-readiness: ## R9.3A read-only inventory of what the tools can serve, by evidence class (uses DATABASE_URL)
+	cd $(BACKEND) && .venv/bin/python -m app.cli r93a-readiness
+
+activate-provider-data: ## R9.3A copy additive provider data from a verified DB into DATABASE_URL's DB: make activate-provider-data SOURCE=/path/preview.db [APPLY=1] [BACKUP_DIR=dir] (dry run unless APPLY=1)
+	@test -n "$(SOURCE)" || (echo "usage: make activate-provider-data SOURCE=<preview db> [APPLY=1] [BACKUP_DIR=dir]  (DATABASE_URL names the target)"; exit 2)
+	cd $(BACKEND) && .venv/bin/python -m app.cli provider-data-activate --source $(SOURCE) $(if $(APPLY),--apply,) $(if $(BACKUP_DIR),--backup-dir $(BACKUP_DIR),)
 
 candidates: ## List candidate and rejected model versions
 	cd $(BACKEND) && .venv/bin/python -m app.cli candidates
