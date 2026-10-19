@@ -22,8 +22,10 @@ from tests.conftest import make_player, make_team
 
 KEY = "not-a-real-key-aaaaaaaa"  # fixture value; low entropy on purpose (secret scanners)
 
-ATL = {"id": 1, "abbreviation": "ATL", "full_name": "Atlanta Hawks", "city": "Atlanta", "name": "Hawks"}
-BOS = {"id": 2, "abbreviation": "BOS", "full_name": "Boston Celtics", "city": "Boston", "name": "Celtics"}
+ATL = {"id": 1, "abbreviation": "ATL", "full_name": "Atlanta Hawks", "city": "Atlanta", "name": "Hawks",
+       "conference": "East", "division": "Southeast"}
+BOS = {"id": 2, "abbreviation": "BOS", "full_name": "Boston Celtics", "city": "Boston", "name": "Celtics",
+       "conference": "East", "division": "Atlantic"}
 
 
 def bdl_player(i: int, first: str, last: str, team: dict, draft_year: int = 2019) -> dict:

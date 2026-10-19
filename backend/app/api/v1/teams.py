@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas import Provenance, RosterPlayerOut, TeamOut, describe_providers
 from app.canonical.provenance import build_source_meta
+from app.canonical.records import SINGLE_SEASON_CONTRACT_SOURCE
 from app.canonical.rosters import current_roster, current_roster_clause, resolve_roster_season
 from app.canonical.seasons import SeasonType
 from app.canonical.stat_access import player_stat_rows
@@ -13,6 +14,7 @@ from app.config import get_settings
 from app.core.errors import NotFoundError
 from app.db.base import get_db
 from app.db.models import (
+    Contract,
     ContractYear,
     ModelVersion,
     Player,
@@ -211,8 +213,15 @@ def _remaining_contract_years(
         return {}
     counts: dict[str, int] = {}
     for (contract_id,) in db.execute(
-        select(ContractYear.contract_id).where(
-            ContractYear.contract_id.in_(contract_ids), ContractYear.season >= from_league_year
+        select(ContractYear.contract_id)
+        .join(Contract, Contract.id == ContractYear.contract_id)
+        .where(
+            ContractYear.contract_id.in_(contract_ids),
+            ContractYear.season >= from_league_year,
+            # R8.3: a contract loaded from a per-season endpoint carries ONE season whatever its
+            # real length, so "1 season on file" would read as "expiring" for a five-year deal.
+            # Its length is unknown, which is None here, not 1.
+            Contract.source_name.is_distinct_from(SINGLE_SEASON_CONTRACT_SOURCE),
         )
     ).all():
         counts[contract_id] = counts.get(contract_id, 0) + 1
@@ -423,6 +432,7 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
 
     by_season: dict[str, dict] = {}
     player_rows = []
+    single_season_rows = 0
     for contract in contracts:
         years = db.scalars(
             select(ContractYear).where(ContractYear.contract_id == contract.id)
@@ -442,12 +452,18 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
             )
         if seasons_payload:
             final_season = seasons_payload[-1]["season"]
+            # R8.3: a per-season source loads one season whatever the contract's real length, so
+            # "the last season on file is this one" does not mean "expiring". Unknown is None.
+            length_known = contract.source_name != SINGLE_SEASON_CONTRACT_SOURCE
+            if not length_known:
+                single_season_rows += 1
             player_rows.append(
                 {
                     "player_id": contract.player_id,
                     "name": roster_ids.get(contract.player_id, "?"),
                     "seasons": seasons_payload,
-                    "expiring": final_season == settings.cap_league_year,
+                    "expiring": (final_season == settings.cap_league_year) if length_known else None,
+                    "contract_length_known": length_known,
                     "no_trade_clause": contract.no_trade_clause,
                     "source_name": contract.source_name,
                     "source_date": contract.source_date.isoformat()
@@ -489,5 +505,13 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
         if cap_row
         else None,
         "note": "Cap/apron position is only computed when every rostered player has a "
-        "known salary — partial payrolls are never presented as complete.",
+        "known salary — partial payrolls are never presented as complete."
+        + (
+            f" {single_season_rows} contract(s) come from a per-season source: only "
+            f"{settings.cap_league_year} is loaded, so contract length, options and expiry are "
+            "not known."
+            if single_season_rows
+            else ""
+        ),
+        "single_season_contracts": single_season_rows,
     }

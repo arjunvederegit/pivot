@@ -24,7 +24,7 @@ import re
 from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, model_validator
 
 from app.canonical.records import (
     ContractAggregateRecord,
@@ -74,7 +74,10 @@ class BdlPlayer(_Row):
     draft_year: int | None = None
     draft_round: int | None = None
     draft_number: int | None = None
+    #: ``/players`` and ``/players/active`` nest the team object; ``/player_injuries`` and
+    #: ``/lineups`` carry only ``team_id`` (observed live, 2026-10-18). Both are accepted.
     team: BdlTeam | None = None
+    team_id: int | None = None
 
     @field_validator("draft_year", "draft_round", "draft_number", mode="before")
     @classmethod
@@ -106,10 +109,26 @@ class BdlStanding(_Row):
 
 
 class BdlSeasonAverage(_Row):
-    player_id: int
+    """``/season_averages/{category}``: observed live, the player is a nested object.
+
+    The OpenAPI document's flat ``player_id`` describes a different (legacy) shape; the
+    live endpoint returns ``{"player": {...}, "season", "season_type", "stats": {...}}``.
+    Both are accepted so a flat row from the legacy route still parses.
+    """
+
+    player_id: int | None = None
+    player: BdlPlayer | None = None
     season: int
     season_type: str | None = None
     stats: dict[str, Any]
+
+    @model_validator(mode="after")
+    def _identify(self) -> BdlSeasonAverage:
+        if self.player_id is None and self.player is not None:
+            self.player_id = self.player.id
+        if self.player_id is None:
+            raise ValueError("player_id: neither player_id nor player.id is present")
+        return self
 
 
 class BdlTeamSeasonStat(_Row):
@@ -121,6 +140,7 @@ class BdlTeamSeasonStat(_Row):
 
 class BdlContract(_Row):
     id: int | None = None
+    player: BdlPlayer | None = None
     player_id: int
     season: int
     team_id: int | None = None
@@ -144,7 +164,9 @@ class BdlContractAggregate(_Row):
     signed_using: str | None = None
     free_agent_year: int | None = None
     free_agent_status: str | None = None
-    contract_notes: dict[str, Any] | None = None
+    #: Observed live as ``null`` or a list of strings (``"2022-23: Club Option (deadline ...)"``);
+    #: the OpenAPI document says object. A dict is still accepted.
+    contract_notes: list[str] | dict[str, Any] | None = None
 
 
 class BdlInjury(_Row):
@@ -219,7 +241,9 @@ def player_record(raw: Any, *, is_active: bool | None = None) -> PlayerRecord:
         draft_year=p.draft_year,
         draft_round=p.draft_round,
         draft_number=p.draft_number,
-        team_provider_id=str(p.team.id) if p.team else None,
+        team_provider_id=(
+            str(p.team.id) if p.team else (str(p.team_id) if p.team_id is not None else None)
+        ),
         is_active=is_active,
     )
 
@@ -286,6 +310,15 @@ def _values(stats: dict[str, Any]) -> dict[str, float | None]:
     return out
 
 
+def _embedded_player(raw: Any) -> PlayerRecord | None:
+    """The provider embeds a full player object in season-average and contract rows. It is used to
+    link identities that ``/players/active`` does not list; a malformed one is simply absent."""
+    try:
+        return player_record(raw.get("player")) if isinstance(raw, dict) and raw.get("player") else None
+    except RowRejectedError:
+        return None
+
+
 def player_stat_record(raw: Any, requested: StatScope, stat_group: str) -> PlayerStatRecord:
     row: BdlSeasonAverage = _validate(BdlSeasonAverage, raw, "season average")
     if row.season != requested.season.provider_year:
@@ -310,6 +343,7 @@ def player_stat_record(raw: Any, requested: StatScope, stat_group: str) -> Playe
         aggregation="unspecified",
         values=values,
         games_played=int(gp) if gp is not None else None,
+        player=_embedded_player(raw),
     )
 
 
@@ -340,7 +374,23 @@ def contract_year_record(raw: Any) -> ContractYearRecord:
         base_salary=c.base_salary,
         total_cash=c.total_cash,
         provider_contract_id=str(c.id) if c.id is not None else None,
+        player=_embedded_player(raw),
+        player_name=(
+            " ".join(x for x in (_clean(c.player.first_name), _clean(c.player.last_name)) if x)
+            or None
+            if c.player
+            else None
+        ),
     )
+
+
+def _notes(raw: list[str] | dict[str, Any] | None) -> dict[str, Any]:
+    """Verbatim: a list becomes ``{"lines": [...]}``; nothing is parsed into option flags."""
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return dict(raw)
+    return {"lines": [str(line) for line in raw]}
 
 
 def contract_aggregate_record(raw: Any) -> ContractAggregateRecord:
@@ -361,7 +411,7 @@ def contract_aggregate_record(raw: Any) -> ContractAggregateRecord:
         signed_using=_clean(c.signed_using),
         free_agent_year=c.free_agent_year,
         free_agent_status=_clean(c.free_agent_status),
-        notes=dict(c.contract_notes or {}),
+        notes=_notes(c.contract_notes),
     )
 
 
@@ -373,5 +423,9 @@ def injury_record(raw: Any) -> InjuryRecord:
         status=i.status,
         description=_clean(i.description),
         return_date=_clean(i.return_date),
-        team_provider_id=str(i.player.team.id) if i.player.team else None,
+        team_provider_id=(
+            str(i.player.team.id)
+            if i.player.team
+            else (str(i.player.team_id) if i.player.team_id is not None else None)
+        ),
     )

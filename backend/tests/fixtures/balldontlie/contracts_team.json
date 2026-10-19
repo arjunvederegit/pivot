@@ -1,5 +1,5 @@
 {
- "_fixture": "SYNTHETIC FIXTURE. Shaped after the BALLDONTLIE OpenAPI document (retrieved 2026-10-18). Player names and figures are invented. NOT a captured live response and not evidence of live behaviour.",
+ "_fixture": "SYNTHETIC FIXTURE. Values are invented; the STRUCTURE was confirmed against live responses on 2026-10-18 (R8.3). Not a captured live response.",
  "data": [
   {
    "id": 9001,
@@ -10,6 +10,20 @@
    "base_salary": 28000000,
    "total_cash": 29000000,
    "rank": 3,
+   "player": {
+    "id": 101,
+    "first_name": "Alex",
+    "last_name": "Fixture",
+    "position": "G",
+    "height": "6-4",
+    "weight": "195",
+    "jersey_number": "3",
+    "college": "Fixture U",
+    "country": "USA",
+    "draft_year": 2019,
+    "draft_round": 1,
+    "draft_number": 10
+   },
    "team": {
     "id": 1,
     "conference": "East",
@@ -24,19 +38,66 @@
    "id": 9002,
    "player_id": 103,
    "season": 2025,
-   "team_id": 2,
+   "team_id": 1,
    "cap_hit": null,
    "base_salary": null,
-   "total_cash": null,
-   "rank": null,
+   "total_cash": 678882,
+   "rank": 0,
+   "player": {
+    "id": 103,
+    "first_name": "Blake",
+    "last_name": "Fixture",
+    "position": "G",
+    "height": "6-4",
+    "weight": "195",
+    "jersey_number": "3",
+    "college": "Fixture U",
+    "country": "USA",
+    "draft_year": 2019,
+    "draft_round": 1,
+    "draft_number": 10
+   },
    "team": {
-    "id": 2,
+    "id": 1,
     "conference": "East",
-    "division": "Atlantic",
-    "city": "Boston",
-    "name": "Celtics",
-    "full_name": "Boston Celtics",
-    "abbreviation": "BOS"
+    "division": "Southeast",
+    "city": "Atlanta",
+    "name": "Hawks",
+    "full_name": "Atlanta Hawks",
+    "abbreviation": "ATL"
+   }
+  },
+  {
+   "id": 9003,
+   "player_id": 104,
+   "season": 2025,
+   "team_id": 1,
+   "cap_hit": null,
+   "base_salary": 2537526,
+   "total_cash": null,
+   "rank": 0,
+   "player": {
+    "id": 104,
+    "first_name": "Casey",
+    "last_name": "Fixture",
+    "position": "G",
+    "height": "6-4",
+    "weight": "195",
+    "jersey_number": "3",
+    "college": "Fixture U",
+    "country": "USA",
+    "draft_year": 2019,
+    "draft_round": 1,
+    "draft_number": 10
+   },
+   "team": {
+    "id": 1,
+    "conference": "East",
+    "division": "Southeast",
+    "city": "Atlanta",
+    "name": "Hawks",
+    "full_name": "Atlanta Hawks",
+    "abbreviation": "ATL"
    }
   }
  ]

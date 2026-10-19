@@ -29,6 +29,8 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -120,6 +122,7 @@ class BalldontlieClient:
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        ledger_path: str | Path | None = None,
     ):
         if tier not in TIER_LIMITS_PER_MINUTE:
             raise ValueError(f"unknown BALLDONTLIE tier {tier!r}; known: {list(TIER_LIMITS_PER_MINUTE)}")
@@ -136,6 +139,12 @@ class BalldontlieClient:
         self.truncations: list[str] = []
         #: True once any request has returned 2xx with this key (see the 401 note above).
         self.authenticated_ok = False
+        #: The provider's own statement of this key's per-minute limit (``x-ratelimit-limit``),
+        #: from the latest 2xx response. Reported by the provider, not independently measured.
+        self.advertised_limit_per_minute: int | None = None
+        #: Optional JSONL request ledger: path, parameter *names*, status, latency. Never the key,
+        #: never parameter values that could identify a person, never response bodies.
+        self._ledger = Path(ledger_path) if ledger_path else None
 
     # ------------------------------------------------------------------ plumbing
 
@@ -145,6 +154,28 @@ class BalldontlieClient:
 
     def close(self) -> None:
         self._http.close()
+
+    def _note_limit(self, response: httpx.Response) -> None:
+        raw = response.headers.get("x-ratelimit-limit")
+        if raw and raw.isdigit():
+            self.advertised_limit_per_minute = int(raw)
+
+    def _log(self, endpoint: str, params: dict[str, Any] | None, status: Any, seconds: float) -> None:
+        if self._ledger is None:
+            return
+        entry = {
+            "at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "endpoint": endpoint,
+            "param_names": sorted((params or {}).keys()),
+            "status": status,
+            "seconds": round(seconds, 3),
+        }
+        try:
+            self._ledger.parent.mkdir(parents=True, exist_ok=True)
+            with self._ledger.open("a") as handle:
+                handle.write(json.dumps(entry) + "\n")
+        except OSError:
+            logger.warning("balldontlie ledger not writable")
 
     def _redact(self, text: str) -> str:
         return text.replace(self._key, "***") if self._key else text
@@ -183,15 +214,19 @@ class BalldontlieClient:
         for attempt in range(self.max_retries + 1):
             self._pacer.wait()
             self.request_count += 1
+            started = time.monotonic()
             try:
                 response = self._http.get(
                     url, params=_encode_params(params), headers={"Authorization": self._key}
                 )
+                self._log(endpoint, params, response.status_code, time.monotonic() - started)
             except httpx.TimeoutException as exc:
+                self._log(endpoint, params, "timeout", time.monotonic() - started)
                 last = BalldontlieError(
                     ProviderStatus.UNAVAILABLE, endpoint, f"timeout: {self._redact(str(exc))}"
                 )
             except httpx.TransportError as exc:
+                self._log(endpoint, params, "transport_error", time.monotonic() - started)
                 last = BalldontlieError(
                     ProviderStatus.UNAVAILABLE,
                     endpoint,
@@ -201,6 +236,7 @@ class BalldontlieClient:
                 outcome = self._interpret(endpoint, response)
                 if isinstance(outcome, dict):
                     self.authenticated_ok = True
+                    self._note_limit(response)
                     logger.info(
                         "balldontlie ok",
                         extra={"endpoint": endpoint, "http_status": response.status_code},
@@ -276,8 +312,13 @@ class BalldontlieClient:
         *,
         max_pages: int = 100,
         per_page: int = MAX_PER_PAGE,
+        sample: bool = False,
     ) -> PageResult:
-        """Follow ``meta.next_cursor`` until exhausted or ``max_pages`` is reached."""
+        """Follow ``meta.next_cursor`` until exhausted or ``max_pages`` is reached.
+
+        ``sample=True`` says stopping at ``max_pages`` is the intent (a deliberate first-page
+        probe), so it is not reported as a truncated read. Without it, a capped read is a warning.
+        """
         params = dict(params or {})
         params["per_page"] = min(per_page, MAX_PER_PAGE)
         records: list[dict[str, Any]] = []
@@ -302,6 +343,8 @@ class BalldontlieClient:
                 warnings.append(f"cursor {cursor} repeated; stopped to avoid a loop")
                 break
             seen_cursors.add(cursor)
+            if pages >= max_pages and sample:
+                break
             if pages >= max_pages:
                 warnings.append(
                     f"stopped at max_pages={max_pages} with more data available: result is TRUNCATED"

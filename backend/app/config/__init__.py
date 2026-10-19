@@ -98,6 +98,8 @@ class Settings(BaseSettings):
     balldontlie_api_prefix: str = "/nba/v1"
     balldontlie_timeout_seconds: float = 30.0
     balldontlie_max_retries: int = 3
+    #: Optional path of a JSONL request ledger (endpoint, parameter names, status, latency).
+    balldontlie_request_log: str = ""
 
     contract_data_provider: str = ""
     contract_data_api_key: str = ""

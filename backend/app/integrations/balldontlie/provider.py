@@ -66,6 +66,56 @@ ENDPOINT_MIN_TIER: dict[str, str] = {
 _TIER_RANK = {"free": 0, "all_star": 1, "trial": 2, "goat": 2, "all_access": 3}
 
 
+#: Category -> type pairings for ``/season_averages/{category}`` as published in the API
+#: reference ("Season Averages", retrieved 2026-10-18). The OpenAPI document leaves ``type`` a free
+#: string, and a wrong pairing costs a request to learn it, so the pairing is checked locally.
+PLAYER_STAT_TYPES: dict[str, tuple[str, ...]] = {
+    "general": ("base", "advanced", "usage", "scoring", "defense", "misc"),
+    "clutch": ("base", "advanced", "misc", "scoring", "usage"),
+    "defense": (
+        "overall", "2_pointers", "3_pointers", "greater_than_15ft", "less_than_10ft", "less_than_6ft",
+    ),
+    "shooting": ("5ft_range", "by_zone"),
+    "playtype": (
+        "cut", "handoff", "isolation", "offrebound", "offscreen", "postup", "prballhandler",
+        "prrollman", "spotup", "transition", "misc",
+    ),
+    "tracking": (
+        "painttouch", "efficiency", "speeddistance", "defense", "elbowtouch", "posttouch",
+        "passing", "drives", "rebounding", "catchshoot", "pullupshot", "possessions",
+    ),
+    "hustle": (),  # no type parameter
+    "shotdashboard": ("overall", "pullups", "catch_and_shoot", "less_than_10_ft"),
+}
+#: Team categories (OpenAPI description of ``/team_season_averages/{category}``).
+TEAM_STAT_TYPES: dict[str, tuple[str, ...]] = {
+    "general": ("base", "advanced", "scoring", "misc", "opponent", "defense", "violations"),
+    "clutch": ("base", "advanced", "misc", "scoring"),
+    "shooting": ("by_zone_base", "by_zone_opponent", "5ft_range_base", "5ft_range_opponent"),
+    "playtype": PLAYER_STAT_TYPES["playtype"],
+    "tracking": PLAYER_STAT_TYPES["tracking"],
+    "hustle": (),
+    "shotdashboard": PLAYER_STAT_TYPES["shotdashboard"],
+}
+
+
+class InvalidStatPairingError(ValueError):
+    """A (category, type) pair the provider does not publish; raised before any request."""
+
+
+def check_stat_pairing(table: dict[str, tuple[str, ...]], category: str, stat_type: str | None) -> None:
+    if category not in table:
+        raise InvalidStatPairingError(f"unknown category {category!r}; known: {sorted(table)}")
+    allowed = table[category]
+    if not allowed:
+        if stat_type:
+            raise InvalidStatPairingError(f"category {category!r} takes no type (got {stat_type!r})")
+    elif stat_type not in allowed:
+        raise InvalidStatPairingError(
+            f"type {stat_type!r} is not published for category {category!r}; known: {list(allowed)}"
+        )
+
+
 def tier_allows(tier: str, endpoint: str) -> bool:
     """Whether a plan includes an endpoint, per the published table (advisory only)."""
     return _TIER_RANK[tier] >= _TIER_RANK[ENDPOINT_MIN_TIER[endpoint]]
@@ -88,6 +138,7 @@ class BalldontlieProvider:
                 prefix=settings.balldontlie_api_prefix,
                 timeout=settings.balldontlie_timeout_seconds,
                 max_retries=settings.balldontlie_max_retries,
+                ledger_path=settings.balldontlie_request_log or None,
             )
         )
 
@@ -148,11 +199,12 @@ class BalldontlieProvider:
         convert: Callable[[Any], T],
         *,
         max_pages: int = 100,
+        sample: bool = False,
     ) -> ProviderResult[T]:
         return self._run(
             endpoint,
             params,
-            lambda: self.client.paginate(path, params, max_pages=max_pages),
+            lambda: self.client.paginate(path, params, max_pages=max_pages, sample=sample),
             convert,
         )
 
@@ -198,6 +250,7 @@ class BalldontlieProvider:
         season_type: SeasonType = SeasonType.REGULAR,
         *,
         max_pages: int = 100,
+        sample: bool = False,
     ) -> ProviderResult[GameRecord]:
         """Games for one season of ONE explicit type.
 
@@ -211,7 +264,8 @@ class BalldontlieProvider:
             "season_type": season_type.balldontlie_label,
         }
         return self._list(
-            "games", "/games", params, lambda raw: nz.game_record(raw, scope), max_pages=max_pages
+            "games", "/games", params, lambda raw: nz.game_record(raw, scope), max_pages=max_pages,
+            sample=sample,
         )
 
     def standings(self, season: Season | str | int) -> ProviderResult[StandingRecord]:
@@ -231,24 +285,29 @@ class BalldontlieProvider:
         season_type: SeasonType = SeasonType.REGULAR,
         *,
         category: str = "general",
-        stat_type: str = "base",
+        stat_type: str | None = "base",
         player_ids: list[int] | None = None,
         max_pages: int = 50,
+        sample: bool = False,
     ) -> ProviderResult[PlayerStatRecord]:
+        check_stat_pairing(PLAYER_STAT_TYPES, category, stat_type)
         scope = StatScope(Season.coerce(season), season_type)
         params = {
             "season": scope.season.provider_year,
             "season_type": season_type.balldontlie_label,
-            "type": stat_type,
-            "player_ids": player_ids,  # spelled without [] on this endpoint in the OpenAPI doc
+            "type": stat_type or None,
+            # The API reference spells the array ``player_ids[]`` (the OpenAPI document omits the
+            # brackets); verified live 2026-10-18 with a single-player request.
+            "player_ids[]": player_ids,
         }
-        group = f"{category}/{stat_type}"
+        group = f"{category}/{stat_type}" if stat_type else category
         return self._list(
             "season_averages",
             f"/season_averages/{category}",
             params,
             lambda raw: nz.player_stat_record(raw, scope, group),
             max_pages=max_pages,
+            sample=sample,
         )
 
     def team_season_stats(
@@ -260,13 +319,15 @@ class BalldontlieProvider:
         stat_type: str | None = "base",
         team_ids: list[int] | None = None,
         max_pages: int = 5,
+        sample: bool = False,
     ) -> ProviderResult[TeamStatRecord]:
+        check_stat_pairing(TEAM_STAT_TYPES, category, stat_type)
         scope = StatScope(Season.coerce(season), season_type)
         params = {
             "season": scope.season.provider_year,
             "season_type": season_type.balldontlie_label,
-            "type": stat_type,
-            "team_ids": team_ids,
+            "type": stat_type or None,
+            "team_ids[]": team_ids,
         }
         group = f"{category}/{stat_type}" if stat_type else category
         return self._list(
@@ -275,6 +336,7 @@ class BalldontlieProvider:
             params,
             lambda raw: nz.team_stat_record(raw, scope, group),
             max_pages=max_pages,
+            sample=sample,
         )
 
     # ----------------------------------------------------------------- availability

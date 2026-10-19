@@ -134,15 +134,35 @@ class Context:
 # --------------------------------------------------------------------- response cache
 
 
+def cache_key(path: str, params: dict[str, Any] | None) -> str:
+    """Stable per-request key. ``None`` parameters are never sent, so they are not part of the key
+    (R8.3: the first live run keyed them, which made a harmless refactor invalidate the cache)."""
+    sent = {k: v for k, v in (params or {}).items() if v is not None}
+    return hashlib.sha1(  # noqa: S324 - cache key, not security
+        json.dumps([path, sent], sort_keys=True, default=str).encode()
+    ).hexdigest()
+
+
+def reindex_cache(directory: Path) -> int:
+    """Rename files written under the R8.2-era key (which hashed ``None`` parameters) to the
+    current key, keeping the originals. Returns how many files were added."""
+    added = 0
+    for file in list(directory.glob("*.json")):
+        record = json.loads(file.read_text())
+        target = directory / f"{cache_key(record['path'], record.get('params'))}.json"
+        if not target.exists():
+            target.write_text(file.read_text())
+            added += 1
+    return added
+
+
 def install_disk_cache(client: BalldontlieClient, directory: Path, *, replay_only: bool) -> None:
     """Make ``client.get`` read/write a per-request JSON file. Re-runs cost nothing."""
     directory.mkdir(parents=True, exist_ok=True)
     real_get = client.get
 
     def cached_get(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        key = hashlib.sha1(  # noqa: S324 - cache key, not security
-            json.dumps([path, params or {}], sort_keys=True, default=str).encode()
-        ).hexdigest()
+        key = cache_key(path, params)
         file = directory / f"{key}.json"
         if file.is_file():
             return json.loads(file.read_text())["payload"]
@@ -708,9 +728,22 @@ def probe_other_categories(ctx: Context) -> list[Finding]:
     """One page each: what the clutch/defense/shooting/hustle/tracking families return."""
     ctx.need(10)
     out: list[Finding] = []
-    for category, stat_type in (("clutch", "base"), ("defense", "base"), ("shooting", "base")):
+    for category, stat_type in (
+        ("clutch", "base"),
+        ("defense", "overall"),
+        ("shooting", "by_zone"),
+        ("tracking", "possessions"),
+        ("playtype", "isolation"),
+        ("hustle", None),
+        ("shotdashboard", "overall"),
+    ):
         result = ctx.provider.player_season_stats(
-            ctx.season, SeasonType.REGULAR, category=category, stat_type=stat_type, max_pages=1
+            ctx.season,
+            SeasonType.REGULAR,
+            category=category,
+            stat_type=stat_type,
+            max_pages=1,
+            sample=True,
         )
         failure = _result_to_finding(f"P7-{category}", "advanced", result, ctx)
         if failure:
@@ -721,7 +754,7 @@ def probe_other_categories(ctx: Context) -> list[Finding]:
                 f"P7-{category}",
                 "advanced",
                 "inconclusive",
-                f"{category}/{stat_type}: {len(result.records)} rows on page 1",
+                f"{category}/{stat_type or '-'}: {len(result.records)} rows on page 1",
                 {
                     "fields": sorted({k for r in result.records for k in r.values}),
                     "fill_rates": fill_rates([r.values for r in result.records]),
@@ -729,9 +762,16 @@ def probe_other_categories(ctx: Context) -> list[Finding]:
                 result.meta.requests,
             )
         )
-    for category, stat_type in (("general", "base"), ("general", "advanced"), ("tracking", "passing")):
+    for category, stat_type in (
+        ("general", "base"),
+        ("general", "advanced"),
+        ("tracking", "passing"),
+        ("playtype", "isolation"),
+        ("hustle", None),
+    ):
         teams = ctx.provider.team_season_stats(
-            ctx.season, SeasonType.REGULAR, category=category, stat_type=stat_type, max_pages=1
+            ctx.season, SeasonType.REGULAR, category=category, stat_type=stat_type, max_pages=1,
+            sample=True,
         )
         failure = _result_to_finding(f"P7-team-{category}-{stat_type}", "team_stats", teams, ctx)
         out.append(
@@ -754,7 +794,7 @@ def probe_depth(ctx: Context) -> list[Finding]:
     oldest: int | None = None
     for year in DEPTH_SEASONS:
         result = ctx.provider.player_season_stats(
-            year, SeasonType.REGULAR, stat_type="base", max_pages=1
+            year, SeasonType.REGULAR, stat_type="base", max_pages=1, sample=True
         )
         if not result.has_answer:
             seen[year] = result.status.value
@@ -928,12 +968,12 @@ def probe_raw_endpoints(ctx: Context) -> list[Finding]:
     """Lineups, play-by-play and advanced box scores for a handful of games: shape and fill."""
     ctx.need(10)
     out: list[Finding] = []
-    games = ctx.provider.games(ctx.season, SeasonType.REGULAR, max_pages=1)
+    games = ctx.provider.games(ctx.season, SeasonType.REGULAR, max_pages=1, sample=True)
     if not games.has_answer or not games.records:
         return [Finding("P12", "raw", "error", "no games available to sample", {}, 0)]
     ids = [int(g.provider_id) for g in games.records[:3]]
     for name, path, params in (
-        ("P12-lineups", "/lineups", {"game_ids": ids}),
+        ("P12-lineups", "/lineups", {"game_ids[]": ids}),
         ("P12-plays", "/plays", {"game_id": ids[0]}),
         ("P12-advanced", "/v2/stats/advanced", {"game_ids[]": ids[:1], "per_page": 100}),
     ):

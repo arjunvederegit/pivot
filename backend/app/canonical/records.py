@@ -119,6 +119,13 @@ class ProviderResult(Generic[T]):
         return cls(status, (), meta, error)
 
 
+#: ``contracts.source_name`` of a header written from a per-season contracts endpoint. Such a contract
+#: carries the one season that was requested, so the number of seasons "on file" says nothing about
+#: how long the contract really runs. Readers that would turn that count into "years remaining"
+#: must treat the length as unknown.
+SINGLE_SEASON_CONTRACT_SOURCE = "BALLDONTLIE /contracts/teams"
+
+
 # ----------------------------------------------------------------------------- records
 
 
@@ -203,6 +210,8 @@ class PlayerStatRecord:
     team_provider_id: str | None = None
     #: ``"observed"`` or ``"estimated"`` (see ``app.canonical.stats.Basis``).
     basis: str = "observed"
+    #: The biography the provider embeds in the row, for identity linking only. Never a stat.
+    player: PlayerRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -234,6 +243,10 @@ class ContractYearRecord:
     base_salary: int | None = None
     total_cash: int | None = None
     provider_contract_id: str | None = None
+    #: The provider's spelling, for reports on rows that cannot be linked. Never used to link.
+    player_name: str | None = None
+    #: Embedded biography, for identity linking only (see ``PlayerStatRecord.player``).
+    player: PlayerRecord | None = None
 
 
 @dataclass(frozen=True)

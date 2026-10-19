@@ -39,6 +39,18 @@ def contract_source_path() -> Path | None:
     return None
 
 
+class StoredBalldontlieContracts:
+    """Marker for ``CONTRACT_DATA_PROVIDER=balldontlie``: contract rows are written by
+    ``sync_contracts_from_balldontlie`` (it needs a database session and an API client), so this
+    provider has nothing to fetch. It exists so every reader that asks "is a contract provider
+    configured?" gets the truthful answer once the owner has opted in (R8.3)."""
+
+    name = "balldontlie"
+
+    def fetch_contracts(self) -> list[ContractRecord]:
+        return []
+
+
 def get_contract_provider() -> "ContractProvider | None":
     """Returns the configured provider, or None (the honest default).
 
@@ -54,6 +66,8 @@ def get_contract_provider() -> "ContractProvider | None":
     `data/imports/…` silently found nothing.
     """
     settings = get_settings()
+    if settings.contract_data_provider == "balldontlie":
+        return StoredBalldontlieContracts()
     source = contract_source_path()
     if source is None or not source.is_file():
         return None

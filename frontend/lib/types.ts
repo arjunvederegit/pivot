@@ -521,7 +521,8 @@ export interface CapOutlookPlayer {
   player_id: string;
   name: string;
   seasons: CapOutlookContractSeason[];
-  expiring: boolean;
+  /** null = the contract's length is not known (a per-season source), not "false". */
+  expiring: boolean | null;
   no_trade_clause: boolean;
   source_name: string | null;
   source_date: string | null;

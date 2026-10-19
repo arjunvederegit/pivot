@@ -263,6 +263,7 @@ class TestNetworkCommandsAreRefusedOffline:
             "refresh",
             "link-balldontlie",
             "balldontlie-evaluate",
+            "refresh-balldontlie",
         }
 
     def test_the_guard_is_off_by_default(self, monkeypatch):
@@ -327,3 +328,21 @@ class TestR8Commands:
                 run(monkeypatch, command)
             assert exit_info.value.code == 2
             assert "BALLDONTLIE_API_KEY is not set" in printed_json(capsys.readouterr().out)["error"]
+
+
+class TestRefreshBalldontlieCommand:
+    def test_needs_a_known_step_and_never_calls_out_without_a_key(self, monkeypatch, capsys):
+        monkeypatch.delenv("ROSTERLAB_OFFLINE", raising=False)
+        monkeypatch.delenv("BALLDONTLIE_API_KEY", raising=False)
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+        try:
+            assert cli._refresh_balldontlie([]) == 2
+            assert cli._refresh_balldontlie(["bogus"]) == 2
+            assert cli._refresh_balldontlie(["identities,bogus"]) == 2
+            capsys.readouterr()
+            assert cli._refresh_balldontlie(["identities,contracts"]) == 2
+            assert "BALLDONTLIE_API_KEY is not set" in capsys.readouterr().out
+        finally:
+            get_settings.cache_clear()

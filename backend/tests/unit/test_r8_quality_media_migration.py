@@ -204,6 +204,55 @@ class TestR8Migration:
         finally:
             get_settings.cache_clear()
 
+    def test_the_r83_migration_is_additive_and_reverses_without_touching_existing_rows(
+        self, tmp_sqlite_url, monkeypatch
+    ):
+        try:
+            config = self._config(tmp_sqlite_url, monkeypatch)
+            command.upgrade(config, "c5e2b7d91f34")
+            engine = create_engine(tmp_sqlite_url)
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "insert into players (id, nba_player_id, full_name, is_active, source_provider,"
+                        " created_at, updated_at) values ('p1', 1, 'Pre Existing', 1, 'nba_api',"
+                        " '2026-01-01', '2026-01-01')"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "insert into contracts (id, player_id, source_name, source_provider,"
+                        " created_at, updated_at) values ('c1', 'p1', 's', 'file',"
+                        " '2026-01-01', '2026-01-01')"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "insert into contract_years (id, contract_id, season, salary, source_provider,"
+                        " created_at, updated_at) values ('y1', 'c1', '2026-27', 5, 'file',"
+                        " '2026-01-01', '2026-01-01')"
+                    )
+                )
+            command.upgrade(config, "head")
+            inspector = inspect(create_engine(tmp_sqlite_url))
+            years = {c["name"] for c in inspector.get_columns("contract_years")}
+            assert {"base_salary", "total_cash", "salary_basis"} <= years
+            assert "return_date" in {c["name"] for c in inspector.get_columns("injuries")}
+            assert "provider_stat_snapshots" in inspector.get_table_names()
+            with create_engine(tmp_sqlite_url).connect() as conn:
+                row = conn.execute(
+                    text("select salary, base_salary, total_cash, salary_basis from contract_years")
+                ).one()
+            assert tuple(row) == (5, None, None, None), "existing rows are untouched, new columns NULL"
+            command.downgrade(config, "c5e2b7d91f34")
+            inspector = inspect(create_engine(tmp_sqlite_url))
+            assert "provider_stat_snapshots" not in inspector.get_table_names()
+            assert "base_salary" not in {c["name"] for c in inspector.get_columns("contract_years")}
+            with create_engine(tmp_sqlite_url).connect() as conn:
+                assert conn.execute(text("select salary from contract_years")).scalar_one() == 5
+        finally:
+            get_settings.cache_clear()
+
     def test_models_and_migrations_have_not_drifted(self, tmp_sqlite_url, monkeypatch):
         """The same check CI runs as `alembic check`."""
         try:

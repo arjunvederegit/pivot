@@ -1,23 +1,71 @@
 {
- "_fixture": "SYNTHETIC FIXTURE. Shaped after the BALLDONTLIE OpenAPI document (retrieved 2026-10-18). Player names and figures are invented. NOT a captured live response and not evidence of live behaviour.",
- "data": {
-  "id": 77,
-  "player_id": 101,
-  "start_year": 2023,
-  "end_year": 2027,
-  "contract_type": "Veteran",
-  "contract_status": "Active",
-  "contract_years": 5,
-  "total_value": 150000000,
-  "average_salary": 30000000,
-  "guaranteed_at_signing": 150000000,
-  "total_guaranteed": 120000000,
-  "signed_using": "Bird Rights",
-  "free_agent_year": 2027,
-  "free_agent_status": "UFA",
-  "contract_notes": {
-   "note": "fixture"
+ "_fixture": "SYNTHETIC FIXTURE. Values are invented; the STRUCTURE was confirmed against live responses on 2026-10-18 (R8.3). Not a captured live response.",
+ "data": [
+  {
+   "id": 77,
+   "player_id": 101,
+   "start_year": 2023,
+   "end_year": 2027,
+   "contract_type": "maximum",
+   "contract_status": "CURRENT",
+   "contract_years": 5,
+   "total_value": 150000000,
+   "average_salary": 30000000,
+   "guaranteed_at_signing": 150000000,
+   "total_guaranteed": 120000000,
+   "signed_using": "Bird Rights",
+   "free_agent_year": 2028,
+   "free_agent_status": "UFA",
+   "contract_notes": null,
+   "team_id": 1,
+   "player": {
+    "id": 101,
+    "first_name": "Alex",
+    "last_name": "Fixture",
+    "position": "G",
+    "height": "6-4",
+    "weight": "195",
+    "jersey_number": "3",
+    "college": "Fixture U",
+    "country": "USA",
+    "draft_year": 2019,
+    "draft_round": 1,
+    "draft_number": 10
+   }
   },
-  "team_id": 1
- }
+  {
+   "id": 76,
+   "player_id": 101,
+   "start_year": 2019,
+   "end_year": 2022,
+   "contract_type": "Rookie",
+   "contract_status": "expired",
+   "contract_years": 4,
+   "total_value": 150000000,
+   "average_salary": 30000000,
+   "guaranteed_at_signing": 150000000,
+   "total_guaranteed": 120000000,
+   "signed_using": "Bird Rights",
+   "free_agent_year": 2023,
+   "free_agent_status": "UFA",
+   "contract_notes": [
+    "2021-22: Club Option (deadline 10/31/20, exercised 10/29/20)"
+   ],
+   "team_id": 1,
+   "player": {
+    "id": 101,
+    "first_name": "Alex",
+    "last_name": "Fixture",
+    "position": "G",
+    "height": "6-4",
+    "weight": "195",
+    "jersey_number": "3",
+    "college": "Fixture U",
+    "country": "USA",
+    "draft_year": 2019,
+    "draft_round": 1,
+    "draft_number": 10
+   }
+  }
+ ]
 }

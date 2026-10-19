@@ -1,5 +1,5 @@
 {
- "_fixture": "SYNTHETIC FIXTURE. Shaped after the BALLDONTLIE OpenAPI document (retrieved 2026-10-18). Player names and figures are invented. NOT a captured live response and not evidence of live behaviour.",
+ "_fixture": "SYNTHETIC FIXTURE. Values are invented; the STRUCTURE was confirmed against live responses on 2026-10-18 (R8.3). Not a captured live response.",
  "data": [
   {
    "player": {
@@ -15,19 +15,31 @@
     "draft_year": 2019,
     "draft_round": 1,
     "draft_number": 10,
-    "team": {
-     "id": 1,
-     "conference": "East",
-     "division": "Southeast",
-     "city": "Atlanta",
-     "name": "Hawks",
-     "full_name": "Atlanta Hawks",
-     "abbreviation": "ATL"
-    }
+    "team_id": 1
    },
-   "return_date": "Nov 3",
+   "return_date": "2026-11-03",
    "description": "Ankle sprain",
    "status": "Out"
+  },
+  {
+   "player": {
+    "id": 103,
+    "first_name": "Blake",
+    "last_name": "Fixture",
+    "position": "G",
+    "height": "6-4",
+    "weight": "195",
+    "jersey_number": "3",
+    "college": "Fixture U",
+    "country": "USA",
+    "draft_year": 2019,
+    "draft_round": 1,
+    "draft_number": 10,
+    "team_id": 2
+   },
+   "return_date": null,
+   "description": null,
+   "status": "Day-To-Day"
   }
  ],
  "meta": {

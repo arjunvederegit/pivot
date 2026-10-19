@@ -19,6 +19,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.canonical.identity import (
@@ -28,6 +29,8 @@ from app.canonical.identity import (
     TeamIndex,
 )
 from app.canonical.records import PlayerRecord, TeamRecord
+from app.canonical.rosters import current_roster_clause
+from app.db.models import Player, RosterEntry
 
 PROVIDER = "balldontlie"
 
@@ -42,6 +45,10 @@ class CrosswalkReport:
     ambiguous: list[dict[str, Any]] = field(default_factory=list)
     unresolved: list[dict[str, Any]] = field(default_factory=list)
     methods: Counter[str] = field(default_factory=Counter)
+    #: Provider rows that are not active franchises (BALLDONTLIE's ``/teams`` also lists ~59
+    #: defunct and historical franchises with a blank conference). They are neither linked nor
+    #: "unresolved": counting them as failures would make a clean 30/30 read as 30/89.
+    skipped_historical: int = 0
 
     @property
     def linked(self) -> int:
@@ -63,21 +70,35 @@ class CrosswalkReport:
             "conflicts": len(self.conflicts),
             "link_rate": self.link_rate,
             "methods": dict(self.methods),
+            "skipped_historical": self.skipped_historical,
         }
+
+
+def _franchise_key(name: str) -> str:
+    """``"LA Clippers"`` and ``"Los Angeles Clippers"`` are one franchise name written two ways."""
+    text = " ".join(name.lower().replace(".", "").split())
+    return text.replace("los angeles", "la", 1) if text.startswith("los angeles") else text
+
+
+def is_active_franchise(record: TeamRecord) -> bool:
+    return bool(record.conference and record.division)
 
 
 def crosswalk_teams(db: Session, records: list[TeamRecord]) -> CrosswalkReport:
     index = TeamIndex(db)
     ids = ProviderIdMap(db)
-    report = CrosswalkReport("team", total=len(records))
-    for record in records:
+    active = [r for r in records if is_active_franchise(r)]
+    report = CrosswalkReport(
+        "team", total=len(active), skipped_historical=len(records) - len(active)
+    )
+    for record in active:
         team = index.by_abbreviation(record.abbreviation)
         if team is None:
             report.unresolved.append(
                 {"provider_id": record.provider_id, "abbreviation": record.abbreviation}
             )
             continue
-        if team.full_name.lower() != record.full_name.lower():
+        if _franchise_key(team.full_name) != _franchise_key(record.full_name):
             # Same abbreviation, different name: do not link on the code alone.
             report.ambiguous.append(
                 {
@@ -111,6 +132,9 @@ def crosswalk_players(
     index = PlayerIdentityIndex(db, season)
     ids = ProviderIdMap(db)
     report = CrosswalkReport("player", total=len(records))
+    roster_players_by_team: dict[str, list[Player]] = {}
+    for entry in db.scalars(select(RosterEntry).where(current_roster_clause(season))).all():
+        roster_players_by_team.setdefault(entry.team_id, []).append(entry.player)
     for record in records:
         hints = PlayerHints(
             draft_year=record.draft_year,
@@ -127,6 +151,28 @@ def crosswalk_players(
             # presumption: it stays ambiguous unless biography separates the namesakes.
             prefer_rostered=record.team_provider_id is not None,
         )
+        player = resolution.player
+        method = resolution.method
+        if player is None and resolution.method == "none":
+            # Nicknames ("Nic"/"Nicolas", "Bub"/"Carlton") defeat every name tier. Draft slot
+            # (year AND pick) plus surname plus height is a biography no namesake shares; it is
+            # accepted only when it names exactly one player, and is labelled medium confidence.
+            player = _draft_slot_match(db, record)
+            method = "draft_slot+surname"
+            if player is None:
+                team_internal = (
+                    ids.lookup("team", PROVIDER, record.team_provider_id)
+                    if record.team_provider_id
+                    else None
+                )
+                player = _roster_corroborated_match(
+                    record, roster_players_by_team.get(team_internal or "", [])
+                )
+                method = "surname+roster_team+height"
+            if player is not None:
+                resolution = type(resolution)(  # same dataclass, a found player
+                    player=player, method=method, ambiguous_candidates=[]
+                )
         if resolution.player is None:
             bucket = report.ambiguous if resolution.method == "ambiguous" else report.unresolved
             bucket.append(
@@ -171,6 +217,53 @@ def crosswalk_players(
         _record(report, outcome, record.provider_id, resolution.method)
     db.flush()
     return report
+
+
+def _surname(name: str) -> str:
+    parts = [p for p in name.lower().replace(".", "").replace("'", "").split() if p]
+    while parts and parts[-1] in ("jr", "sr", "ii", "iii", "iv", "v"):
+        parts.pop()
+    return parts[-1] if parts else ""
+
+
+def _draft_slot_match(db: Session, record: PlayerRecord) -> Player | None:
+    if record.draft_year is None or record.draft_number is None:
+        return None  # undrafted: no slot to corroborate; stays unresolved
+    candidates = [
+        p
+        for p in db.scalars(
+            select(Player).where(
+                Player.draft_year == record.draft_year,
+                Player.draft_number == record.draft_number,
+            )
+        ).all()
+        if _surname(p.full_name) == _surname(record.full_name)
+        and (
+            record.height_inches is None
+            or p.height_inches is None
+            or abs(p.height_inches - record.height_inches) <= 1
+        )
+    ]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _roster_corroborated_match(record: PlayerRecord, roster: list[Player]) -> Player | None:
+    """Surname AND the same current team AND height within an inch, naming exactly one player.
+
+    This is the tier for recent draftees whose Pivot biography has no draft slot yet. It is not
+    fuzzy matching: first names are not compared at all, and a surname shared by two players
+    on one roster (or a missing height on either side) returns nothing.
+    """
+    if record.height_inches is None:
+        return None
+    hits = [
+        p
+        for p in roster
+        if _surname(p.full_name) == _surname(record.full_name)
+        and p.height_inches is not None
+        and abs(p.height_inches - record.height_inches) <= 1
+    ]
+    return hits[0] if len(hits) == 1 else None
 
 
 def _record(report: CrosswalkReport, outcome: Any, provider_id: str, method: str) -> None:

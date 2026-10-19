@@ -291,6 +291,12 @@ class ContractYear(Base, ProvenanceMixin):
     guaranteed: Mapped[int | None] = mapped_column(Integer)
     player_option: Mapped[bool | None] = mapped_column(Boolean)
     team_option: Mapped[bool | None] = mapped_column(Boolean)
+    #: R8.3. ``salary`` is the figure every reader uses; ``salary_basis`` names what it is
+    #: ("cap_hit" for BALLDONTLIE rows, NULL for earlier snapshots whose basis was never stated).
+    #: ``base_salary`` and ``total_cash`` are different quantities and are kept, not merged.
+    base_salary: Mapped[int | None] = mapped_column(Integer)
+    total_cash: Mapped[int | None] = mapped_column(Integer)
+    salary_basis: Mapped[str | None] = mapped_column(String(20))
 
     contract: Mapped[Contract] = relationship(back_populates="years")
 
@@ -305,6 +311,8 @@ class Injury(Base, ProvenanceMixin):
     status: Mapped[str] = mapped_column(String(30))
     description: Mapped[str | None] = mapped_column(Text)
     reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: The provider's expected return date, if it gives one. Absent is NULL, never "healthy".
+    return_date: Mapped[date | None] = mapped_column(Date)
 
 
 class Transaction(Base, ProvenanceMixin):
@@ -790,3 +798,54 @@ class ProviderEntityId(Base, TimestampMixin):
     confidence: Mapped[str] = mapped_column(String(10), default="high")  # high|medium|manual
     evidence: Mapped[dict] = mapped_column(JSON, default=dict)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# ----------------------------------------------------------- provider statistics (R8.3)
+
+
+class ProviderStatSnapshot(Base, TimestampMixin):
+    """One provider's statistics for one player or team over one scope, in its own vocabulary.
+
+    Deliberately separate from ``player_season_stats``/``team_season_stats``, whose ``stat_type``
+    vocabulary is NBA.com's and whose unique key has no provider: a BALLDONTLIE row written there
+    would collide with, or silently replace, an NBA.com row. ``values`` keeps the provider's field
+    names; missing figures are JSON null, never 0; provider-relative ``*_rank`` fields are dropped.
+    ``aggregation`` says what the figures are per (``per_game`` was verified against NBA.com for
+    ``general/base``; ``unspecified`` where it has not been).
+    """
+
+    __tablename__ = "provider_stat_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider", "entity_type", "internal_id", "season", "season_type", "stat_group",
+            name="uq_provider_stat_scope",
+        ),
+        Index(
+            "ix_pss_provider_scope", "provider", "entity_type", "season", "season_type", "stat_group"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_pk)
+    provider: Mapped[str] = mapped_column(String(50))
+    entity_type: Mapped[str] = mapped_column(String(10))  # player | team
+    #: `players.id` / `teams.id` (the UUID), as in ``provider_entity_ids``.
+    internal_id: Mapped[str] = mapped_column(String(36))
+    season: Mapped[str] = mapped_column(String(10))
+    season_type: Mapped[str] = mapped_column(String(12))
+    stat_group: Mapped[str] = mapped_column(String(40))  # "general/advanced", "hustle"
+    aggregation: Mapped[str] = mapped_column(String(20))
+    basis: Mapped[str] = mapped_column(String(12), default="observed", server_default="observed")
+    games_played: Mapped[int | None] = mapped_column(Integer)
+    values: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_record_id: Mapped[str | None] = mapped_column(String(100))
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ingestion_run_id: Mapped[str | None] = mapped_column(String(36))
+
+    # The canonical provenance summariser (`build_source_meta`) reads these two names.
+    @property
+    def source_provider(self) -> str:
+        return self.provider
+
+    @property
+    def source_retrieved_at(self) -> datetime:
+        return self.retrieved_at

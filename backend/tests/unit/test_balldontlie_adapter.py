@@ -186,9 +186,13 @@ def test_season_averages_keep_missing_as_none_and_reject_a_wrong_season_type():
     result = provider.player_season_stats("2025-26", SeasonType.REGULAR, player_ids=[101, 103])
     params = upstream.requests[0].url.params
     assert (params["type"], params["season_type"], params["season"]) == ("base", "regular", "2025")
-    assert params.get_list("player_ids") == ["101", "103"]
+    # R8.3: the array is spelled `player_ids[]` (verified live); the OpenAPI document omits the brackets.
+    assert params.get_list("player_ids[]") == ["101", "103"]
     assert len(result.records) == 1  # the playoffs row contradicts the request
     row = result.records[0]
+    assert row.player_provider_id == "101", "the live shape nests the player; the id comes from it"
+    assert row.player is not None and row.player.full_name == "Alex Fixture"
+    assert "pts_rank" not in row.values or row.values["pts_rank"] == 12  # kept here; dropped on ingestion
     assert row.values["fg3_pct"] is None, "an absent figure is None, never 0"
     assert "label" not in row.values
     assert row.games_played == 70
@@ -199,19 +203,24 @@ def test_contract_figures_stay_separate_and_nulls_stay_null():
     provider, upstream, _ = make_provider({"/nba/v1/contracts/teams": [ok("contracts_team.json")]})
     result = provider.team_contracts(1, "2025-26")
     assert upstream.requests[0].url.params["season"] == "2025"
-    funded, unknown = result.records
+    funded, cash_only, base_only = result.records
     assert (funded.cap_hit, funded.base_salary, funded.total_cash) == (30_000_000, 28_000_000, 29_000_000)
-    assert (unknown.cap_hit, unknown.base_salary, unknown.total_cash) == (None, None, None)
+    # Observed live: a null cap hit can still carry cash or base salary. They are not the cap hit.
+    assert (cash_only.cap_hit, cash_only.base_salary, cash_only.total_cash) == (None, None, 678_882)
+    assert (base_only.cap_hit, base_only.base_salary, base_only.total_cash) == (None, 2_537_526, None)
+    assert funded.player_name == "Alex Fixture"
 
 
 def test_contract_aggregate_does_not_invent_options_or_clauses():
     provider, _, _ = make_provider(
         {"/nba/v1/contracts/players/aggregate": [ok("contract_aggregate.json")]}
     )
-    (agg,) = provider.contract_aggregate(101).records
-    assert agg.total_guaranteed == 120_000_000 and agg.signed_using == "Bird Rights"
-    assert not hasattr(agg, "no_trade_clause") and not hasattr(agg, "player_option")
-    assert agg.notes == {"note": "fixture"}
+    current, expired = provider.contract_aggregate(101).records
+    assert current.total_guaranteed == 120_000_000 and current.signed_using == "Bird Rights"
+    assert not hasattr(current, "no_trade_clause") and not hasattr(current, "player_option")
+    assert current.notes == {}, "a null contract_notes is empty, not invented"
+    # Observed live: contract_notes is a list of strings, kept verbatim, never parsed into options.
+    assert expired.notes == {"lines": ["2021-22: Club Option (deadline 10/31/20, exercised 10/29/20)"]}
 
 
 # ------------------------------------------------------------------- failure semantics

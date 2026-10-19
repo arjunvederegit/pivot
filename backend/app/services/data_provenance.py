@@ -65,6 +65,7 @@ REFRESH_JOB = {
     "team_stats": "sync_team_stats",
     "games": "sync_games",
     "contracts": "sync_contracts",
+    "injuries": "sync_injuries",
 }
 
 
@@ -328,8 +329,9 @@ def dataset_freshness(
         notes=[
             "no injury provider is configured: availability is not known, and is never "
             "inferred from absence"
-            if not settings.injury_data_provider
-            else "injury reports describe the present and age in hours"
+            if not settings.injury_data_provider and not providers
+            else "injury reports describe the present and age in hours; a player who is not "
+            "listed is not thereby known to be available"
         ],
         **common,
     )
@@ -492,6 +494,35 @@ def rollover_readiness(db: Session, *, now: datetime | None = None) -> dict[str,
     }
 
 
+def _balldontlie_linked_ok(db: Session, linked: int) -> bool:
+    if not linked:
+        return False
+    return (
+        db.scalar(
+            select(func.count(DataSyncRun.id)).where(
+                DataSyncRun.job_name == "sync_provider_identities", DataSyncRun.status == "succeeded"
+            )
+        )
+        or 0
+    ) > 0
+
+
+def _balldontlie_stored(db: Session) -> dict[str, int]:
+    """Row counts of what BALLDONTLIE has contributed, so a reader can see it without SQL."""
+    from app.db.models import ProviderStatSnapshot
+
+    def count(model: Any, *where: Any) -> int:
+        return int(db.scalar(select(func.count(model.id)).where(*where)) or 0)
+
+    return {
+        "contract_years": count(ContractYear, ContractYear.source_provider == "balldontlie"),
+        "injuries_open": count(
+            Injury, Injury.source_provider == "balldontlie", Injury.valid_to.is_(None)
+        ),
+        "stat_snapshots": count(ProviderStatSnapshot, ProviderStatSnapshot.provider == "balldontlie"),
+    }
+
+
 def provider_registry(db: Session) -> list[dict[str, Any]]:
     """Providers Pivot can read from. Never includes a credential, key prefix or key length."""
     settings = get_settings()
@@ -524,7 +555,11 @@ def provider_registry(db: Session) -> list[dict[str, Any]]:
             "status": "configured" if settings.balldontlie_configured else "not_configured",
             "tier_setting": settings.balldontlie_tier if settings.balldontlie_configured else None,
             "linked_entities": links.get("balldontlie", 0),
-            "live_verified": False,
+            # R8.3: derived from what actually ran, not asserted. True only when a live identity
+            # sync succeeded and its links are stored; a replay of recorded responses also writes
+            # links, so the flag says "has been linked", and docs/r8-3 says what was live-tested.
+            "live_verified": _balldontlie_linked_ok(db, links.get("balldontlie", 0)),
+            "stored": _balldontlie_stored(db),
         },
         {
             "provider": "local_assets",

@@ -86,13 +86,21 @@ Commands
                    and link their ids to Pivot's players and teams (provider_entity_ids).
                    Ambiguous or unmatched players are reported and left unlinked. Needs
                    BALLDONTLIE_API_KEY.
+  refresh-balldontlie <identities|contracts|injuries|stats|all, or a comma list> [--season 2026-27]
+                   [--stat-season 2025-26] [--season-type regular|playoffs] [--groups general/base,...]
+                   [--cache DIR] [--replay] [--dry-run]
+                   Fetch BALLDONTLIE data and write it through the canonical tables, with provenance
+                   and a data_sync_runs row per job. Idempotent and non-destructive; unmapped players are
+                   quarantined in the run detail. --cache DIR reads/writes recorded responses (re-runs
+                   cost no requests); --replay serves only recorded responses; --dry-run rolls back.
+                   `identities` must have run once before `contracts`/`injuries`/`stats`.
   balldontlie-plan [tier]
                    Print the GOAT trial evaluation plan, its request cost and pacing.
                    Makes no request.
   balldontlie-preflight [--budget N] [--season 2025-26]
                    Is Pivot ready for the 48-hour trial clock? Checks the comparison season's local
                    data, the plan against the budget and the staged rosters. No request, no key.
-  balldontlie-evaluate [--budget N] [--only P5,P9] [--replay DIR] [--season 2025-26] [--force]
+  balldontlie-evaluate [--budget N] [--only P5,P9] [--replay DIR | --resume DIR] [--season 2025-26] [--force]
                    Run the trial evaluation against Pivot's own data and write evidence to
                    data/imports/balldontlie/ (gitignored). --replay re-analyses recorded
                    responses with no requests. Needs BALLDONTLIE_API_KEY unless replaying.
@@ -132,6 +140,7 @@ NETWORK_COMMANDS = frozenset(
         "refresh",
         "link-balldontlie",
         "balldontlie-evaluate",
+        "refresh-balldontlie",
     }
 )
 
@@ -304,6 +313,69 @@ def _link_balldontlie(dry_run: bool, active_only: bool = False) -> int:
     return 0
 
 
+def _refresh_balldontlie(args: list[str]) -> int:
+    from pathlib import Path
+
+    from app.canonical.seasons import Season, SeasonType
+    from app.ingestion import balldontlie_jobs as jobs_bdl
+    from app.integrations.balldontlie.evaluation import install_disk_cache
+    from app.integrations.balldontlie.provider import BalldontlieProvider
+
+    def option(name: str) -> str | None:
+        return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else None
+
+    what = args[0] if args and not args[0].startswith("--") else ""
+    steps = (
+        ["identities", "contracts", "injuries", "stats"]
+        if what == "all"
+        else [w for w in what.split(",") if w]
+    )
+    if not what or any(s not in ("identities", "contracts", "injuries", "stats") for s in steps):
+        print(json.dumps({"error": "usage: refresh-balldontlie <identities|contracts|injuries|stats|all>"}))
+        return 2
+    replay = "--replay" in args
+    provider = BalldontlieProvider.from_settings()
+    if not replay and not provider.configured:
+        print(json.dumps({"error": "BALLDONTLIE_API_KEY is not set; nothing was requested"}, indent=2))
+        return 2
+    cache = option("--cache")
+    if cache or replay:
+        install_disk_cache(
+            provider.client, Path(cache or jobs_bdl.default_cache_dir()), replay_only=replay
+        )
+    settings = get_settings()
+    contract_season = option("--season") or settings.cap_league_year
+    stat_season = option("--stat-season") or settings.season_context.last_completed_season.label
+    season_type = SeasonType(option("--season-type") or "regular")
+    groups = (option("--groups") or ",".join(jobs_bdl.DEFAULT_STAT_GROUPS)).split(",")
+    out: dict = {"dry_run": "--dry-run" in args, "replay": replay}
+    status = 0
+    with SessionLocal() as db:
+        for step in steps:
+            try:
+                if step == "identities":
+                    out[step] = jobs_bdl.sync_identities(db, provider)
+                elif step == "contracts":
+                    out[step] = jobs_bdl.sync_contracts_from_balldontlie(
+                        db, provider, Season.parse(contract_season)
+                    )
+                elif step == "injuries":
+                    out[step] = jobs_bdl.sync_injuries_from_balldontlie(db, provider)
+                else:
+                    out[step] = jobs_bdl.sync_stats_from_balldontlie(
+                        db, provider, Season.parse(stat_season), season_type, groups
+                    )
+            except Exception as exc:  # noqa: BLE001 — recorded in data_sync_runs; reported here
+                out[step] = {"error": f"{type(exc).__name__}: {exc}"}
+                status = 2
+                break
+        if "--dry-run" in args:
+            db.rollback()
+    out["requests_made"] = provider.client.request_count
+    print(json.dumps(out, indent=2, default=str))
+    return status
+
+
 def _balldontlie_evaluate(args: list[str]) -> int:
     from pathlib import Path
 
@@ -315,6 +387,7 @@ def _balldontlie_evaluate(args: list[str]) -> int:
         return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else None
 
     replay = option("--replay")
+    resume = option("--resume")  # live, but responses already recorded in DIR cost nothing
     provider = BalldontlieProvider.from_settings()
     from app.canonical.seasons import Season
 
@@ -326,8 +399,8 @@ def _balldontlie_evaluate(args: list[str]) -> int:
     only_arg = option("--only")
     only = set(only_arg.split(",")) if only_arg else None
     out_dir = (
-        Path(replay)
-        if replay
+        Path(replay or resume or "")
+        if (replay or resume)
         else BACKEND_DIR.parent
         / "data"
         / "imports"
@@ -450,6 +523,8 @@ def main() -> None:
         sys.exit(_refresh(sys.argv[2:], single_jobs))
     elif command == "link-balldontlie":
         sys.exit(_link_balldontlie("--dry-run" in sys.argv[2:], "--active-only" in sys.argv[2:]))
+    elif command == "refresh-balldontlie":
+        sys.exit(_refresh_balldontlie(sys.argv[2:]))
     elif command == "balldontlie-plan":
         from app.integrations.balldontlie.evaluation import plan_summary
 

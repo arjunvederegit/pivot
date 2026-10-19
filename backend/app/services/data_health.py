@@ -272,6 +272,16 @@ def data_health(db: Session) -> dict:
     assets_run = latest_run("index_assets")
     contracts_run = latest_run("sync_contracts")
     contracts_rows = int(tables.get("contracts", {}).get("rows") or 0)
+    # R8.3: how much of the roster the stored contracts price, from the run that wrote them.
+    contracts_detail = db.scalar(
+        select(DataSyncRun.detail)
+        .where(DataSyncRun.job_name == "sync_contracts", DataSyncRun.status == "succeeded")
+        .order_by(DataSyncRun.started_at.desc())
+        .limit(1)
+    )
+    contracts_cov = (contracts_detail or {}).get("coverage") if isinstance(contracts_detail, dict) else None
+    contracts_share = contracts_cov.get("roster_coverage_share") if isinstance(contracts_cov, dict) else None
+    contracts_partial = contracts_share is not None and contracts_share < 1.0
     trades_run = latest_run("import_transactions")
     calendar_sync = latest_run("sync_season_calendar")
     trade_rows = int(tables.get("historical_trades", {}).get("rows") or 0)
@@ -316,11 +326,21 @@ def data_health(db: Session) -> dict:
             "status": (
                 "unavailable"
                 if contract_provider is None
-                else ("fresh" if contracts_rows > 0 else "incomplete")
+                else (
+                    "fresh"
+                    if contracts_rows > 0 and not contracts_partial
+                    else "incomplete"
+                )
             ),
             "last_update": contracts_run["finished_at"] if contracts_run else None,
             "coverage": (
                 f"{contracts_rows} contracts on file"
+                + (
+                    f" · {contracts_cov['roster_players_with_salary_for_cap_league_year']}"
+                    f"/{contracts_cov['roster_players_total']} rostered players priced"
+                    if contracts_partial and isinstance(contracts_cov, dict)
+                    else ""
+                )
                 if contracts_rows
                 else (
                     "no contracts imported yet"
@@ -329,9 +349,21 @@ def data_health(db: Session) -> dict:
                 )
             ),
             "source": contract_provider.name if contract_provider else "not configured",
-            "action": None
+            "action": (
+                "Contract coverage is partial: payroll is shown as a lower bound and cap, tax "
+                "and apron position stay withheld until every rostered player is priced."
+                if contract_provider is not None and contracts_rows > 0 and contracts_partial
+                else None
+            )
             if contract_provider is not None and contracts_rows > 0
             else (
+                f"{contracts_rows} contracts are on file but no contract provider is configured, "
+                "so salary rules treat salary data as unconfigured. To use the BALLDONTLIE-backed "
+                "rows set CONTRACT_DATA_PROVIDER=balldontlie (see docs/r8-3/owner-next-steps.md)."
+                if contracts_rows > 0
+                else None
+            )
+            or (
                 "A contract provider is configured but no rows were imported. Check the "
                 "snapshot file and run `make import-contracts`."
                 if contract_provider is not None

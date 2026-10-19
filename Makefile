@@ -14,7 +14,7 @@ E2E_DB ?= $(CURDIR)/backend/rosterlab-e2e.db
         import-draft-picks pick-ownership fetch-transactions import-transactions \
         transaction-coverage comparable-validation acquisition-validation lineup-availability \
         adversarial-validation \
-        data-status season-status refresh link-balldontlie balldontlie-plan balldontlie-preflight balldontlie-evaluate \
+        data-status season-status refresh link-balldontlie refresh-balldontlie balldontlie-plan balldontlie-preflight balldontlie-evaluate \
         assistant-setup assistant-models assistant-dev assistant-test assistant-eval \
         assistant-eval-selftest assistant-eval-retrieval assistant-eval-conversations
 
@@ -90,8 +90,11 @@ balldontlie-plan: ## Print the GOAT trial evaluation plan and its request cost (
 link-balldontlie: ## Link BALLDONTLIE ids to Pivot players/teams (needs BALLDONTLIE_API_KEY, free tier is enough; DRY=1 to preview)
 	cd $(BACKEND) && .venv/bin/python -m app.cli link-balldontlie $(if $(DRY),--dry-run,) $(if $(ACTIVE_ONLY),--active-only,)
 
+refresh-balldontlie: ## Ingest BALLDONTLIE data (WHAT=identities|contracts|injuries|stats|all; CACHE=dir, REPLAY=1, DRY=1; needs a key unless REPLAY=1)
+	cd $(BACKEND) && .venv/bin/python -m app.cli refresh-balldontlie $(WHAT) $(if $(SEASON),--season $(SEASON),) $(if $(STAT_SEASON),--stat-season $(STAT_SEASON),) $(if $(GROUPS),--groups $(GROUPS),) $(if $(CACHE),--cache $(CACHE),) $(if $(REPLAY),--replay,) $(if $(DRY),--dry-run,)
+
 balldontlie-evaluate: ## Run the trial evaluation (needs a key; REPLAY=<dir> re-analyses recorded responses)
-	cd $(BACKEND) && .venv/bin/python -m app.cli balldontlie-evaluate $(if $(REPLAY),--replay $(REPLAY),) $(if $(BUDGET),--budget $(BUDGET),) $(if $(ONLY),--only $(ONLY),) $(if $(SEASON),--season $(SEASON),) $(if $(FORCE),--force,)
+	cd $(BACKEND) && .venv/bin/python -m app.cli balldontlie-evaluate $(if $(REPLAY),--replay $(REPLAY),) $(if $(RESUME),--resume $(RESUME),) $(if $(BUDGET),--budget $(BUDGET),) $(if $(ONLY),--only $(ONLY),) $(if $(SEASON),--season $(SEASON),) $(if $(FORCE),--force,)
 
 purge-fixtures: ## List test-run leftovers in the dev DB (add APPLY=1 to delete)
 	cd $(BACKEND) && .venv/bin/python -m app.cli purge-fixtures $(if $(APPLY),--apply,)

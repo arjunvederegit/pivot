@@ -10,7 +10,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.canonical.calendar import ScopeState, state_of_scope, today_in_league
@@ -742,9 +742,32 @@ def sync_season_calendar(db: Session, seasons: list[str] | None = None, provider
         return run.rows_written
 
 
+def _sync_contracts_balldontlie(db: Session) -> int:
+    """The opt-in BALLDONTLIE path (``CONTRACT_DATA_PROVIDER=balldontlie``). Identities are linked
+    first when no team link exists yet, so the first scheduled run is self-sufficient."""
+    from app.db.models import ProviderEntityId
+    from app.ingestion import balldontlie_jobs as bdl
+    from app.integrations.balldontlie.provider import BalldontlieProvider
+
+    provider = BalldontlieProvider.from_settings()
+    if not provider.configured:
+        raise bdl.ProviderSyncError("CONTRACT_DATA_PROVIDER=balldontlie but BALLDONTLIE_API_KEY is not set")
+    linked = db.scalar(
+        select(func.count(ProviderEntityId.id)).where(
+            ProviderEntityId.provider == "balldontlie", ProviderEntityId.entity_type == "team"
+        )
+    )
+    if not linked:
+        bdl.sync_identities(db, provider)
+    detail = bdl.sync_contracts_from_balldontlie(db, provider)
+    return int(detail.get("years_created", 0)) + int(detail.get("years_updated", 0))
+
+
 def sync_contracts(db: Session) -> int:
     """Ingest contracts from the configured secondary provider. With no provider this
     records an explicit no-op run — salary features stay honestly unavailable."""
+    if get_settings().contract_data_provider == "balldontlie":
+        return _sync_contracts_balldontlie(db)
     contract_provider = get_contract_provider()
     with sync_run(db, "sync_contracts") as run:
         settings = get_settings()
