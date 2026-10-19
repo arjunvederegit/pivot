@@ -11,7 +11,7 @@ Tiers: *experimental* = a candidate that met its rule · *benchmark* = best simp
 
 | Dimension | Quantities | M | I | P | Data | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Shooting** | `ts_pct`, `fg3_pct`, `ft_pct` | ✔ | ✔ experimental | `fg3_pct`, `ft_pct`: ✔ experimental (confirmed on an unread holdout) · `ts_pct`: benchmark | NBA.com, 10 seasons | **ready** (see [shooting-validation-results.md](shooting-validation-results.md)) |
+| **Shooting** | `ts_pct`, `fg3_pct`, `ft_pct` | ✔ | ✔ experimental, **withheld below reliability 0.30** | `fg3_pct`, `ft_pct`: ✔ experimental (confirmed against `ols_history` on an unread holdout; ~1.5% better than an attempts-aware regression on development) · `ts_pct`: benchmark | NBA.com, 10 seasons | **ready, with the caveats in [shooting-validation-results.md](shooting-validation-results.md)** |
 | **Playmaking** | `ast_pct`, `ast_to_ratio` | ✔ | not offered | not offered | NBA.com | **measured only** |
 | **Rebounding** | `reb_pct`, `oreb_pct`, `dreb_pct` | ✔ | not offered | not offered | NBA.com | **measured only** |
 | **Offensive role / usage** | `usg_pct`, `minutes_per_game` (+ a rule-based role descriptor as context) | ✔ | **never** (a role, not an ability) | not offered | NBA.com | **measured only** |
@@ -20,6 +20,10 @@ Tiers: *experimental* = a candidate that met its rule · *benchmark* = best simp
 | Shot profile (zones) | — | — | — | — | one GOAT season | unavailable |
 | Shot creation / off-ball | — | — | — | — | one GOAT season | unavailable |
 | Overall skill rating | — | — | — | — | — | **deliberately not offered** |
+
+**An asymmetry to know about.** Ability estimates are served on a *development-only* non-inferiority-and-calibration rule, projections need holdout confirmation. For true shooting that means Pivot serves an ability
+estimate from `state_space_role`, whose own forecasts were **not** confirmed against the baseline on the holdout, while declining its projection. The rule was pre-registered; the record's limitations now say it in so
+many words, and the estimate is withheld below reliability 0.30. Treat true-shooting ability as the least-validated of the served outputs.
 
 ## 2. Why measured-only for playmaking, rebounding and role
 
@@ -62,7 +66,7 @@ injury records are never used because they exist only for the present and would 
 
 | Question (pooled over five development folds) | Result |
 | --- | --- |
-| Does a scored player appear next season? (≥ 1 game; base rate ≈ 69%) | logistic regression on his own history: Brier **0.105** vs 0.218 (base rate) and 0.128 ("played last season" rule); AUC 0.92. Calibrated within ≈ 0.05 except the 30–50% band, which is under-forecast |
+| Does a scored player appear next season? (≥ 1 game; base rate ≈ 69%) | logistic regression on his own history: Brier **0.105** vs 0.218 (base rate) and 0.128 ("played last season" rule); AUC 0.92. Calibration by decile (last development fold) is within ≈ 0.06 except the third decile, where 42.5% was forecast and 61% appeared (under-forecast by 0.19) |
 | Given he appears, what share of his team's games? | the existing decayed-GP availability (Pivot's `analytics.availability`) is **the best of the four methods** (MAE 0.189) vs OLS on history 0.197, persistence 0.202, league mean 0.218 — a new model was **not** adopted |
 | Total future availability (zero if absent) | two-part model RMSE 0.260 vs persistence 0.282 vs league mean 0.382 (−8% vs persistence); in **MAE** persistence is better (0.191 vs 0.198) because a mean forecast is the wrong object for an absolute-error score of a zero-heavy outcome |
 
