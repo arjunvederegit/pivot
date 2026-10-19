@@ -63,6 +63,21 @@ three-point accuracy, two each for free-throw and true shooting. No correction i
 The FT gain in the last development fold is nil; with `state_space` it is −0.0003. Improvement is not uniform over seasons, and the 2019-20 and 2020-21
 (shortened) folds are in every column.
 
+**Is the gain "attempts-aware weighting" or just "more seasons of history"?** The state-space candidates read up to ten seasons; `ols_history` reads a
+three-season window — the asymmetry that made R9.1's first candidate rule advance 14 of 18 pairs it should not have. R9.2 checked it directly (development folds
+only, two opt-in diagnostics outside the rule; amendment 4; `results/history_ablation.json`):
+
+| MAE relative to `ols_history` (development) | `ols_history_long` (OLS given the full history) | `state_space` (10 seasons) | `state_space_h3` (the same 3 seasons) | share of the gain kept with 3 seasons |
+| --- | --- | --- | --- | --- |
+| Three-point | +0.01% | −4.4% | **−3.7%** | 83% |
+| Free-throw | −0.16% | −4.1% | **−3.2%** | 78% |
+| True shooting | +0.24% | −2.6% | **−2.6%** | 100% |
+
+Giving the regression the whole history changes nothing (it cannot use it better), so the baseline was not handicapped; and a state-space model limited to the baseline's
+three seasons keeps 78–100% of the gain. **The improvement comes from weighting each season by the evidence behind it**, with a little more from extra history for
+three-point and free-throw accuracy. (The holdout was not re-read for these diagnostics; the confirmed holdout comparisons are against `ols_history`, which the
+diagnostic shows to be within 0.2% of the full-history baseline.)
+
 ## 4. The locked holdout (first read for 3P and FT; a re-read for TS)
 
 | Quantity | n | `ols_history` MAE | candidate MAE | rel. | 95% player CI of the difference | folds improved |

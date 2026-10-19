@@ -1,0 +1,192 @@
+{
+  "development_origins": [
+    "2018-19",
+    "2019-20",
+    "2020-21",
+    "2021-22",
+    "2022-23"
+  ],
+  "note": "development folds only; diagnostics, not part of the rule",
+  "protocol": "r9.2-prereg-1",
+  "quantities": {
+    "fg3_pct": {
+      "models": {
+        "beta_binomial": {
+          "ci95_vs_ols_history_long": [
+            -0.0020525166211765433,
+            -0.0008972647220410899
+          ],
+          "folds_improved_vs_ols_history_long": "5/5",
+          "mae": 0.03283609494261327,
+          "relative_to_ols_history": -0.042580973704184795,
+          "relative_to_ols_history_long": -0.04269349022584711
+        },
+        "ols_history": {
+          "ci95_vs_ols_history_long": [
+            -2.093068694905122e-05,
+            1.199617708497025e-05
+          ],
+          "folds_improved_vs_ols_history_long": "2/5",
+          "mae": 0.03429647212010581,
+          "relative_to_ols_history": null,
+          "relative_to_ols_history_long": -0.00011752066605321813
+        },
+        "ols_history_long": {
+          "ci95_vs_ols_history_long": null,
+          "folds_improved_vs_ols_history_long": null,
+          "mae": 0.03430050313808055,
+          "relative_to_ols_history": 0.00011753447878344895,
+          "relative_to_ols_history_long": null
+        },
+        "state_space": {
+          "ci95_vs_ols_history_long": [
+            -0.002129829641389675,
+            -0.0009319029207560445
+          ],
+          "folds_improved_vs_ols_history_long": "5/5",
+          "mae": 0.03278749964877981,
+          "relative_to_ols_history": -0.04399789185434567,
+          "relative_to_ols_history_long": -0.04411024185884323
+        },
+        "state_space_h3": {
+          "ci95_vs_ols_history_long": [
+            -0.0018386109097839837,
+            -0.000723934241913223
+          ],
+          "folds_improved_vs_ols_history_long": "5/5",
+          "mae": 0.03304148575004596,
+          "relative_to_ols_history": -0.03659228755846675,
+          "relative_to_ols_history_long": -0.036705507874513696
+        },
+        "state_space_role": {
+          "ci95_vs_ols_history_long": [
+            -0.0020909529900311596,
+            -0.0008115555981656875
+          ],
+          "folds_improved_vs_ols_history_long": "5/5",
+          "mae": 0.032855093914903225,
+          "relative_to_ols_history": -0.04202701082941983,
+          "relative_to_ols_history_long": -0.04213959245316816
+        }
+      },
+      "n": 1367,
+      "share_of_state_space_gain_kept_with_three_seasons": 0.8316827469735356
+    },
+    "ft_pct": {
+      "models": {
+        "beta_binomial": {
+          "ci95_vs_ols_history_long": [
+            -0.002081586412590418,
+            -0.00025605354947546264
+          ],
+          "folds_improved_vs_ols_history_long": "4/5",
+          "mae": 0.043019004939184195,
+          "relative_to_ols_history": -0.02752608366296203,
+          "relative_to_ols_history_long": -0.025947134639011115
+        },
+        "ols_history": {
+          "ci95_vs_ols_history_long": [
+            -0.00013918003482568078,
+            0.00029788444124429354
+          ],
+          "folds_improved_vs_ols_history_long": "0/5",
+          "mae": 0.044236667139846204,
+          "relative_to_ols_history": null,
+          "relative_to_ols_history_long": 0.0016236415161634912
+        },
+        "ols_history_long": {
+          "ci95_vs_ols_history_long": null,
+          "folds_improved_vs_ols_history_long": null,
+          "mae": 0.04416495907872632,
+          "relative_to_ols_history": -0.0016210095777150144,
+          "relative_to_ols_history_long": null
+        },
+        "state_space": {
+          "ci95_vs_ols_history_long": [
+            -0.0026103178561586882,
+            -0.0009365031783653714
+          ],
+          "folds_improved_vs_ols_history_long": "5/5",
+          "mae": 0.04242234258589435,
+          "relative_to_ols_history": -0.041014042676773055,
+          "relative_to_ols_history_long": -0.039456993263045276
+        },
+        "state_space_h3": {
+          "ci95_vs_ols_history_long": [
+            -0.0022757477294010754,
+            -0.0005312575026754574
+          ],
+          "folds_improved_vs_ols_history_long": "4/5",
+          "mae": 0.042816666645563224,
+          "relative_to_ols_history": -0.032100078647288366,
+          "relative_to_ols_history_long": -0.030528556151488723
+        },
+        "state_space_role": {
+          "ci95_vs_ols_history_long": [
+            -0.003217601520617136,
+            -0.0012848039006560597
+          ],
+          "folds_improved_vs_ols_history_long": "4/5",
+          "mae": 0.04191336856223545,
+          "relative_to_ols_history": -0.05251974725550805,
+          "relative_to_ols_history_long": -0.050981378981407005
+        }
+      },
+      "n": 1294,
+      "share_of_state_space_gain_kept_with_three_seasons": 0.7826606828364955
+    },
+    "ts_pct": {
+      "models": {
+        "ols_history": {
+          "ci95_vs_ols_history_long": [
+            -0.00020230182669944276,
+            4.889685712723005e-05
+          ],
+          "folds_improved_vs_ols_history_long": "4/5",
+          "mae": 0.031001325045958216,
+          "relative_to_ols_history": null,
+          "relative_to_ols_history_long": -0.0024157732146885555
+        },
+        "ols_history_long": {
+          "ci95_vs_ols_history_long": null,
+          "folds_improved_vs_ols_history_long": null,
+          "mae": 0.031076398577250124,
+          "relative_to_ols_history": 0.002421623307410664,
+          "relative_to_ols_history_long": null
+        },
+        "state_space": {
+          "ci95_vs_ols_history_long": [
+            -0.001357667991103458,
+            -0.0004098093669682274
+          ],
+          "folds_improved_vs_ols_history_long": "5/5",
+          "mae": 0.030210269960132166,
+          "relative_to_ols_history": -0.025516815318485205,
+          "relative_to_ols_history_long": -0.02787094569420321
+        },
+        "state_space_h3": {
+          "ci95_vs_ols_history_long": [
+            -0.0013318690887751136,
+            -0.00045823259777572046
+          ],
+          "folds_improved_vs_ols_history_long": "5/5",
+          "mae": 0.030192431153552704,
+          "relative_to_ols_history": -0.026092236096565552,
+          "relative_to_ols_history_long": -0.028444976386180695
+        },
+        "state_space_role": {
+          "ci95_vs_ols_history_long": [
+            -0.0015082038185327915,
+            -0.0003763951422289759
+          ],
+          "folds_improved_vs_ols_history_long": "5/5",
+          "mae": 0.030142990188130846,
+          "relative_to_ols_history": -0.027687037781608442,
+          "relative_to_ols_history_long": -0.03003592539203011
+        }
+      },
+      "n": 1591,
+      "share_of_state_space_gain_kept_with_three_seasons": 1.0225506502632988
+    }
+  }
+}

@@ -265,6 +265,56 @@ class HistoryOLS(Predictor):
         return _Linear(beta, design, {n: float(b) for n, b in zip(names, beta, strict=True)})
 
 
+class HistoryOLSLong(Predictor):
+    """``ols_history`` given the SAME amount of history the state-space models see (up to ``history`` seasons).
+
+    Added after the R9.2 review (amendment 4): ``ols_history`` reads a three-season window while the state-space
+    candidates read up to ten seasons, so a gain over it could be 'more history', not 'attempts-aware weighting'. This
+    baseline closes that gap: OLS on last season, an exposure-weighted decayed mean over the *whole* available history
+    (weights ``0.7**lag * exposure``, the same decay TEI and ``x_bar`` use), the windowed mean, and the age curve."""
+
+    name = "ols_history_long"
+    family = "baseline"
+    inputs = ("x_t", "x_lag*", "exposure_t", "exposure_lag*", "age")
+    description = (
+        "OLS y = a + b*last_season + c*decayed_full_history_mean + d*windowed_history + e*age + f*age^2: the strongest simple "
+        "baseline given the full per-player history the state-space candidates see"
+    )
+
+    def applies_to(self, target: TargetSpec) -> bool:
+        return target.sampling_variance is not None
+
+    @staticmethod
+    def _long_mean(frame: pd.DataFrame, decay: float = 0.7) -> np.ndarray:
+        h = history_length(frame)
+        y = _stack(frame, "x_t", "x_lag", h)
+        e = _stack(frame, "exposure_t", "exposure_lag", h)
+        w = (decay ** np.arange(h))[None, :] * np.where(np.isfinite(e) & np.isfinite(y) & (e > 0), e, 0.0)
+        num = (w * np.nan_to_num(y)).sum(axis=1)
+        den = w.sum(axis=1)
+        with np.errstate(all="ignore"):
+            return np.where(den > 0, num / den, np.nan)
+
+    def fit(self, train: pd.DataFrame, ctx: FitContext) -> Fitted:
+        if "exposure_lag1" not in train.columns:
+            raise NotApplicable("this panel carries no history columns")
+        fill_last = float(np.nanmean(train["x_t"].astype(float)))
+        fill_bar = float(np.nanmean(train["x_bar"].astype(float)))
+        fill_long = float(np.nanmean(self._long_mean(train)))
+
+        def design(frame: pd.DataFrame) -> np.ndarray:
+            last = _last_value(frame, fill_last)
+            bar = frame["x_bar"].astype(float).fillna(pd.Series(last, index=frame.index)).fillna(fill_bar).to_numpy()
+            long = np.where(np.isfinite(self._long_mean(frame)), self._long_mean(frame), bar)
+            long = np.where(np.isfinite(long), long, fill_long)
+            age, age2 = _age_terms(frame)
+            return np.column_stack([np.ones(len(frame)), last, long, bar, age, age2])
+
+        beta = ols(design(train), _y(train))
+        names = ["intercept", "last_season", "decayed_full_history", "windowed_history", "age", "age_sq"]
+        return _Linear(beta, design, {n: float(b) for n, b in zip(names, beta, strict=True)})
+
+
 class _Incumbent(Fitted):
     def __init__(self) -> None:
         self.params = {"scale": TEI_SCALE, "note": "tei_window / TEI_SCALE, no fitting"}
@@ -508,9 +558,14 @@ def _stack(frame: pd.DataFrame, stem_t: str, stem_lag: str, h: int) -> np.ndarra
     return np.column_stack([pd.to_numeric(c, errors="coerce").to_numpy(dtype=float) for c in cols])
 
 
-def history_arrays(frame: pd.DataFrame, role: bool) -> rm.HistoryArrays:
-    """Stack a feature frame's lag columns into ``(n, H)`` arrays for the rate models."""
+def history_arrays(frame: pd.DataFrame, role: bool, max_history: int | None = None) -> rm.HistoryArrays:
+    """Stack a feature frame's lag columns into ``(n, H)`` arrays for the rate models.
+
+    ``max_history`` keeps only the most recent seasons (the history-ablation diagnostic: does the gain come from
+    attempts-aware weighting or merely from seeing more seasons than the baseline?)."""
     h = history_length(frame)
+    if max_history is not None:
+        h = min(h, max_history)
     y = _stack(frame, "x_t", "x_lag", h)
     s2 = _stack(frame, "sv_t", "sv_lag", h)
     e = _stack(frame, "exposure_t", "exposure_lag", h)
@@ -524,14 +579,15 @@ def history_arrays(frame: pd.DataFrame, role: bool) -> rm.HistoryArrays:
 
 
 class _StateSpaceFitted(Fitted):
-    def __init__(self, params: rm.StateSpaceParams, role: bool, min_exposure: float) -> None:
+    def __init__(self, params: rm.StateSpaceParams, role: bool, min_exposure: float, max_history: int | None = None) -> None:
         self.p = params
         self.role = role
         self.min_exposure = min_exposure
+        self.max_history = max_history
         self.params = params.as_dict()
 
     def posterior(self, frame: pd.DataFrame) -> rm.Posterior:
-        h = history_arrays(frame, self.role)
+        h = history_arrays(frame, self.role, self.max_history)
         return rm.filter_histories(h.y, h.s2, h.age, h.covariates, self.p)
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
@@ -539,7 +595,7 @@ class _StateSpaceFitted(Fitted):
 
     def expected_sampling_variance(self, frame: pd.DataFrame) -> np.ndarray:
         """Sampling variance of next season's statistic if the player takes about as many attempts as lately."""
-        h = history_arrays(frame, self.role)
+        h = history_arrays(frame, self.role, self.max_history)
         with warnings.catch_warnings(), np.errstate(all="ignore"):
             warnings.simplefilter("ignore", RuntimeWarning)  # "mean of empty slice" = no history, handled below
             unit = np.nanmean(np.where(np.isfinite(h.s2) & np.isfinite(h.exposure), h.s2 * h.exposure, np.nan), axis=1)
@@ -566,19 +622,20 @@ class StateSpaceRate(Predictor):
         "predictive likelihood; forecast = posterior mean of next season's ability"
     )
     role = False
+    max_history: int | None = None
 
     def applies_to(self, target: TargetSpec) -> bool:
         return target.sampling_variance is not None
 
     def fit(self, train: pd.DataFrame, ctx: FitContext) -> Fitted:
-        h = history_arrays(train, self.role)
+        h = history_arrays(train, self.role, self.max_history)
         if not np.isfinite(h.s2[:, 0]).any() and not np.isfinite(h.s2).any():
             raise NotApplicable("this panel has no shot-count columns; build it with build_skill_panel")
         params = rm.fit_state_space(
             h.y, h.s2, h.exposure, h.age, h.covariates,
             train["y"].to_numpy(dtype=float), train["y_sv"].to_numpy(dtype=float),
         )
-        return _StateSpaceFitted(params, self.role, ctx.target.min_exposure)
+        return _StateSpaceFitted(params, self.role, ctx.target.min_exposure, self.max_history)
 
 
 class StateSpaceRateRole(StateSpaceRate):
@@ -586,6 +643,14 @@ class StateSpaceRateRole(StateSpaceRate):
     role = True
     inputs: tuple[str, ...] = (*StateSpaceRate.inputs, *ROLE_COLUMNS)
     description = StateSpaceRate.description + "; the league curve also depends on rebounding, three-point rate, free-throw rate and usage at the cutoff"
+
+
+class StateSpaceHistory3(StateSpaceRate):
+    """DIAGNOSTIC, not a candidate: ``state_space`` limited to the three seasons ``ols_history`` can see."""
+
+    name = "state_space_h3"
+    max_history = 3
+    description = StateSpaceRate.description + "; restricted to the same three seasons of history the baselines see (ablation)"
 
 
 class _BetaBinomialFitted(Fitted):
@@ -646,7 +711,10 @@ ALL_PREDICTORS: tuple[Predictor, ...] = (
     StateSpaceRateRole(),
     BetaBinomialRate(),
 )
-PREDICTORS: dict[str, Predictor] = {p.name: p for p in ALL_PREDICTORS}
+#: Selectable by name but never part of the default sets, so the committed experiments stay reproducible: the two
+#: R9.2 history-ablation diagnostics (see docs/r9-2/shooting-validation-results.md §3).
+DIAGNOSTIC_PREDICTORS: tuple[Predictor, ...] = (HistoryOLSLong(), StateSpaceHistory3())
+PREDICTORS: dict[str, Predictor] = {p.name: p for p in (*ALL_PREDICTORS, *DIAGNOSTIC_PREDICTORS)}
 
 
 def predictors_for(target: TargetSpec, names: list[str] | None = None) -> list[Predictor]:

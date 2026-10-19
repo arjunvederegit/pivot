@@ -46,7 +46,7 @@ from .backtest import (
 )
 from .pairs import FeatureConfig, PairCache
 from .panel import PlayerSeasonPanel, season_key
-from .predictors import PREDICTORS
+from .predictors import ALL_PREDICTORS, PREDICTORS
 from .provenance import DataSnapshot, config_hash, environment, feature_manifest
 from .targets import get_target
 from .team_gate import r2_difference
@@ -212,6 +212,12 @@ PREREGISTRATION_R92: dict[str, Any] = {
             "change": "an inferred (ability) record's evaluation status is capped at 'development_only' however its model's forecasts fared on the holdout",
             "reason": "latent ability is never observed, so 'holdout_confirmed' on an ability estimate would read as definitive validation of ability; the forecast skill of the same model is reported on the projected record instead",
             "direction": "more conservative: a cap applied after seeing the holdout results, and it lowers what is claimed",
+        },
+        {
+            "id": 4, "when": "after the R9.2 holdout reads; development folds only; no holdout was re-read",
+            "change": "two opt-in DIAGNOSTIC predictors were added, outside the default model sets and outside the rule: ols_history_long (OLS given the full per-player history) and state_space_h3 (the state-space model limited to three seasons)",
+            "reason": "the state-space candidates read up to ten seasons and ols_history reads three: a gain over it could be 'more history' rather than 'attempts-aware weighting' (the flaw R9.1's review found in its own first baselines). The diagnostic separates the two. Result: ols_history_long differs from ols_history by +0.01% (3P), -0.16% (FT), +0.24% (TS); state_space_h3 keeps 83% / 78% / 100% of the gain. The reference baseline and every decision stand",
+            "direction": "neutral: a diagnostic that could have weakened the claims and did not; not part of the rule",
         },
     ],
 }
@@ -462,7 +468,7 @@ def run_stage(
         dev_decisions = load_development_decisions(development_dir, snapshot, target_name, protocol.version)
         models = tuple(
             sorted(
-                {m for m in PREDICTORS if PREDICTORS[m].family == "baseline"}
+                {p.name for p in ALL_PREDICTORS if p.family == "baseline"}
                 | set(dev_decisions["advanced"])
                 | {dev_decisions["reference_baseline"]}
             )
