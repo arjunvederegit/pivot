@@ -173,9 +173,12 @@ function SideLine({
 export function SalaryAndContracts({
   analysis,
   teamNames,
+  deal = null,
 }: {
   analysis: TradeFinancialAnalysis;
   teamNames: Record<string, string>;
+  /** The encoded deal, carried into the player-file link so "Back to your trade" works in any tab. */
+  deal?: string | null;
 }) {
   const teams = Object.values(analysis.teams);
   const basis = analysis.season_basis;
@@ -276,7 +279,7 @@ export function SalaryAndContracts({
                   <tr key={p.player_id} className="border-b border-hairline align-top">
                     <Td>
                       <Link
-                        href={playerFileLink(p.player_id)}
+                        href={playerFileLink(p.player_id, "trade-evaluator", deal)}
                         className="font-medium text-foreground hover:text-signal"
                         title={`Open ${p.name} in the Player Explorer`}
                       >

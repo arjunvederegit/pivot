@@ -94,12 +94,17 @@ provider gives options only as free text and Pivot does not parse prose into str
   53 have a provider row whose total cash equals the sourced 2026-27 two-way salary ($678,882 — probably non-counting two-way deals, **reported as a hint and
   never assumed**), 7 have another provider row without a cap hit, 32 have no contract row at all, and the 2 unlinked identities are among them.
 
-## 6. Idempotency and failure behaviour (as re-verified in R9.3A)
+## 6. Idempotency and failure behaviour (as re-verified and hardened in R9.3A)
 
 * Re-running a season changes nothing (`years_unchanged` counts); a changed figure is an `updated` row; nothing is deleted (`not_reseen` is reported).
 * A team that fails to answer makes the run `partial`; a partial season is **not** counted in the horizon and no length is derived from it.
 * A provider outage during a *read* is impossible by construction (reads never call the provider); during a *refresh* the run fails or is partial and is
   recorded, and the stored data is untouched.
+* **Hardened after the independent review (round 1).** The contract job now *refuses* — lists in the run detail (`refused_rows`) and never stores — a row whose season is not the one requested,
+  a second provider row for the same player and season, and a non-positive cap hit; any such row, any adapter-rejected malformed row, an empty season, or a failed team makes the run
+  `partial`, and **a partial season never counts toward the contract horizon**. A later season the provider lists *without* a cap hit makes that player's contract length unknown (the stored
+  rows would otherwise read as "ends"). Duplicate `Contract` rows for one player resolve to the lowest id everywhere, and activation refuses to create a second one.
+  Tests: `tests/integration/test_r93a_round1_regressions.py`.
 * `tests/unit/test_r93a_financials.py::TestHorizon` covers: no runs, contiguous chain, a gap, a missing financial season, a partial read, a failed run.
 
 ## 7. Provider terms and redistribution

@@ -33,6 +33,15 @@ export const RULE_STATUS_WORD: Record<string, string> = {
   unavailable: "not run",
 };
 
+function isCoverage(v: unknown): v is { players_known: number; players_total: number; complete?: boolean } {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as { players_known?: unknown }).players_known === "number" &&
+    typeof (v as { players_total?: unknown }).players_total === "number"
+  );
+}
+
 export const CONTRACT_TOOLTIP =
   "Contract data isn't imported, so salaries and contract years can't be shown. Pivot never estimates a salary.";
 
@@ -154,7 +163,11 @@ export function RuleItem({ rule, teamAbbr }: { rule: RuleResult; teamAbbr?: stri
                         : String(value)
                       : Array.isArray(value)
                         ? value.join(", ") || "—"
-                        : String(value)}
+                        : isCoverage(value)
+                          ? `${value.players_known} of ${value.players_total} priced${value.complete ? "" : " (floor)"}`
+                          : value !== null && typeof value === "object"
+                            ? JSON.stringify(value)
+                            : String(value)}
                   </dd>
                 </div>
               ))}

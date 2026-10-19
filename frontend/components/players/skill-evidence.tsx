@@ -250,10 +250,13 @@ function ExperimentalRow({ record, statement }: { record: IntelRecord; statement
       <p className="mt-1 text-[12px] leading-relaxed text-muted">
         {record.output_kind === "inferred"
           ? `Estimate of underlying ability at the end of ${record.period.season} — not an observed rate.`
-          : `Projection for ${record.target_period?.season ?? "the next season"}. ${condition ?? ""}`}
+          : `Projection for ${record.target_period?.season ?? "the next season"}. ${condition ? condition.charAt(0).toUpperCase() + condition.slice(1) : ""}`}
       </p>
       {record.reliability && (
-        <p className="mt-1 text-[12px] leading-relaxed text-muted">{record.reliability.interpretation}</p>
+        <p className="mt-1 text-[12px] leading-relaxed text-muted">
+          {record.reliability.interpretation}
+          {record.sample?.seasons_used ? ` (evidence pooled across ${record.sample.seasons_used} seasons, not one.)` : ""}
+        </p>
       )}
       {statement && <p className="mt-1 text-[11.5px] leading-relaxed text-faint">{statement}</p>}
       <p className="mt-1 text-[11.5px] text-faint">

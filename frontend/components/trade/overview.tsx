@@ -455,7 +455,7 @@ export function buildInsights(side: SheetSide): string[] {
   if (refused) {
     const codes = (ev.suppression?.failing_rules ?? []).map((r) => r.rule_code);
     out.push(
-      `${side.abbreviation}'s side fails a verified trade rule${codes.length ? ` (${[...new Set(codes)].join(", ")})` : ""}, so the deal is not scored.`,
+      `The deal fails an implemented trade rule${codes.length ? ` (${[...new Set(codes)].join(", ")})` : ""} for at least one team, so it is not scored for either. A roster-count failure is measured on the current roster snapshot, which can be provisional.`,
     );
     return out;
   }

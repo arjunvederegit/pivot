@@ -43,8 +43,14 @@ export function tradeEvaluatorLink(ctx: Omit<InvestigationContext, "from">): str
 }
 
 /** Trade Evaluator -> Player Explorer. */
-export function playerFileLink(playerId: string, from: InvestigationSource = "trade-evaluator"): string {
-  return isCanonicalId(playerId) ? `/players/${playerId}?from=${from}` : "/player-explorer";
+export function playerFileLink(
+  playerId: string,
+  from: InvestigationSource = "trade-evaluator",
+  /** The encoded deal (the Trade Evaluator's share state), so "Back to your trade" works even without browser history. */
+  deal?: string | null,
+): string {
+  if (!isCanonicalId(playerId)) return "/player-explorer";
+  return `/players/${playerId}?from=${from}${deal ? `&deal=${encodeURIComponent(deal)}` : ""}`;
 }
 
 /** Reads the context a link carried; null unless it names a canonical player and a known source. */

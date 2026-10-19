@@ -923,7 +923,7 @@ function CapOutlookView({
       tone: complete ? "var(--legal)" : "var(--conditional)",
     },
     {
-      label: "Contract years loaded",
+      label: "League-wide years loaded",
       value: horizonSeasons.length || outlook.seasons.length,
       note: horizonSeasons.length
         ? `${horizonSeasons[0]} through ${horizonSeasons[horizonSeasons.length - 1]}`

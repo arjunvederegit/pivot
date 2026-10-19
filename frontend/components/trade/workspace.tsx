@@ -230,7 +230,10 @@ export function TeamWorkspace({
   const pricedRoster = all.filter((p) => p.salary !== null);
   const rosterFloor = pricedRoster.reduce((sum, p) => sum + (p.salary ?? 0), 0);
   const rosterCoverage = { players_known: pricedRoster.length, players_total: all.length };
-  const payrollShown = legality
+  // R9.3A (round 3): once a rules check exists but cannot state an after-trade figure (an unpriced player is moving),
+  // fall back to the roster floor instead of "not imported" — the contracts ARE imported.
+  const hasAfterFigure = Boolean(legality && (legality.payroll_after != null || legality.payroll_known_after != null));
+  const payrollShown = legality && hasAfterFigure
     ? payrollDisclosure(
         legality.payroll_after,
         legality.payroll_known_after,
@@ -346,17 +349,17 @@ export function TeamWorkspace({
           <LedgerCell
             label="Salary out"
             value={legality?.outgoing_salary != null ? money(legality.outgoing_salary) : "—"}
-            note={legality?.outgoing_salary != null ? "leaving" : "no salaries"}
+            note={legality?.outgoing_salary != null ? "leaving" : outgoing.length > 0 ? "a salary is unknown" : "none leaving"}
             title={legality?.outgoing_salary != null ? undefined : CONTRACT_TOOLTIP}
           />
           <LedgerCell
             label="Salary in"
             value={legality?.incoming_salary != null ? money(legality.incoming_salary) : "—"}
-            note={legality?.incoming_salary != null ? "arriving" : "no salaries"}
+            note={legality?.incoming_salary != null ? "arriving" : incoming.length > 0 ? "a salary is unknown" : "none arriving"}
             title={legality?.incoming_salary != null ? undefined : CONTRACT_TOOLTIP}
           />
           <LedgerCell
-            label="Payroll"
+            label={payrollShown.kind === "verified" ? "Payroll" : "Known salary"}
             value={payrollShown.value}
             note={
               payrollShown.kind === "verified"

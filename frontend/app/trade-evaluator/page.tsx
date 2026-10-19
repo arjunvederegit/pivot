@@ -417,6 +417,7 @@ function TradeEvaluator() {
   // is removed, so the R5 rebuild starts from working scaffolding rather than a blank
   // file.
 
+  const dealState = teamIds.length > 0 ? encodeShareState({ teamIds, moves, picks, name: tradeName || undefined }) : null;
   const loaded = teams ?? [];
   const threeWay = teamIds.length === 3;
   const overall = validation?.overall_status;
@@ -569,6 +570,7 @@ function TradeEvaluator() {
                 />
                 {validation?.financial_analysis && (
                   <SalaryAndContracts
+                    deal={dealState}
                     analysis={validation.financial_analysis}
                     teamNames={Object.fromEntries(
                       Object.entries(validation.teams).map(([id, t]) => [id, t.abbreviation]),
@@ -674,6 +676,7 @@ function TradeEvaluator() {
 
       {drawerPlayer && (
         <PlayerDrawer
+          deal={dealState}
           player={drawerPlayer}
           rosterRow={playerIndex[drawerPlayer.id]}
           fitTeams={teamIds

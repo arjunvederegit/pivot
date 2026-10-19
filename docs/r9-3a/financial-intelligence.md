@@ -113,6 +113,10 @@ indications or lowered confidence, never as new verified failures. The R9.2 cand
 
 ## 6. Failure modes the tests pin
 
+Added by the independent reviews: a gap inside a contract, a season beyond the loaded horizon or a length that cannot be derived is **unknown** (never a known $0 commitment); a player named in a
+deal who is on no roster is not subtracted from a payroll he was never in, and a team with no roster has no after-trade coverage; a freshness time is the financial season's own (an unpriced record has
+none; a team shows its oldest priced figure); the legacy `players_with_contracts` equals the priced count; the cap-room pass is medium confidence and "cap holds and dead money" is on the unchecked list.
+
 Unknown ≠ $0 (financials, cap-outlook, trade comparison); a base salary or cash figure is never a cap hit; a lower-bound length is never "ends"; a one-season horizon proves no length;
 a partial provider read is not a horizon; a 2025-26 threshold is not used for 2026-27; `verified_legal` is never produced from partial coverage; the assessment never says "legal"; a
 write inside a session invalidates the memoized financials.

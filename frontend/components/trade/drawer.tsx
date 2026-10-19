@@ -26,7 +26,10 @@ export function PlayerDrawer({
   rosterRow,
   fitTeams,
   onClose,
+  deal = null,
 }: {
+  /** The encoded deal, so the full player file can offer a "Back to your trade" that works in any tab. */
+  deal?: string | null;
   player: { id: string; name: string };
   /** The builder's roster row, when the player is on a roster in the deal. */
   rosterRow?: RosterPlayer;
@@ -231,7 +234,7 @@ export function PlayerDrawer({
                 </div>
               </div>
             )}
-            <ButtonLink href={playerFileLink(player.id)} size="sm" className="w-full">
+            <ButtonLink href={playerFileLink(player.id, "trade-evaluator", deal)} size="sm" className="w-full">
               Full player page <span aria-hidden>→</span>
             </ButtonLink>
             <p className="text-[11.5px] leading-snug text-faint">{data.impact.note}</p>
