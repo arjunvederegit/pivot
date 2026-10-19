@@ -449,7 +449,14 @@ def _modeling_command(command: str, args: list[str]) -> int:
     from app.config import BACKEND_DIR
     from app.modeling import registry
     from app.modeling.backtest import InsufficientDataError, NonFiniteForecastError
-    from app.modeling.experiment import HoldoutPrerequisiteError, HoldoutReadRefused, run_stage
+    from app.modeling.experiment import (
+        DEFAULT_PROTOCOL,
+        R92_PROTOCOL,
+        HoldoutPrerequisiteError,
+        HoldoutReadRefused,
+        Protocol,
+        run_stage,
+    )
     from app.modeling.panel import PanelValidationError, PlayerSeasonPanel
     from app.modeling.predictors import PREDICTORS
     from app.modeling.targets import TARGETS
@@ -500,7 +507,18 @@ def _modeling_command(command: str, args: list[str]) -> int:
                 eval_minutes = float(eval_raw) if eval_raw is not None else None
             except ValueError:
                 return refuse("usage", f"--eval-min-target-minutes needs a number, got {eval_raw!r}")
-            panel = PlayerSeasonPanel.from_db(db)
+            r92 = option("--protocol") == "r9.2"
+            exposure_raw = option("--eval-min-target-exposure")
+            try:
+                eval_exposure = float(exposure_raw) if exposure_raw is not None else None
+            except ValueError:
+                return refuse("usage", f"--eval-min-target-exposure needs a number, got {exposure_raw!r}")
+            if r92:
+                from app.player_intelligence.panel import build_skill_panel
+
+                panel = build_skill_panel(db)
+            else:
+                panel = PlayerSeasonPanel.from_db(db)
             standings = registry.league_standings(db)
     except PanelValidationError as exc:
         return refuse("PanelValidationError", str(exc))
@@ -510,6 +528,12 @@ def _modeling_command(command: str, args: list[str]) -> int:
         return refuse("DatabaseError", str(exc)[:300], hint=migration_hint)
 
     out = Path(option("--out") or BACKEND_DIR.parent / "models" / "experiments")
+    if r92:
+        # R9.1's holdout reads still count under R9.2: a target read there is a RE-read here.
+        prior = Path(option("--prior-ledger") or BACKEND_DIR.parent / "docs" / "r9-1" / "results" / "holdout_ledger.json")
+        protocol: Protocol = Protocol(preregistration=R92_PROTOCOL.preregistration, prior_ledgers=(prior,))
+    else:
+        protocol = DEFAULT_PROTOCOL
     targets = list(TARGETS) if wanted == "all" else [wanted]
     summary = {}
     for name in targets:
@@ -523,9 +547,10 @@ def _modeling_command(command: str, args: list[str]) -> int:
             outcome = run_stage(
                 panel, standings, stage, name, out,
                 development_dir=development_dir, eval_min_target_minutes=eval_minutes,
+                eval_min_target_exposure=eval_exposure, protocol=protocol,
                 acknowledge_reread="--acknowledge-reread" in args,
                 # The primary target is audited at every development origin; the rest at the last one.
-                audit_origins=None if name == "impact_proxy" else 1,
+                audit_origins=None if (name == "impact_proxy" or r92) else 1,
             )
         except (HoldoutReadRefused, HoldoutPrerequisiteError, InsufficientDataError, NonFiniteForecastError) as exc:
             return refuse(type(exc).__name__, str(exc))

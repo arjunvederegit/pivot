@@ -184,11 +184,23 @@ PREREGISTRATION_R92 = {
         "that any candidate should be promoted",
         "that a forecast conditional on playing is a forecast of a player's total future contribution",
     ],
+    "selection_rule": (
+        "(added as amendment 1, see below) when several candidates advance and are confirmed, the recommended forecaster is the one "
+        "with the lowest pooled DEVELOPMENT MAE; the inferred (ability) output is served from the lowest-development-MAE advanced "
+        "candidate that carries a posterior of ability"
+    ),
     "disclosures": [
         "the 2025-26 totals CSV used to validate the shot-count reconstruction is not used in any model",
         "the ts_pct holdout was read once in R9.1 (baselines); R9.1's ledger is loaded as a prior ledger so a second read is refused unless acknowledged",
     ],
-    "amendments": [],
+    "amendments": [
+        {
+            "id": 1, "when": "after the three R9.2 development runs, before any R9.2 holdout read",
+            "change": "stated which advanced candidate is served when more than one advances (lowest pooled development MAE; for the inferred output, among those that carry an ability posterior)",
+            "reason": "the pre-registration said which candidates advance but not which of several is served; fixing the rule now, from development evidence only, means the holdout cannot be used to choose",
+            "direction": "neutral: a selection rule fixed before the evidence it selects on",
+        },
+    ],
 }
 
 #: Origins whose outcomes development may never see. Hard-coded: ingesting 2026-27 must not turn them
@@ -413,6 +425,7 @@ def run_stage(
     models: tuple[str, ...] | None = None,
     development_dir: Path | None = None,
     eval_min_target_minutes: float | None = None,
+    eval_min_target_exposure: float | None = None,
     bootstrap_draws: int = 2000,
     acknowledge_reread: bool = False,
     audit_origins: int | None = 1,
@@ -458,6 +471,7 @@ def run_stage(
         models=models,
         test_origins=origins,
         eval_min_target_minutes=eval_min_target_minutes,
+        eval_min_target_exposure=eval_min_target_exposure,
         bootstrap_draws=bootstrap_draws,
         features=features,
     )
@@ -479,6 +493,8 @@ def run_stage(
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
         label = stage + (f"-evalmin{int(eval_min_target_minutes)}" if eval_min_target_minutes is not None else "")
+        if eval_min_target_exposure is not None:
+            label += f"-evalexp{int(eval_min_target_exposure)}"
         directory = out_dir / experiment_id(label, target_name, config, snapshot)
         write_artifacts(directory, stage, result, snapshot, decisions, audits, protocol.preregistration)
         if stage == "holdout":

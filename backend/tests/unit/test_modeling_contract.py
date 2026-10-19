@@ -47,8 +47,15 @@ def test_a_projection_names_what_it_forecasts_and_its_information_cutoff():
         output_kind=OutputKind.PROJECTED, model=MODEL,
         period=Period(season="2025-26", as_of_season="2025-26"),
         target_period=Period(season="2026-27"),
+        conditioning="the player plays at least 500 minutes in the target season",
     )
     assert ok.target_period.season == "2026-27"
+    # R9.2: a forecast must say what it is conditional on; the participation question is separate.
+    with pytest.raises(ValidationError, match="conditional on"):
+        record(
+            output_kind=OutputKind.PROJECTED, model=MODEL,
+            period=Period(season="2025-26", as_of_season="2025-26"), target_period=Period(season="2026-27"),
+        )
     with pytest.raises(ValidationError, match="must name the period it forecasts"):
         record(output_kind=OutputKind.PROJECTED, model=MODEL, period=Period(season="2025-26", as_of_season="2025-26"))
     with pytest.raises(ValidationError, match="information cutoff"):

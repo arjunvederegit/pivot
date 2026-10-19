@@ -36,7 +36,7 @@ from app.db.models import Base, CandidateEstimate, ModelVersion, PlayerImpactEst
 from .intervals import fit_interval, loto_residuals
 from .pairs import FeatureConfig, PairCache
 from .panel import PlayerSeasonPanel, season_key, season_label
-from .predictors import PREDICTORS, FitContext
+from .predictors import PREDICTORS, FitContext, NotApplicable
 from .provenance import DataSnapshot, config_hash, environment
 from .targets import get_target
 
@@ -127,10 +127,25 @@ def _read_only_computation(db: Session) -> Iterator[None]:
         event.remove(connection, "before_cursor_execute", guard)
 
 
-def _forward_estimates(
+@dataclass
+class ForwardFit:
+    """A model fitted on every transition observable at ``origin``, with what is needed to use it."""
+
+    fitted: object  # modeling.predictors.Fitted
+    predictor: object
+    interval: object  # modeling.intervals.IntervalModel
+    scoring: pd.DataFrame  # the cutoff's feature rows (one per scored player)
+    pred: np.ndarray
+    lo: np.ndarray
+    hi: np.ndarray
+    params: dict
+    counts: dict
+
+
+def forward_fit(
     panel: PlayerSeasonPanel, spec: str, target_name: str, origin: str, features: FeatureConfig,
     seed: int, level: float,
-) -> tuple[pd.DataFrame, dict, dict]:
+) -> ForwardFit:
     """Fit on every transition observable at ``origin`` and forecast ``origin``'s next season."""
     target = get_target(target_name)
     predictor = PREDICTORS[spec]
@@ -146,7 +161,10 @@ def _forward_estimates(
     if len(train) < MIN_TRAINING_ROWS:
         raise CandidateError(f"{len(train)} training rows at {origin}; at least {MIN_TRAINING_ROWS} are needed")
     ctx = FitContext(target=target, seed=seed)
-    fitted = predictor.fit(train, ctx)
+    try:
+        fitted = predictor.fit(train, ctx)
+    except NotApplicable as exc:
+        raise CandidateError(f"{spec} cannot run on this panel: {exc}") from exc
     scoring = cache.features(origin, target).reset_index(drop=True)
     pred = fitted.predict(scoring)
     if not np.isfinite(pred).all():
@@ -158,10 +176,62 @@ def _forward_estimates(
     lo, hi = interval.apply(pred, scoring["window_exposure"].to_numpy(dtype=float))
     if not (np.isfinite(lo).all() and np.isfinite(hi).all()):
         raise CandidateError(f"{spec} produced non-finite intervals for {target_name} at {origin}; nothing was stored")
-    out = scoring.assign(pred=pred, lo=lo, hi=hi)
-    return out, {"fitted": fitted.params, "interval": interval.params()}, {
-        "training_pairs": int(len(train)), "training_origins": origins, "scored": int(len(scoring)),
-    }
+    return ForwardFit(
+        fitted, predictor, interval, scoring, pred, lo, hi,
+        {"fitted": fitted.params, "interval": interval.params()},
+        {"training_pairs": int(len(train)), "training_origins": origins, "scored": int(len(scoring))},
+    )
+
+
+def _forward_estimates(
+    panel: PlayerSeasonPanel, spec: str, target_name: str, origin: str, features: FeatureConfig,
+    seed: int, level: float,
+) -> tuple[pd.DataFrame, dict, dict]:
+    ff = forward_fit(panel, spec, target_name, origin, features, seed, level)
+    return ff.scoring.assign(pred=ff.pred, lo=ff.lo, hi=ff.hi), ff.params, ff.counts
+
+
+#: Suffix of the ``target`` under which a model's posterior of ability (``inferred``) is stored.
+ABILITY_SUFFIX = "@ability"
+
+
+def ability_table(fitted: object, scoring: pd.DataFrame, level: float) -> pd.DataFrame | None:
+    """Per-player posterior of ability at the cutoff, for models that have one (the state-space family)."""
+    if not hasattr(fitted, "posterior"):
+        return None
+    post = fitted.posterior(scoring)  # type: ignore[attr-defined]
+    p = fitted.p  # type: ignore[attr-defined]
+    from app.player_intelligence import rate_models as rm
+
+    lo, hi = post.credible_interval("now", level)
+    rel = rm.reliability(post.var_now, p.tau2)
+    out = pd.DataFrame(
+        {
+            "player_id": scoring["player_id"].to_numpy(),
+            "ability": post.level_now, "ability_sd": np.sqrt(post.var_now), "ability_lo": lo, "ability_hi": hi,
+            "curve": post.curve_now, "reliability": rel, "weight_on_player_record": rel,
+            "effective_attempts": rm.effective_attempts(post.var_now, p.tau2, p.phi, p.unit_variance),
+            "n_observed": post.n_observed.astype(float),
+            "window_exposure": scoring["window_exposure"].to_numpy(dtype=float),
+        }
+    )
+    if not np.isfinite(out.drop(columns=["player_id"]).to_numpy(dtype=float)).all():
+        raise CandidateError("the ability posterior is not finite for every player; nothing was stored")
+    return out
+
+
+#: Models and targets that read integer shot counts, which only the R9.2 skill panel carries.
+SKILL_PANEL_MODELS = frozenset({"state_space", "state_space_role", "beta_binomial"})
+SKILL_PANEL_TARGETS = frozenset({"fg3_pct", "ft_pct"})
+
+
+def panel_for(db: Session, spec: str, target: str) -> PlayerSeasonPanel:
+    """The panel a (model, target) pair needs: R9.1's, or R9.2's with shot counts added."""
+    if spec in SKILL_PANEL_MODELS or target in SKILL_PANEL_TARGETS:
+        from app.player_intelligence.panel import build_skill_panel
+
+        return build_skill_panel(db)
+    return PlayerSeasonPanel.from_db(db)
 
 
 def evaluation_from_experiment(experiment_dir: Path, spec: str, target: str, data_fingerprint: str) -> dict:
@@ -229,10 +299,12 @@ def train_candidate(
     # 1. Everything that is expensive or can fail happens BEFORE any write — under a read-only guard.
     try:
         with _read_only_computation(db):
-            panel = PlayerSeasonPanel.from_db(db)
+            panel = panel_for(db, spec, target)
             if origin not in panel.seasons:
                 raise CandidateError(f"no statistics for {origin}; ingested seasons: {panel.seasons}")
-            scoring, params, counts = _forward_estimates(panel, spec, target, origin, features, seed, level)
+            ff = forward_fit(panel, spec, target, origin, features, seed, level)
+            scoring, params, counts = ff.scoring.assign(pred=ff.pred, lo=ff.lo, hi=ff.hi), ff.params, ff.counts
+            ability = ability_table(ff.fitted, ff.scoring, level)
             snapshot = DataSnapshot.of_panel(panel.as_of(origin).frame)
             target_season = season_label(season_key(origin) + 1)
             if experiment_dir is not None:
@@ -314,6 +386,34 @@ def train_candidate(
                 for r in scoring.itertuples(index=False)
             ]
         )
+        if ability is not None:
+            # R9.2: a model that carries a posterior of ability stores it as `inferred`, beside (never
+            # instead of) its forecast. Same candidate version, same isolation guarantees.
+            db.add_all(
+                [
+                    CandidateEstimate(
+                        model_version_id=model.id,
+                        player_id=str(r.player_id),
+                        season=origin,
+                        target_season=origin,
+                        target=f"{target}{ABILITY_SUFFIX}",
+                        output_kind="inferred",
+                        estimate=float(r.ability),
+                        interval_low=float(r.ability_lo),
+                        interval_high=float(r.ability_hi),
+                        interval_level=level,
+                        exposure=float(r.window_exposure),
+                        inputs={
+                            k: _clean(getattr(r, k))
+                            for k in (
+                                "ability_sd", "curve", "reliability", "weight_on_player_record",
+                                "effective_attempts", "n_observed",
+                            )
+                        } | {"interval_kind": "credible"},
+                    )
+                    for r in ability.itertuples(index=False)
+                ]
+            )
         db.flush()
         _assert_isolated(db, model)
         changed = diff_fingerprints(before, protected_fingerprint(db, exclude_model_id=model.id))

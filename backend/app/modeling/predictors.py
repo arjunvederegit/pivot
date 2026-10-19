@@ -36,6 +36,7 @@ Candidates (answer "does anything beat the baselines?"):
 
 from __future__ import annotations
 
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -539,11 +540,12 @@ class _StateSpaceFitted(Fitted):
     def expected_sampling_variance(self, frame: pd.DataFrame) -> np.ndarray:
         """Sampling variance of next season's statistic if the player takes about as many attempts as lately."""
         h = history_arrays(frame, self.role)
-        unit = np.nanmean(np.where(np.isfinite(h.s2) & np.isfinite(h.exposure), h.s2 * h.exposure, np.nan), axis=1)
-        unit = np.where(np.isfinite(unit), unit, self.p.unit_variance)
-        recent = h.exposure[:, :3]
-        with np.errstate(all="ignore"):
+        with warnings.catch_warnings(), np.errstate(all="ignore"):
+            warnings.simplefilter("ignore", RuntimeWarning)  # "mean of empty slice" = no history, handled below
+            unit = np.nanmean(np.where(np.isfinite(h.s2) & np.isfinite(h.exposure), h.s2 * h.exposure, np.nan), axis=1)
+            recent = h.exposure[:, :3]
             attempts = np.nanmean(np.where(recent > 0, recent, np.nan), axis=1)
+        unit = np.where(np.isfinite(unit), unit, self.p.unit_variance)
         floor = max(self.min_exposure, 1.0)
         attempts = np.where(np.isfinite(attempts), np.maximum(attempts, floor), floor)
         return unit / attempts

@@ -43,6 +43,10 @@ class EvaluationStatus(StrEnum):
     HOLDOUT_CONFIRMED = "holdout_confirmed"
     FAILED = "failed"
     NOT_APPLICABLE = "not_applicable"  # measured values are checked for integrity, not accuracy
+    #: R9.2. A method whose out-of-time accuracy was measured on the development and holdout folds
+    #: and recorded, but which makes no claim to improve on anything: the reference the candidates
+    #: had to beat. "Benchmarked" is not "validated better than alternatives".
+    BENCHMARKED = "benchmarked"
 
 
 class Calibration(BaseModel):
@@ -64,6 +68,22 @@ class Interval(BaseModel):
     #: ``None`` means no calibration evidence: the level is a design target, not a measurement, and
     #: a client must not present it as a probability.
     calibration: Calibration | None = None
+    #: R9.2. What kind of interval this is. ``prediction``: a range for a future *observed* value
+    #: (empirical coverage can and should be measured). ``credible``: a posterior interval for an
+    #: *unobserved* quantity such as ability, under a model whose hyperparameters were estimated from
+    #: data; it is not a frequentist confidence interval and no coverage of it is measurable.
+    kind: Literal["prediction", "credible"] = "prediction"
+    #: A sentence a user can read: what the interval is an interval *of*.
+    interpretation: str | None = None
+
+    @model_validator(mode="after")
+    def _credible_has_no_coverage(self) -> Interval:
+        if self.kind == "credible" and self.calibration is not None:
+            raise ValueError(
+                "a credible interval for an unobserved ability carries no empirical coverage; "
+                "report predictive-check evidence in `interpretation` and the validation record instead"
+            )
+        return self
 
     @model_validator(mode="after")
     def _ordered(self) -> Interval:
@@ -86,6 +106,28 @@ class Sample(BaseModel):
     minutes: float | None = Field(default=None, ge=0)
     attempts: float | None = Field(default=None, ge=0)
     unit: str | None = None
+    #: R9.2. Successes behind a made/attempted rate, and how the integer counts were obtained
+    #: (``exact`` / ``bounded`` / ``unconstrained``; see ``player_intelligence.components``).
+    makes: float | None = Field(default=None, ge=0)
+    counts_quality: str | None = None
+    #: Seasons of evidence an inferred or projected value drew on.
+    seasons_used: int | None = Field(default=None, ge=0)
+
+
+class Reliability(BaseModel):
+    """How much of an inferred value is the player and how much is the league curve. A model
+    quantity, not a probability and not a test-retest correlation (see ``docs/r9-2``)."""
+
+    model_config = ConfigDict(frozen=True)
+    #: Share of between-player ability variance resolved by this player's evidence, in [0, 1].
+    reliability: float = Field(ge=0, le=1, allow_inf_nan=False)
+    #: Attempts of current-season-quality evidence the posterior is equivalent to.
+    effective_attempts: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    #: Where the estimate sits between the league curve (0) and the player's own record (1).
+    weight_on_player_record: float = Field(ge=0, le=1, allow_inf_nan=False)
+    #: The league-curve value this player's estimate is pulled toward.
+    prior_mean: float = Field(allow_inf_nan=False)
+    interpretation: str
 
 
 class SourceRef(BaseModel):
@@ -104,6 +146,9 @@ class ModelRef(BaseModel):
     status: Literal["active", "candidate", "retired", "rejected"]
     evaluation_status: EvaluationStatus = EvaluationStatus.UNEVALUATED
     evaluation_ref: str | None = None
+    #: R9.2. One sentence on the method, and the inputs it read.
+    methodology: str | None = None
+    feature_definitions: list[str] = Field(default_factory=list)
 
 
 class Provenance(BaseModel):
@@ -111,6 +156,8 @@ class Provenance(BaseModel):
     sources: list[SourceRef] = Field(default_factory=list)
     data_snapshot_id: str | None = None
     code_commit: str | None = None
+    #: R9.2. What is needed to regenerate the number: seeds, training window, fitted hyperparameters.
+    reproducibility: dict = Field(default_factory=dict)
 
 
 class PlayerIntelligenceRecord(BaseModel):
@@ -134,6 +181,11 @@ class PlayerIntelligenceRecord(BaseModel):
     provenance: Provenance = Field(default_factory=Provenance)
     assumptions: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+    #: R9.2. ``inferred`` only: how much of the value is the player's own record.
+    reliability: Reliability | None = None
+    #: R9.2. ``projected`` only, and required: the population the forecast is *conditional on*. A
+    #: forecast given that a player takes a rotation role is not a forecast of his total contribution.
+    conditioning: str | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> PlayerIntelligenceRecord:
@@ -145,8 +197,16 @@ class PlayerIntelligenceRecord(BaseModel):
                 raise ValueError("a projected record must state its information cutoff (period.as_of_season)")
             if self.period.as_of_season >= self.target_period.season:
                 raise ValueError("a projection's cutoff must precede the period it forecasts")
+            if not self.conditioning:
+                raise ValueError(
+                    "a projected record must state what it is conditional on (for example, playing a rotation role)"
+                )
         elif self.target_period is not None:
             raise ValueError("only a projected record has a target period")
+        if kind is not OutputKind.INFERRED and self.reliability is not None:
+            raise ValueError("a reliability statement describes an inferred value")
+        if kind is not OutputKind.PROJECTED and self.conditioning is not None:
+            raise ValueError("only a projected record carries a conditioning statement")
         if kind is OutputKind.MEASURED:
             if self.model is not None:
                 raise ValueError("a measured value is an observation, not a model output")
@@ -162,6 +222,12 @@ class PlayerIntelligenceRecord(BaseModel):
             return "observed value; reliability is a question of data integrity, not of estimation"
         if self.interval is None:
             return "no uncertainty is attached to this estimate"
+        if self.interval.kind == "credible":
+            return (
+                f"a nominal {self.interval.nominal_level:.0%} credible interval for an unobserved ability under "
+                f"{self.interval.method}; hyperparameters are estimated from data and treated as known, and its "
+                "frequentist coverage is not claimed"
+            )
         if self.interval.calibration is None:
             return (
                 f"a {self.interval.nominal_level:.0%} interval from {self.interval.method}; its coverage "
