@@ -400,6 +400,18 @@ def get_player_season_stats(team_id: str, db: Session = Depends(get_db)) -> dict
     }
 
 
+def _roster_basis(db: Session, roster_season: str) -> dict | None:
+    """The roster's season basis, or ``None`` when the database cannot supply it (an older schema lacks columns the
+    season context reads: that must not turn the Cap Center into a 500)."""
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
+    try:
+        return tool_seasons(db, roster_season=roster_season).get("roster")
+    except (OperationalError, ProgrammingError):
+        db.rollback()
+        return None
+
+
 @router.get("/{team_id}/cap-outlook")
 def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
     """Multi-season payroll picture for Cap Lab. Fully honest: with no contract data
@@ -561,6 +573,6 @@ def get_cap_outlook(team_id: str, db: Session = Depends(get_db)) -> dict:
         # R9.3A — the financial picture, assembled by the shared service the Trade Evaluator
         # and Player Explorer also read. Additive: every field above is unchanged.
         "financials": team_financial_summary(
-            fin, params, tool_seasons(db, roster_season=roster_season).get("roster")
+            fin, params, _roster_basis(db, roster_season)
         ),
     }

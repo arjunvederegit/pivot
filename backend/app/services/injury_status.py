@@ -57,7 +57,13 @@ def injury_status(db: Session, player_id: str, *, now: datetime | None = None, t
     }
     rows = db.scalars(select(Injury).where(Injury.player_id == player_id, Injury.source_provider == PROVIDER)).all()
     if not rows:
-        return {**base, "available": False, "reason": "No injury is on file for this player in the last feed Pivot read."}
+        return {
+            **base,
+            "available": False,
+            "reason": "No injury is on file for this player in the last feed Pivot read."
+            if checked_at
+            else "Pivot has never read an injury feed, so it has no injury information for this player.",
+        }
     row = sorted(rows, key=lambda r: _aware(r.source_retrieved_at) or datetime.min.replace(tzinfo=UTC))[-1]
     retrieved = _aware(row.source_retrieved_at)
     closed_at = _aware(row.valid_to)
@@ -69,7 +75,8 @@ def injury_status(db: Session, player_id: str, *, now: datetime | None = None, t
             f"{closed_at.date().isoformat()}). That is not a statement that he is healthy.",
         }
     age_hours = round((moment - retrieved).total_seconds() / 3600, 1) if retrieved else None
-    fresh = age_hours is not None and age_hours <= FRESH_HOURS
+    # A retrieval time in the future is not evidence of freshness; it is a bad timestamp, so the reading is stale.
+    fresh = age_hours is not None and 0 <= age_hours <= FRESH_HOURS
     return_passed = bool(row.return_date and row.return_date < day)
     return {
         **base,

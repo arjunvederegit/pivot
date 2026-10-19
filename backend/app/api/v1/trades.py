@@ -63,7 +63,13 @@ def _scenario_weights(db: Session, scenario_id: str | None) -> tuple[str, dict |
 
 
 def _financial_analysis(db: Session, context, legality: dict) -> dict:  # type: ignore[no-untyped-def]
-    seasons = tool_seasons(db)
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
+    try:
+        seasons = tool_seasons(db)
+    except (OperationalError, ProgrammingError):  # an older schema: the season basis is unavailable, the rest is not
+        db.rollback()
+        seasons = {}
     return trade_financial_analysis(
         context,
         legality,

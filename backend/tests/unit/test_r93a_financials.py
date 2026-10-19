@@ -27,7 +27,7 @@ from app.services.financials import (
 from tests.conftest import make_player, make_team
 
 FIN = "2026-27"
-ROSTER = "2025-26"  # the fixtures' roster season (make_player's default)
+ROSTER = "2026-27"  # the roster season of the team tests: the same as the financial season (a mismatch is withheld)
 
 
 def _run(db: Session, season: str, *, outcome: str = "complete", failed: list | None = None, unpriced=None) -> None:
@@ -279,7 +279,7 @@ class TestTeamFinancials:
     def _team(self, db: Session, salaries: list[int | None]):
         team = make_team(db, 1, "AAA")
         for i, salary in enumerate(salaries):
-            p = make_player(db, 100 + i, f"Player {i:02d}", team, salary=salary, contract_type=None)
+            p = make_player(db, 100 + i, f"Player {i:02d}", team, salary=salary, contract_type=None, season=ROSTER)
             if salary is not None:
                 _contract(db, p, {"2027-28": salary})
         _all_seasons(db, "2028-29")
@@ -305,6 +305,37 @@ class TestTeamFinancials:
         assert summary["subtotal_label"] == "Payroll"
         assert summary["payroll"] == 220_000_000
         assert summary["position"]["status"] == "above_first_apron"
+
+    def test_a_roster_from_another_season_is_never_combined_with_this_seasons_cap_hits(self, db: Session, cap_params) -> None:
+        """Round 4 (F9): a 2025-26 roster summed with 2026-27 cap hits gave a 'subtotal' and 'cleared thresholds'."""
+        team = make_team(db, 1, "AAA")
+        for i, salary in enumerate([100_000_000, 70_000_000]):
+            make_player(db, 100 + i, f"P{i}", team, salary=salary, contract_type=None, season="2025-26")
+        params = {k: getattr(cap_params, k) for k in ("salary_cap", "luxury_tax", "first_apron", "second_apron")}
+        summary = team_financial_summary(team_financials(db, team.id, FIN, "2025-26"), params)
+        assert summary["roster_season_differs_from_financial_season"] is True
+        assert summary["thresholds_cleared_by_known_subtotal"] == [] and summary["position"] is None and summary["payroll"] is None
+        assert any("not combined" in w["reason"] for w in summary["withheld"])
+
+    def test_a_player_on_two_current_rosters_withholds_the_payroll(self, db: Session, cap_params) -> None:
+        """Round 4 (F10): a second current RosterEntry counted his salary for both teams."""
+        a, b = make_team(db, 1, "AAA"), make_team(db, 2, "BBB")
+        p = make_player(db, 10, "Double", a, salary=50_000_000, contract_type=None, season=ROSTER)
+        from app.db.models import RosterEntry
+
+        db.add(RosterEntry(team_id=b.id, player_id=p.id, season=ROSTER, is_current=True, age=27.0))
+        db.commit()
+        summary = team_financial_summary(team_financials(db, a.id, FIN, ROSTER), None)
+        assert summary["roster_conflicts"] == ["Double"]
+        assert summary["payroll"] is None and summary["coverage"]["complete"] is False
+        assert any("more than one current roster" in w["reason"] for w in summary["withheld"])
+
+    def test_a_contract_that_ended_before_the_financial_season_is_not_unpriced_or_missing(self, db: Session) -> None:
+        """Round 4 (F11): at CAP_LEAGUE_YEAR=2027-28 a contract that ended in 2026-27 read 'no 2027-28 cap hit'."""
+        team = make_team(db, 1, "AAA")
+        p = make_player(db, 10, "Ended", team, salary=9_000_000, contract_type=None)  # a 2026-27 row only
+        fin = player_financials(db, {p.id: p.full_name}, "2027-28")[p.id]
+        assert fin.status == "unpriced" and "ended before 2027-28" in fin.status_reason and "last year on file: 2026-27" in fin.status_reason
 
     def test_an_empty_roster_is_not_complete(self, db: Session) -> None:
         team = make_team(db, 1, "AAA")

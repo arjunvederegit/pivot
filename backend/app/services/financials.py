@@ -333,17 +333,23 @@ def two_way_salary(
 
 def _years_by_contract(
     db: Session, contract_ids: list[str], from_season: str
-) -> dict[str, list[ContractYear]]:
+) -> tuple[dict[str, list[ContractYear]], dict[str, str]]:
+    """(years from the financial season onward per contract, latest season ON FILE BEFORE it per contract)."""
     out: dict[str, list[ContractYear]] = {}
+    earlier: dict[str, str] = {}
     if not contract_ids:
-        return out
+        return out, earlier
     floor = _season_key(from_season)
     for year in db.scalars(select(ContractYear).where(ContractYear.contract_id.in_(contract_ids))).all():
-        if _valid(year.season) and _season_key(year.season) >= floor:
+        if not _valid(year.season):
+            continue
+        if _season_key(year.season) >= floor:
             out.setdefault(year.contract_id, []).append(year)
+        elif year.contract_id not in earlier or _season_key(year.season) > _season_key(earlier[year.contract_id]):
+            earlier[year.contract_id] = year.season
     for years in out.values():
         years.sort(key=lambda y: _season_key(y.season))
-    return out
+    return out, earlier
 
 
 def player_financials(
@@ -377,13 +383,13 @@ def player_financials(
             # which is what ``app.cba.resolver.salaries`` does, so the tools agree.
             if existing is None or contract.id < existing.id:
                 contracts[contract.player_id] = contract
-    years = _years_by_contract(db, [c.id for c in contracts.values()], financial_season)
+    years, earlier = _years_by_contract(db, [c.id for c in contracts.values()], financial_season)
 
     out: dict[str, PlayerFinancials] = {}
     for pid in ids:
         out[pid] = _assemble(
             players[pid], pid, contracts.get(pid), years, financial_season, info, two_way, observed.get(pid),
-            later_unpriced.get(pid),
+            later_unpriced.get(pid), earlier,
         )
     return out
 
@@ -398,6 +404,7 @@ def _assemble(
     two_way: int | None,
     observed: dict[str, Any] | None = None,
     later_unpriced: list[str] | None = None,
+    earlier: dict[str, str] | None = None,
 ) -> PlayerFinancials:
     if contract is None:
         status, reason = "no_contract", "no contract row on file for this player"
@@ -430,6 +437,11 @@ def _assemble(
     retrieved = current.retrieved_at if current is not None else None
     if current is None:
         status, reason = "unpriced", f"a contract is on file but it has no {financial_season} cap hit"
+        before = (earlier or {}).get(contract.id)
+        if before is not None and not figures:
+            # The only years on file are BEFORE the financial season: the contract ended, which is not "unpriced" nor
+            # "no contract" (found at CAP_LEAGUE_YEAR=2027-28 for contracts that ended in 2026-27).
+            reason = f"the contract on file ended before {financial_season} (last year on file: {before})"
         if observed is not None:
             reason = _observed_reason(observed, financial_season, two_way)
         if figures:  # later seasons carry cap hits: this is not a two-way-only deal, so drop any two-way hint
@@ -536,6 +548,8 @@ class TeamFinancials:
     priced: tuple[PlayerFinancials, ...]
     unpriced: tuple[PlayerFinancials, ...]
     horizon: ContractHorizon
+    #: Names of rostered players who are also on another current roster (a membership contradiction).
+    roster_conflicts: tuple[str, ...] = ()
 
     @property
     def known_subtotal(self) -> int:
@@ -572,7 +586,18 @@ def team_financials(db: Session, team_id: str, financial_season: str, roster_sea
     records = player_financials(db, names, financial_season, horizon_info=info)
     priced = tuple(sorted((r for r in records.values() if r.status == "priced"), key=lambda r: -(r.cap_hit or 0)))
     unpriced = tuple(sorted((r for r in records.values() if r.status != "priced"), key=lambda r: r.name))
-    return TeamFinancials(team_id, financial_season, roster_season, len(entries), priced, unpriced, info)
+    other = {
+        e.player_id
+        for e in db.scalars(
+            select(RosterEntry).where(
+                current_roster_clause(roster_season),
+                RosterEntry.team_id != team_id,
+                RosterEntry.player_id.in_(list(names)),
+            )
+        ).all()
+    } if names else set()
+    conflicts = tuple(sorted(names[pid] for pid in other))
+    return TeamFinancials(team_id, financial_season, roster_season, len(entries), priced, unpriced, info, conflicts)
 
 
 _THRESHOLDS = (
@@ -599,6 +624,8 @@ def team_financial_summary(
     subtotal = fin.known_subtotal if priced else None
     complete = fin.complete
     provisional = bool(roster_basis and roster_basis.get("provisional"))
+    season_mismatch = fin.roster_season != fin.financial_season
+    conflicts = list(fin.roster_conflicts)
 
     withheld: list[dict[str, str]] = []
     supported: list[str] = []
@@ -612,6 +639,24 @@ def team_financial_summary(
             f"Contract years through {fin.horizon.last_season} for rostered players with a priced {fin.financial_season} cap hit."
         )
 
+    if season_mismatch:
+        withheld.append(
+            {
+                "conclusion": "Any conclusion about the roster's money",
+                "reason": f"The roster is the {fin.roster_season} snapshot but the cap hits are {fin.financial_season}: "
+                "players who changed teams would carry a new team's salary to their old team, so the two seasons are not combined.",
+            }
+        )
+    if conflicts:
+        withheld.append(
+            {
+                "conclusion": "Team payroll and everything built on it",
+                "reason": "A player is on more than one current roster ("
+                + ", ".join(conflicts)
+                + "), so his salary would be counted twice; membership must be resolved first.",
+            }
+        )
+    complete = complete and not season_mismatch and not conflicts
     if complete and params:
         payroll = fin.known_subtotal
         position = {
@@ -632,7 +677,7 @@ def team_financial_summary(
         }
         supported.append("Payroll and apron position: every rostered player has a priced contract.")
     else:
-        if params and priced:
+        if params and priced and not season_mismatch and not conflicts:
             cleared = [label for key, label in _THRESHOLDS if fin.known_subtotal > params[key]]
         reason = (
             f"{unpriced} of {total} rostered players have no {fin.financial_season} cap hit on file"
@@ -662,6 +707,8 @@ def team_financial_summary(
         "roster_season": fin.roster_season,
         "roster_basis": roster_basis,
         "roster_is_provisional": provisional,
+        "roster_conflicts": conflicts,
+        "roster_season_differs_from_financial_season": season_mismatch,
         "coverage": {
             "roster_size": total,
             "priced": priced,

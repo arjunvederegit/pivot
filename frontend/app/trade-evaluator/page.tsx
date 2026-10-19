@@ -59,6 +59,7 @@ import { ConsequenceSheet, type SheetAsset, type SheetSide } from "@/components/
 import { SalaryAndContracts } from "@/components/trade/financials";
 import { StagedPlayerNotice } from "@/components/trade/staged-player";
 import { TRANSIENT_KEYS, parseInvestigation } from "@/lib/investigation";
+import { displayStatus } from "@/lib/financials";
 import { LEGALITY_VISUAL } from "@/components/trade/verdict";
 import {
   AddPartnerSlot,
@@ -420,7 +421,7 @@ function TradeEvaluator() {
   const dealState = teamIds.length > 0 ? encodeShareState({ teamIds, moves, picks, name: tradeName || undefined }) : null;
   const loaded = teams ?? [];
   const threeWay = teamIds.length === 3;
-  const overall = validation?.overall_status;
+  const overall = displayStatus(validation?.overall_status, validation?.financial_analysis?.legality_assessment);
   const hasMoves = playerMoves.length > 0;
 
   if (!hydrated) return <BuilderSkeleton />;

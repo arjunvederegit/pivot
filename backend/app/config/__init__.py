@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -83,6 +83,14 @@ class Settings(BaseSettings):
     # 2026 fall under the 2026-27 cap even though the latest completed stats season
     # is 2025-26).
     cap_league_year: str = "2026-27"
+
+    @field_validator("cap_league_year")
+    @classmethod
+    def _cap_league_year_is_a_season(cls, value: str) -> str:
+        """A malformed league year used to surface as a 500 in the first request that parsed it; fail at startup."""
+        from app.canonical.seasons import Season
+
+        return Season.parse(value.strip()).label
 
     # --- BALLDONTLIE (optional; server-side only; Pivot runs without it) ---
     #: Credential for api.balldontlie.io. Read from the environment only, wrapped so it

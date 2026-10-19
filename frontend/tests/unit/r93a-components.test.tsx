@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { LegalityAssessment, SalaryAndContracts } from "@/components/trade/financials";
 import { StagedPlayerNotice } from "@/components/trade/staged-player";
 import { ResearchPreviewPanel } from "@/components/players/skill-evidence";
-import { contractLength, contractLengthShort, dollars, signedMillions } from "@/lib/financials";
+import { contractLength, contractLengthShort, displayStatus, dollars, signedMillions } from "@/lib/financials";
 import type { LegalityAssessment as Assessment, PlayerFinancialsRecord, TradeFinancialAnalysis } from "@/lib/financials";
 import type { RosterPlayer, Team } from "@/lib/types";
 
@@ -235,5 +235,15 @@ describe("research preview is closed by default and fetches experimental data on
     const { container } = wrap(<ResearchPreviewPanel playerId="p" />);
     await waitFor(() => expect(container.querySelector("section")).toBeNull());
     vi.unstubAllGlobals();
+  });
+});
+
+describe("the legality chip never reads 'passes' beside an indeterminate assessment (round 4, F6)", () => {
+  it("downgrades verified_legal when the assessment is not a pass", () => {
+    expect(displayStatus("verified_legal", { verdict: "indeterminate" })).toBe("conditionally_valid");
+    expect(displayStatus("verified_legal", { verdict: "passes_checked_rules" })).toBe("verified_legal");
+    expect(displayStatus("verified_illegal", { verdict: "indeterminate" })).toBe("verified_illegal");
+    expect(displayStatus("conditionally_valid", null)).toBe("conditionally_valid");
+    expect(displayStatus(undefined, null)).toBeUndefined();
   });
 });

@@ -85,6 +85,8 @@ STAT_GROUPS: dict[str, tuple[str, str | None, str]] = {
     "tracking/possessions": ("tracking", "possessions", "unspecified"),
     "hustle": ("hustle", None, "unspecified"),
 }
+#: Previously priced contracts for a season that disappear from a re-read: at or above this many, the read is partial.
+NOT_RESEEN_PARTIAL_THRESHOLD = 3
 DEFAULT_STAT_GROUPS = ("general/base", "general/advanced")
 
 
@@ -372,7 +374,13 @@ def sync_contracts_from_balldontlie(
         uncovered = roster_side_unmatched(db, roster_season, target.label)
         # Complete means: every team answered, no row was rejected or refused, and the season is not empty. A
         # season that fails any of these is `partial` and the contract horizon will not count it.
-        clean_read = not failed_teams and not read_warnings and not refused and bool(records)
+        # Several previously priced contracts for this season that the provider no longer lists look like a team that
+        # answered with nothing (an outage), not a handful of waivers: treat the read as incomplete. One or two missing
+        # rows are tolerated (a waiver is real), and the detail still reports every one (`not_reseen`).
+        dropped_many = len(not_reseen) >= NOT_RESEEN_PARTIAL_THRESHOLD
+        clean_read = (
+            not failed_teams and not read_warnings and not refused and bool(records) and not dropped_many
+        )
         complete = clean_read and not unmapped
         run.rows_written = stats["years_created"] + stats["years_updated"]
         run.detail = {
@@ -384,6 +392,7 @@ def sync_contracts_from_balldontlie(
             "teams_requested": len(team_links),
             "teams_failed": failed_teams,
             "read_warnings": read_warnings[:20],
+            "dropped_many_previously_priced": dropped_many,
             "refused_rows": refused[:50],
             "refused_rows_total": len(refused),
             "identity_extension": identity_extension,
@@ -424,6 +433,16 @@ def sync_injuries_from_balldontlie(db: Session, provider: BalldontlieProvider) -
             raise ProviderSyncError(
                 "injury list was truncated; refusing to close injuries on an incomplete read"
             )
+        if not result.records:
+            open_count = len(
+                db.scalars(select(Injury).where(Injury.source_provider == PROVIDER, Injury.valid_to.is_(None))).all()
+            )
+            if open_count:
+                # An empty feed over open injuries would close every one of them. The league always has injuries; an empty
+                # answer is more likely an outage than good news, and closing is destructive to the record's meaning.
+                raise ProviderSyncError(
+                    f"the injury feed returned no rows while {open_count} injuries are open; refusing to close them"
+                )
         ids = ProviderIdMap(db)
         now = datetime.now(UTC)
         stats: Counter[str] = Counter(dict.fromkeys(("opened", "updated", "unchanged", "closed"), 0))

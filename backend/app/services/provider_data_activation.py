@@ -26,6 +26,7 @@ refresh path instead; this tool refuses a non-SQLite URL rather than guessing.
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import sqlite3
 from dataclasses import dataclass, field
@@ -35,6 +36,7 @@ from typing import Any
 
 from sqlalchemy import Table, create_engine, select, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.db.models import Base
 
@@ -56,6 +58,9 @@ SOURCE_FILTER: dict[str, str] = {
     "data_sync_runs": "job_name IN ('sync_provider_identities','sync_contracts','sync_injuries','sync_provider_stats')",
     # Only CANDIDATE models. An active or retired model of the target is never replaced and none is imported.
     "model_versions": "status = 'candidate' AND is_active = 0",
+    # Only estimates of the candidate models that are copied: an estimate attached to an active model of the target
+    # would be written under a SERVING model (found by the round-4 reviewer).
+    "candidate_estimates": "model_version_id IN (SELECT id FROM model_versions WHERE status = 'candidate' AND is_active = 0)",
 }
 
 #: Which foreign keys to verify against the target before inserting: (table, column) -> parent table.
@@ -163,6 +168,8 @@ def plan(source_path: Path, target_url: str) -> dict[str, Any]:
             raise ActivationRefused(f"the {label} database {p} does not exist")
     source, target = _engine(source_path, read_only=True), _engine(target_path, read_only=True)
     src_rev, tgt_rev = _revision(source), _revision(target)
+    if src_rev is None or tgt_rev is None:
+        raise ActivationRefused("a database has no alembic_version: its schema revision cannot be verified, nothing was written")
     if src_rev != tgt_rev:
         raise ActivationRefused(
             f"schema revisions differ (source {src_rev}, target {tgt_rev}): migrate the target first "
@@ -183,7 +190,11 @@ def plan(source_path: Path, target_url: str) -> dict[str, Any]:
                 else:
                     tp.conflicts.append({"id": row["id"], "differs_in": _diff(row, current)})
                 continue
-            problem = _dangling(name, row, players, teams) or _duplicate_contract(target, name, row)
+            problem = (
+                _dangling(name, row, players, teams)
+                or _duplicate_contract(target, name, row)
+                or _unique_collision(target, name, row)
+            )
             if problem:
                 tp.dangling.append({"id": row["id"], "problem": problem})
             else:
@@ -245,6 +256,29 @@ def _norm(value: Any) -> Any:
     return value
 
 
+#: Unique keys other than the primary key. A row whose key already exists in the target under a different id would fail
+#: the insert with an IntegrityError; the dry run must say so instead.
+UNIQUE_KEYS: dict[str, tuple[str, ...]] = {
+    "provider_entity_ids": ("entity_type", "provider", "provider_id"),
+    "contract_years": ("contract_id", "season"),
+    "provider_stat_snapshots": ("provider", "entity_type", "internal_id", "season", "season_type", "stat_group"),
+    "model_versions": ("model_name", "version"),
+    "candidate_estimates": ("model_version_id", "player_id", "season", "target"),
+}
+
+
+def _unique_collision(target: Engine, table: str, row: dict[str, Any]) -> str | None:
+    cols = UNIQUE_KEYS.get(table)
+    if not cols:
+        return None
+    t = _table(table)
+    with target.connect() as conn:
+        other = conn.execute(
+            select(t.c.id).where(*(t.c[c] == row[c] for c in cols), t.c.id != row["id"])
+        ).first()
+    return f"a row with the same {'/'.join(cols)} already exists in the target under a different id" if other else None
+
+
 def _duplicate_contract(target: Engine, table: str, row: dict[str, Any]) -> str | None:
     """A contract row for a player who already has a DIFFERENT contract row in the target would create two contracts for one
     player (there is no unique index on ``contracts.player_id``): readers pick the lowest id and the legacy chart sums
@@ -281,7 +315,14 @@ def _dangling(table: str, row: dict[str, Any], players: set[str], teams: set[str
 def verified_backup(target_path: Path, backup_dir: Path) -> dict[str, Any]:
     """A consistent copy of the target, proven readable, before anything is written."""
     size = target_path.stat().st_size
-    backup_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        backup_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ActivationRefused(f"the backup directory {backup_dir} cannot be used ({exc.strerror}); nothing was written") from exc
+    if not backup_dir.is_dir():
+        raise ActivationRefused(f"the backup directory {backup_dir} is not a directory; nothing was written")
+    if not os.access(target_path, os.W_OK) or not os.access(target_path.parent, os.W_OK):
+        raise ActivationRefused("the target database or its folder is not writable; nothing was written")
     free = shutil.disk_usage(backup_dir).free
     if free < size * 2 + 50_000_000:
         raise ActivationRefused(
@@ -335,6 +376,18 @@ def apply(source_path: Path, target_url: str, backup_dir: Path) -> dict[str, Any
         raise ActivationRefused(report["blocked_reason"] or "blocked")
     target_path = _sqlite_path(target_url)
     backup = verified_backup(target_path, backup_dir)
+    try:
+        return _apply_in_transaction(source_path, target_path, backup)
+    except ActivationRefused:
+        raise
+    except (OperationalError, IntegrityError, OSError) as exc:
+        # The transaction (if it opened) was rolled back; the verified backup is kept and named so nothing is lost.
+        raise ActivationRefused(
+            f"{type(exc).__name__}: {str(exc)[:200]} — nothing was written; the verified backup is at {backup['path']}"
+        ) from exc
+
+
+def _apply_in_transaction(source_path: Path, target_path: Path, backup: dict[str, Any]) -> dict[str, Any]:
     source = _engine(source_path, read_only=True)
     target = _engine(target_path, read_only=False)
     players, teams = _ids(target, "players"), _ids(target, "teams")

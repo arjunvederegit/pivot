@@ -254,3 +254,18 @@ export function signedMillions(value: number | null | undefined): string {
 export function basisLabel(basis: string | null | undefined): string {
   return basis === "cap_hit" ? "cap-hit basis" : "basis not stated";
 }
+
+/**
+ * The legality chip's state. The engine can say `verified_legal` when its only non-passes are warnings; the assessment
+ * (which counts a warning as unverified) is the stricter account, so the chip never reads "passes" beside an
+ * assessment that says indeterminate.
+ */
+export function displayStatus(
+  engineStatus: string | undefined,
+  assessment: { verdict: AssessmentVerdict } | null | undefined,
+): string | undefined {
+  if (engineStatus === "verified_legal" && assessment && assessment.verdict !== "passes_checked_rules") {
+    return "conditionally_valid";
+  }
+  return engineStatus;
+}

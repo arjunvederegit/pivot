@@ -52,7 +52,7 @@ def _fmt_score(value: float | None) -> str:
 
 
 LEGALITY_LABELS = {
-    "verified_legal": "Verified legal (all implemented rules passed with current data)",
+    "verified_legal": "Passes the rules Pivot checks (every implemented rule passed with current data; not a statement that the trade is legal)",
     "verified_illegal": "Verified illegal (at least one implemented rule failed)",
     "conditionally_valid": "Conditionally valid (implemented rules passed; some required data unavailable)",
     "not_evaluated": "Not evaluated (insufficient data)",
