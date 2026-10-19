@@ -956,7 +956,7 @@ function CapOutlookView({
                 {cell.label}
               </dt>
               <dd
-                className="stat-serif mt-2 text-[2.1rem] leading-none text-foreground"
+                className="stat-serif mt-2 whitespace-nowrap text-[1.6rem] leading-none text-foreground sm:text-[2.1rem]"
                 style={cell.tone ? { color: cell.tone } : undefined}
               >
                 {cell.value}

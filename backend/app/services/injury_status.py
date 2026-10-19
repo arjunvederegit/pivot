@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.canonical.calendar import today_in_league
 from app.db.models import DataSyncRun, Injury, Player
 
 FRESH_HOURS = 24.0
@@ -38,7 +39,8 @@ def injury_status(db: Session, player_id: str, *, now: datetime | None = None, t
     if player is None:
         return {"available": False, "reason": "no such player"}
     moment = now or datetime.now(UTC)
-    day = today or moment.date()
+    # A return date is a calendar day in the league's timezone: UTC midnight made "has the date passed" flip at 8 pm ET.
+    day = today or today_in_league(moment)
     last_run = db.scalar(
         select(DataSyncRun)
         .where(DataSyncRun.job_name == INJURY_JOB, DataSyncRun.status == "succeeded")
@@ -58,12 +60,13 @@ def injury_status(db: Session, player_id: str, *, now: datetime | None = None, t
         return {**base, "available": False, "reason": "No injury is on file for this player in the last feed Pivot read."}
     row = sorted(rows, key=lambda r: _aware(r.source_retrieved_at) or datetime.min.replace(tzinfo=UTC))[-1]
     retrieved = _aware(row.source_retrieved_at)
-    if row.valid_to is not None:
+    closed_at = _aware(row.valid_to)
+    if closed_at is not None:
         return {
             **base,
             "available": False,
             "reason": "The provider stopped listing an injury for this player (closed "
-            f"{_aware(row.valid_to).date().isoformat()}). That is not a statement that he is healthy.",
+            f"{closed_at.date().isoformat()}). That is not a statement that he is healthy.",
         }
     age_hours = round((moment - retrieved).total_seconds() / 3600, 1) if retrieved else None
     fresh = age_hours is not None and age_hours <= FRESH_HOURS
@@ -80,7 +83,15 @@ def injury_status(db: Session, player_id: str, *, now: datetime | None = None, t
         "freshness": "fresh" if fresh else "stale",
         "framing": "current as of retrieval" if fresh else "last reported — may no longer be current",
         "caveats": (
-            ([] if fresh else [f"Retrieved {age_hours:.0f} hours ago; the status may have changed since."])
+            (
+                []
+                if fresh
+                else [
+                    f"Retrieved {age_hours:.0f} hours ago; the status may have changed since."
+                    if age_hours is not None
+                    else "Pivot has no retrieval time for this reading, so its age is unknown; the status may have changed."
+                ]
+            )
             + (["The reported return date has passed; the status may be out of date."] if return_passed else [])
         ),
     }

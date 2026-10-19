@@ -10,7 +10,6 @@ from app.canonical.rosters import current_roster, current_roster_clause, resolve
 from app.canonical.seasons import SeasonType
 from app.canonical.stat_access import player_stat_rows
 from app.canonical.tool_seasons import tool_seasons
-from app.cba import resolver
 from app.config import get_settings
 from app.core.errors import NotFoundError
 from app.db.base import get_db

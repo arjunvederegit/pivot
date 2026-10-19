@@ -136,7 +136,7 @@ class TestContractLength:
     def test_a_contract_through_the_last_season_loaded_is_a_lower_bound(self, db: Session) -> None:
         team = make_team(db, 1, "AAA")
         player = make_player(db, 10, "Long Deal", team)
-        _contract(db, player, {s: 20_000_000 for s in ("2026-27", "2027-28", "2028-29")})
+        _contract(db, player, dict.fromkeys(("2026-27", "2027-28", "2028-29"), 20000000))
         _all_seasons(db, "2028-29")
         fin = player_financials(db, {player.id: player.full_name}, FIN)[player.id]
         assert fin.end_status == "through_horizon"

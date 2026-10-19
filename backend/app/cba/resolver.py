@@ -174,8 +174,8 @@ def roster_is_provisional(db: Session, season: str) -> bool:
         # No database read: the calendar names what a roster taken now can honestly be called (the preseason
         # and the offseason are provisional), and a roster that is not the league season's own is a fallback or
         # historical snapshot — also not the final roster of the season being evaluated.
-        from app.canonical.tool_seasons import season_context_now
         from app.canonical.seasons import Season
+        from app.canonical.tool_seasons import season_context_now
 
         ctx = season_context_now()
         cache[season] = Season.coerce(season) != ctx.league_season or ctx.roster_basis in (

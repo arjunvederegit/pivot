@@ -403,13 +403,12 @@ def _assemble(
 
     not_two_way: bool | None = None
     basis: str | None = None
-    if current is not None and two_way is not None:
-        if current.cap_hit > two_way:
-            not_two_way = True
-            basis = (
-                f"cap hit {current.cap_hit:,} exceeds the {financial_season} two-way salary {two_way:,} "
-                "(a league parameter); a two-way contract is paid exactly that figure, so this is not one"
-            )
+    if current is not None and two_way is not None and current.cap_hit > two_way:
+        not_two_way = True
+        basis = (
+            f"cap hit {current.cap_hit:,} exceeds the {financial_season} two-way salary {two_way:,} "
+            "(a league parameter); a two-way contract is paid exactly that figure, so this is not one"
+        )
     return PlayerFinancials(
         player_id=player_id,
         name=name,

@@ -29,6 +29,7 @@ from app.db.models import (
     Contract,
     ContractYear,
     Injury,
+    LeagueCapParameters,
     ModelVersion,
     PlayerImpactEstimate,
     PlayerSeasonStats,
@@ -37,6 +38,8 @@ from app.db.models import (
     RosterEntry,
     Team,
 )
+from app.modeling.contract import OutputKind
+from app.player_intelligence.quantities import QUANTITIES
 from app.services.financials import horizon, team_financials
 
 
@@ -94,10 +97,12 @@ def operational_readiness(db: Session, *, now: datetime | None = None) -> dict[s
 
     # ---------------------------------------------------------------- statistics
     stat_seasons = {
-        season: n
-        for season, n in db.execute(
+        str(season): int(n)
+        for season, n in (
+            db.execute(
             select(PlayerSeasonStats.season, func.count()).where(PlayerSeasonStats.stat_type == "base").group_by(PlayerSeasonStats.season)
-        ).all()
+            ).all()
+        )
     }
     snapshot_groups = [
         {"stat_group": g, "season": s, "season_type": st, "players": n, "aggregation": a, "retrieved_at": _iso(r)}
@@ -158,7 +163,7 @@ def operational_readiness(db: Session, *, now: datetime | None = None) -> dict[s
             }
         )
     rows_by_season = {
-        season: n
+        str(season): int(n)
         for season, n in db.execute(select(ContractYear.season, func.count()).group_by(ContractYear.season)).all()
     }
     contracts = {
@@ -212,16 +217,18 @@ def operational_readiness(db: Session, *, now: datetime | None = None) -> dict[s
     )
     player_intelligence = {
         "preview_route_enabled": settings.player_intelligence_preview,
-        "measured_quantities_served": 11,
+        "measured_quantities_served": sum(1 for q in QUANTITIES.values() if OutputKind.MEASURED in q.kinds),
         "candidate_models": dict(candidates),
         "needs_materialise_skills": not candidates,
         "active_tei_model": tei_model.version if tei_model else None,
         "active_tei_estimates": tei_estimates,
         "class": "experimental_preview" if candidates else "verified_display",
+        "any_candidate_active": any(v["is_active"] or v["status"] == "active" for vs in candidates.values() for v in vs),
         "class_reason": "measured values are served from stored season rows; inferred and projected values come only from stored candidate "
-        "models and are labelled experimental; no candidate is promoted",
+        "models and are labelled experimental unless a record's own model fields say active and holdout-confirmed",
     }
 
+    cap_years = {y for (y,) in db.execute(select(LeagueCapParameters.league_year)).all()}
     return {
         "as_of": moment.isoformat(),
         "financial_season": financial_season,
@@ -233,9 +240,9 @@ def operational_readiness(db: Session, *, now: datetime | None = None) -> dict[s
         "injuries": injuries,
         "player_intelligence": player_intelligence,
         "classes": {
-            "verified_display": ["NBA.com season statistics (2025-26 regular season)", "measured player quantities", "cap parameters for 2025-26 and 2026-27"],
+            "verified_display": [f"NBA.com season statistics ({statistics['performance_season']} regular season)", "measured player quantities", "cap parameters on file: " + (", ".join(sorted(cap_years)) or "none")],
             "experimental_preview": ["inferred shooting ability", "next-season shooting projections (conditional on playing)"],
-            "partial": ["2026-27 rosters (provisional)", "contracts (cap hits for most rostered players, no complete payroll)", "injury status (dated by retrieval only)"],
+            "partial": [f"{roster_season} rosters" + (" (provisional)" if rosters["provisional"] else ""), "contracts (cap hits for most rostered players, no complete payroll)", "injury status (dated by retrieval only)"],
             "unavailable": ["team payroll / cap space / apron position", "contract options, guarantees, no-trade clauses, signing dates", "defence, shot-location impact, overall rating"],
         },
     }

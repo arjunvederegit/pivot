@@ -24,6 +24,7 @@ import {
   conditioningSentence,
   evaluationWords,
   evidenceTier,
+  fewAttempts,
   formatInterval,
   formatQuantity,
   sampleSentence,
@@ -43,10 +44,13 @@ function isDisabled(error: unknown): boolean {
 
 /* ----------------------------------------------------------------------- observed */
 
-export function ObservedPerformancePanel({ playerId }: { playerId: string }) {
+/** The cutoff is the page's own performance season, so the evidence agrees with the header and the TEI card. */
+const measuredQuery = (asOf: string | null) => `kinds=measured${asOf ? `&as_of=${encodeURIComponent(asOf)}` : ""}`;
+
+export function ObservedPerformancePanel({ playerId, asOf }: { playerId: string; asOf: string | null }) {
   const { data, error } = useQuery({
-    queryKey: ["player-intel-measured", playerId],
-    queryFn: () => api.get<IntelResponse>(ENDPOINT(playerId, "kinds=measured")),
+    queryKey: ["player-intel-measured", playerId, asOf],
+    queryFn: () => api.get<IntelResponse>(ENDPOINT(playerId, measuredQuery(asOf))),
     staleTime: 300_000,
     retry: false,
   });
@@ -55,6 +59,13 @@ export function ObservedPerformancePanel({ playerId }: { playerId: string }) {
   const season = data?.records.find((r) => r.output_kind === "measured")?.period;
   const ctx = (data?.context ?? {}) as { season?: { games?: number; minutes?: number } };
   const thin = [...measured.values()].some(thinSample);
+  // The server's own per-record caveats (two-team season totals, unstable shares in a few minutes, a recomputed
+  // figure that differs from the published one) — shown once, with the quantity they belong to.
+  const measuredNotes = [
+    ...new Set(
+      [...measured.values()].flatMap((r) => r.limitations.map((l) => `${QUANTITY_LABEL[r.quantity] ?? r.quantity}: ${l}`)),
+    ),
+  ];
 
   return (
     <Panel
@@ -81,7 +92,12 @@ export function ObservedPerformancePanel({ playerId }: { playerId: string }) {
       ) : !data ? (
         <SkeletonRows rows={5} height="h-8" />
       ) : measured.size === 0 ? (
-        <UnavailableNotice reason="No measured season is on file for this player (for example, a rookie without a prior NBA season)." />
+        <UnavailableNotice
+          reason={
+            data.unavailable.find((u) => u.kind === "measured")?.reason ??
+            "No measured season is on file for this player for the selected period."
+          }
+        />
       ) : (
         <div className="space-y-5">
           {QUANTITY_GROUPS.map((group) => {
@@ -104,6 +120,11 @@ export function ObservedPerformancePanel({ playerId }: { playerId: string }) {
                         </Td>
                         <Td className="text-[12px] text-faint">
                           {sampleSentence(r) ?? ""}
+                          {fewAttempts(r) && (
+                            <span className="ml-1.5 rounded-[3px] border border-conditional/40 px-1 py-px text-[10.5px] text-conditional">
+                              few attempts
+                            </span>
+                          )}
                         </Td>
                       </tr>
                     ))}
@@ -112,6 +133,15 @@ export function ObservedPerformancePanel({ playerId }: { playerId: string }) {
               </div>
             );
           })}
+          {measuredNotes.length > 0 && (
+            <Explainer summary={`Notes on these figures (${measuredNotes.length})`}>
+              <ul className="list-disc space-y-1 pl-5">
+                {measuredNotes.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+            </Explainer>
+          )}
           {data.unavailable
             .filter((u) => u.kind === "measured")
             .map((u) => (
@@ -127,7 +157,7 @@ export function ObservedPerformancePanel({ playerId }: { playerId: string }) {
           <SourceRail
             source={
               data.records[0]?.provenance.sources[0]
-                ? `${data.records[0].provenance.sources[0].provider} · ${data.records[0].provenance.sources[0].dataset} · snapshot ${data.records[0].provenance.data_snapshot_id ?? "n/a"}`
+                ? `${data.records[0].provenance.sources[0].provider === "nba_api" ? "NBA.com" : data.records[0].provenance.sources[0].provider} · ${data.records[0].provenance.sources[0].dataset} · snapshot ${data.records[0].provenance.data_snapshot_id ?? "n/a"}`
                 : "NBA.com season statistics"
             }
             retrievedAt={data.records[0]?.provenance.sources[0]?.retrieved_at ?? null}
@@ -222,6 +252,9 @@ function ExperimentalRow({ record, statement }: { record: IntelRecord; statement
           ? `Estimate of underlying ability at the end of ${record.period.season} — not an observed rate.`
           : `Projection for ${record.target_period?.season ?? "the next season"}. ${condition ?? ""}`}
       </p>
+      {record.reliability && (
+        <p className="mt-1 text-[12px] leading-relaxed text-muted">{record.reliability.interpretation}</p>
+      )}
       {statement && <p className="mt-1 text-[11.5px] leading-relaxed text-faint">{statement}</p>}
       <p className="mt-1 text-[11.5px] text-faint">
         {record.model?.version} · {evaluationWords(record.model?.evaluation_status)}
@@ -231,18 +264,20 @@ function ExperimentalRow({ record, statement }: { record: IntelRecord; statement
   );
 }
 
-export function ResearchPreviewPanel({ playerId }: { playerId: string }) {
+export function ResearchPreviewPanel({ playerId, asOf = null }: { playerId: string; asOf?: string | null }) {
   const [open, setOpen] = useState(false);
   const probe = useQuery({
-    queryKey: ["player-intel-measured", playerId],
-    queryFn: () => api.get<IntelResponse>(ENDPOINT(playerId, "kinds=measured")),
+    queryKey: ["player-intel-measured", playerId, asOf],
+    queryFn: () => api.get<IntelResponse>(ENDPOINT(playerId, measuredQuery(asOf))),
     staleTime: 300_000,
     retry: false,
   });
   const experimental = useQuery({
-    queryKey: ["player-intel-experimental", playerId],
+    queryKey: ["player-intel-experimental", playerId, asOf],
     queryFn: () =>
-      api.get<IntelResponse>(ENDPOINT(playerId, "kinds=inferred,projected&include_experimental=true")),
+      api.get<IntelResponse>(
+        ENDPOINT(playerId, `kinds=inferred,projected&include_experimental=true${asOf ? `&as_of=${encodeURIComponent(asOf)}` : ""}`),
+      ),
     enabled: open && !isDisabled(probe.error),
     staleTime: 300_000,
     retry: false,
@@ -393,7 +428,7 @@ export function ShotProfilePanel({ playerId }: { playerId: string }) {
                   <Th>Share of attempts · per game</Th>
                   <Th numeric>FG%</Th>
                   <Th numeric>League</Th>
-                  <Th numeric>vs league</Th>
+                  <Th numeric>vs league (pts)</Th>
                 </tr>
               </thead>
               <tbody>

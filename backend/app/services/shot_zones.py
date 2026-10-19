@@ -76,7 +76,7 @@ def league_zone_rates(db: Session, season: str) -> dict[str, dict[str, float]]:
             )
         ).all()
     }
-    totals = {key: [0.0, 0.0, 0] for key, _ in ZONES}
+    totals: dict[str, list[float]] = {key: [0.0, 0.0, 0.0] for key, _ in ZONES}
     for row in db.scalars(
         select(ProviderStatSnapshot).where(
             ProviderStatSnapshot.provider == PROVIDER,
@@ -96,9 +96,9 @@ def league_zone_rates(db: Session, season: str) -> dict[str, dict[str, float]]:
                 continue
             totals[key][0] += fga * games
             totals[key][1] += fgm * games
-            totals[key][2] += 1
+            totals[key][2] += 1.0
     return {
-        key: {"fga": t[0], "fgm": t[1], "pct": (t[1] / t[0]) if t[0] > 0 else None, "players": t[2]}
+        key: {"fga": t[0], "fgm": t[1], "pct": (t[1] / t[0]) if t[0] > 0 else None, "players": t[2]}  # type: ignore[dict-item]
         for key, t in totals.items()
     }
 
@@ -141,7 +141,8 @@ def shot_zone_profile(db: Session, player_id: str) -> dict[str, Any]:
             "reason": "The player's per-game field-goal attempts (general/base) are not stored, so the zone unit "
             "cannot be reconciled and the zones are withheld.",
         }
-    if abs(total_pg - base_fga) > RECONCILE_TOLERANCE:
+    # Both sides are rounded to a tenth by the provider; compare in tenths so 4.8 - 4.4 is 0.4, not 0.4000000000000004.
+    if round(abs(total_pg - base_fga), 1) > RECONCILE_TOLERANCE:
         return {
             **common,
             "available": False,

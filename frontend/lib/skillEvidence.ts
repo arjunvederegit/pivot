@@ -58,7 +58,14 @@ export interface IntelRecord {
   };
   assumptions: string[];
   limitations: string[];
-  reliability: number | null;
+  /** Inferred records only: how much of the value is the player's own record versus the league curve. */
+  reliability: {
+    reliability: number;
+    effective_attempts: number | null;
+    weight_on_player_record: number | null;
+    prior_mean: number | null;
+    interpretation: string;
+  } | null;
   conditioning: unknown;
 }
 
@@ -94,10 +101,12 @@ export function evidenceTier(record: IntelRecord): EvidenceTier {
 
 const EVALUATION_WORDS: Record<string, string> = {
   development_only: "development evidence only — not confirmed on held-out data",
-  holdout_confirmed: "confirmed on a held-out test, still a candidate",
+  // R9.2's own wording: the pre-registered holdout check passed, the effect is small and was not corrected for
+  // multiple comparisons, and "confirmed" is not a claim of certainty.
+  holdout_confirmed: "passed its pre-registered held-out check — a small effect, not a claim of certainty; still a candidate",
   benchmarked: "a benchmark method, not a claim of skill",
   failed: "failed its evaluation",
-  not_evaluated: "not evaluated",
+  unevaluated: "not evaluated",
 };
 
 export function evaluationWords(status: string | undefined): string {
@@ -142,9 +151,8 @@ export function formatQuantity(quantity: string, value: number | null): string {
 
 export function formatInterval(quantity: string, i: IntelInterval | null): string | null {
   if (!i) return null;
-  return `${formatQuantity(quantity, i.low)} – ${formatQuantity(quantity, i.high)} (${Math.round(i.nominal_level * 100)}% ${
-    i.kind === "credible" ? "credible range" : "prediction range"
-  })`;
+  const kind = i.kind === "credible" ? "credible range" : i.kind === "prediction" ? "prediction range" : "range";
+  return `${formatQuantity(quantity, i.low)} – ${formatQuantity(quantity, i.high)} (${Math.round(i.nominal_level * 100)}% ${kind})`;
 }
 
 /** "47 of 143 three-point attempts" — what the figure rests on, with a flag when it is a reconstruction. */
@@ -152,8 +160,11 @@ export function sampleSentence(record: IntelRecord): string | null {
   const s = record.sample;
   if (!s) return null;
   const parts: string[] = [];
+  const bounded = s.attempts_min !== null && s.attempts_max !== null && s.attempts_min !== s.attempts_max;
   if (s.makes !== null && s.attempts !== null) {
-    parts.push(`${Math.round(s.makes)} of ${Math.round(s.attempts)}${s.unit ? ` ${s.unit}` : ""}`);
+    parts.push(
+      `${Math.round(s.makes)} of ${bounded ? `${Math.round(s.attempts_min as number)}–${Math.round(s.attempts_max as number)}` : Math.round(s.attempts)}${s.unit ? ` ${s.unit}` : ""}`,
+    );
   } else if (s.attempts !== null) {
     parts.push(`${Math.round(s.attempts).toLocaleString("en-US")}${s.unit ? ` ${s.unit}` : ""}`);
   }
@@ -171,8 +182,16 @@ export function thinSample(record: IntelRecord): boolean {
   return false;
 }
 
+/** A rate resting on very few attempts is thin whatever the number of games (a 3-for-9 shooter has played plenty). */
+export const FEW_ATTEMPTS = 30;
+export function fewAttempts(record: IntelRecord): boolean {
+  const s = record.sample;
+  return Boolean(s && s.attempts !== null && s.makes !== null && s.attempts < FEW_ATTEMPTS);
+}
+
 /** The statement that must accompany any projection: what it is conditional on. */
 export function conditioningSentence(record: IntelRecord): string | null {
   if (record.output_kind !== "projected") return null;
-  return record.interval?.interpretation ?? "conditional on the player playing in the target season";
+  const stated = typeof record.conditioning === "string" ? record.conditioning : null;
+  return stated ?? record.interval?.interpretation ?? "conditional on the player playing a rotation role in the target season";
 }

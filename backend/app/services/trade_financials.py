@@ -27,7 +27,7 @@ from collections import defaultdict
 from typing import Any
 
 from app.cba.context import PlayerAsset, TeamContext, TradeContext
-from app.services.financials import CAP_HIT_NOTE, NOT_ON_FILE, PlayerFinancials
+from app.services.financials import CAP_HIT_NOTE, NOT_ON_FILE
 
 #: Restrictions Pivot does not implement (docs/cba-rule-coverage.md, "Explicitly unsupported"), plus the
 #: ones that need data no provider here supplies. Always attached to a legality assessment.
@@ -50,7 +50,7 @@ LEGALITY_STATEMENT = (
 
 
 def _asset_row(asset: PlayerAsset) -> dict[str, Any]:
-    fin: PlayerFinancials | None = asset.financials  # type: ignore[assignment]
+    fin = asset.financials
     return {
         "player_id": asset.player_id,
         "name": asset.name,
@@ -73,8 +73,8 @@ def _side(assets: list[PlayerAsset]) -> dict[str, Any]:
     known = [a for a in assets if a.salary is not None]
     unknown = [a.name for a in assets if a.salary is None]
     fins = [a.financials for a in assets if a.financials is not None]
-    cash_known = all(f.current and f.current.total_cash is not None for f in fins) if fins else False
-    base_known = all(f.current and f.current.base_salary is not None for f in fins) if fins else False
+    cash_known = bool(fins) and all(f.current is not None and f.current.total_cash is not None for f in fins)
+    base_known = bool(fins) and all(f.current is not None and f.current.base_salary is not None for f in fins)
     complete = not unknown
     return {
         "players": [a.name for a in assets],
@@ -98,7 +98,7 @@ def _commitments(team: TeamContext, params_season: str, seasons: list[str]) -> l
             total = 0
             unknown: list[str] = []
             for asset in assets:
-                fin: PlayerFinancials | None = asset.financials  # type: ignore[assignment]
+                fin = asset.financials
                 if fin is None or fin.status != "priced":
                     unknown.append(asset.name)
                     continue
@@ -181,8 +181,16 @@ _RULE_TITLES = {
 }
 
 
-def legality_assessment(legality: dict[str, Any], team_names: dict[str, str]) -> dict[str, Any]:
-    """Group the engine's rule results into checked / failed / unverified, with a conservative verdict."""
+def legality_assessment(
+    legality: dict[str, Any], team_names: dict[str, str], *, roster_provisional: bool = False
+) -> dict[str, Any]:
+    """Group the engine's rule results into checked / failed / unverified, with a conservative verdict.
+
+    ``roster_provisional``: the roster snapshot is a preseason / offseason one. The engine's roster-count rule still
+    fails on it (a rule outcome this release does not change — it gates the basketball evaluation), but the
+    assessment says the failure was measured on a snapshot that may still hold camp contracts, and lowers its
+    confidence accordingly.
+    """
     by_rule: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for result in legality["rule_results"]:
         by_rule[result["rule_code"]].append(result)
@@ -214,6 +222,12 @@ def legality_assessment(legality: dict[str, Any], team_names: dict[str, str]) ->
                 "source_reference": r.get("source_reference", ""),
                 "calculation": r.get("calculation", {}),
             }
+            if roster_provisional and code == "ROSTER_SIZE" and r["status"] == "fail":
+                entry["confidence"] = "low"
+                entry["message"] += (
+                    " This count is of a provisional preseason roster snapshot, which can still hold camp, Exhibit 10 "
+                    "and two-way players, so it may not be the final roster."
+                )
             entries.append(entry)
             if r["status"] == "pass":
                 checked.append(entry)
@@ -240,7 +254,7 @@ def legality_assessment(legality: dict[str, Any], team_names: dict[str, str]) ->
         headline = "Prohibited under " + ", ".join(names) + " (a checked rule fails; the failure stands whatever else is unverified)."
         if any(f["confidence"] != "high" for f in failed):
             headline += (
-                " Confidence is medium: the payroll floor behind it comes from the current roster snapshot, "
+                " Confidence is reduced: the failing check rests on the current roster snapshot, "
                 "which may still hold camp contracts."
             )
     elif unverified:
@@ -290,7 +304,7 @@ def trade_financial_analysis(
 
     horizon_seasons: list[str] = []
     for asset in moved:
-        fin: PlayerFinancials | None = asset.financials  # type: ignore[assignment]
+        fin = asset.financials
         if fin is not None:
             for figures in fin.seasons:
                 if figures.season not in horizon_seasons:
@@ -329,6 +343,8 @@ def trade_financial_analysis(
         "players": [_asset_row(a) for a in moved],
         "teams": teams,
         "not_on_file": NOT_ON_FILE,
-        "legality_assessment": legality_assessment(legality, team_names),
+        "legality_assessment": legality_assessment(
+            legality, team_names, roster_provisional=context.roster_provisional
+        ),
         "contract_provider_configured": context.contract_provider_configured,
     }

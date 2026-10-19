@@ -79,6 +79,7 @@ describe("wording", () => {
       sample: { games: 60, minutes: 1000, attempts: 143, unit: "three-point attempts", makes: 47, counts_quality: "range", attempts_min: 140, attempts_max: 146, seasons_used: null },
     });
     expect(sampleSentence(rough)).toContain("reconstructed");
+    expect(sampleSentence(rough)).toContain("47 of 140–146");
   });
   it("flags a thin season", () => {
     expect(thinSample(record({ sample: { games: 16, minutes: 521, attempts: null, unit: null, makes: null, counts_quality: null, attempts_min: null, attempts_max: null, seasons_used: null } }))).toBe(true);
@@ -90,7 +91,9 @@ describe("wording", () => {
   });
   it("explains an evaluation status in words, and never dresses development evidence as confirmation", () => {
     expect(evaluationWords("development_only")).toMatch(/not confirmed/);
+    expect(evaluationWords("holdout_confirmed")).toMatch(/small effect, not a claim of certainty/);
     expect(evaluationWords("holdout_confirmed")).toMatch(/still a candidate/);
+    expect(evaluationWords("unevaluated")).toBe("not evaluated");
     expect(evaluationWords(undefined)).toBe("unknown");
   });
 });

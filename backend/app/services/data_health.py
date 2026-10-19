@@ -283,11 +283,22 @@ def data_health(db: Session) -> dict:
     contracts_run = latest_run("sync_contracts")
     contracts_rows = int(tables.get("contracts", {}).get("rows") or 0)
     # R8.3: how much of the roster the stored contracts price, from the run that wrote them.
-    contracts_detail = db.scalar(
-        select(DataSyncRun.detail)
-        .where(DataSyncRun.job_name == "sync_contracts", DataSyncRun.status == "succeeded")
-        .order_by(DataSyncRun.started_at.desc())
-        .limit(1)
+    # R9.3A: the coverage is the *financial season's* — a later run for a future season (2030-31 prices 19 players)
+    # must not be read as the roster's coverage. Falls back to the latest run when none names the season.
+    contracts_details = list(
+        db.scalars(
+            select(DataSyncRun.detail)
+            .where(DataSyncRun.job_name == "sync_contracts", DataSyncRun.status == "succeeded")
+            .order_by(DataSyncRun.started_at.desc())
+        ).all()
+    )
+    contracts_detail = next(
+        (
+            d
+            for d in contracts_details
+            if isinstance(d, dict) and d.get("season") == get_settings().cap_league_year
+        ),
+        contracts_details[0] if contracts_details else None,
     )
     contracts_cov = (contracts_detail or {}).get("coverage") if isinstance(contracts_detail, dict) else None
     contracts_share = contracts_cov.get("roster_coverage_share") if isinstance(contracts_cov, dict) else None

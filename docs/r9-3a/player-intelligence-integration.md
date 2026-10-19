@@ -7,7 +7,8 @@ browser, and without weakening a single R9.2 safeguard.
 
 > The backend decides what may be served and on what terms. The browser decides only the words — and is built so the wrong words are unreachable.
 
-* Player Explorer calls `GET /players/{id}/intelligence` (the shared service route) and `GET /players/{id}/shot-zones`. No React component computes a statistic.
+* Player Explorer calls `GET /players/{id}/intelligence` (the shared service route) and `GET /players/{id}/shot-zones`, passing the page's own **performance season** as the cutoff (`as_of`), so the evidence
+  agrees with the header and the TEI card instead of following "the latest ingested season". No React component computes a statistic.
 * **Read-only.** A request never trains, materialises or publishes. Inferred and projected values are read from the stored candidate estimates that
   `make materialise-skills` wrote; a cutoff with no stored model is *unavailable*, never computed on the fly.
 * The route is `404` unless `PLAYER_INTELLIGENCE_PREVIEW=true`. With it off the Player Explorer hides the two panels (a 404 is "not enabled here", not an error). The isolated
@@ -17,8 +18,8 @@ browser, and without weakening a single R9.2 safeguard.
 
 | Layer | Source | Always shown with |
 | --- | --- | --- |
-| **Observed performance** | `kinds=measured`: true shooting, 3P%, FT%, assist rate, assist-to-turnover, rebound rates, usage, minutes, games | the named season and season type, makes/attempts or the sample it rests on, a "thin season" flag when the season has < 20 games or < 300 minutes, source, data snapshot id and retrieval time |
-| **Research preview — experimental estimates** | `kinds=inferred,projected&include_experimental=true`, **fetched only when the reader opens it** | the word *experimental*, model name and version, evaluation status in words, interval (kind and level), the record's own reliability sentence, and the condition a projection holds under |
+| **Observed performance** | `kinds=measured`: true shooting, 3P%, FT%, assist rate, assist-to-turnover, rebound rates, usage, minutes, games | the named season and season type, makes/attempts (or the bounded range when counts are reconstructed) or the sample it rests on, a "thin season" flag when the season has < 20 games or < 300 minutes, a "few attempts" flag below 30, the server's own per-record notes (two-team totals, unstable shares in few minutes), source, data snapshot id and retrieval time |
+| **Research preview — experimental estimates** | `kinds=inferred,projected&include_experimental=true`, **fetched only when the reader opens it** | the word *experimental*, model name and version, evaluation status in words, interval (kind and level), **how much of an inferred value is the player's own record versus the league curve** (the record's `reliability.interpretation`), the record's own reliability sentence, and the condition a projection holds under |
 | **Shot profile** | BALLDONTLIE `shooting/by_zone` via `/shot-zones` | season, units, per-zone share and FG% against the league, "thin" flags, unit reconciliation, limits |
 | **Unavailable dimensions** | the service's `unavailable` list | the reason, verbatim (e.g. "usage is a role a coach assigns, not an ability") |
 
@@ -46,8 +47,10 @@ browser, and without weakening a single R9.2 safeguard.
 
 BALLDONTLIE's shot-zone figures were stored in R8.3 with `aggregation = unspecified` (unreconciled). `app/services/shot_zones.py` reconciles the unit **per player, per request**: the six
 non-backcourt zones' attempts per game plus backcourt must equal the season's per-game field-goal attempts (`general/base`, verified against NBA.com in R8.3) within 0.4. If they do not,
-the zones are **withheld with the reason** — never shown on an unverified unit. Measured on the preview data: **522 of 570 players reconcile; 48 are withheld** (typically multi-team seasons
-where the two rows describe different team stints).
+the zones are **withheld with the reason** — never shown on an unverified unit. Measured on the preview data: **522 of 570 players reconcile; 48 are withheld** (the cause is not established: 44 of the withheld
+are single-team players, and 69 of 72 multi-team players reconcile, so it is not simply a multi-team artefact). The tolerance (0.4 per game) is the theoretical maximum of the provider's
+tenth-rounding, compared in tenths; the observed gaps are skewed positive (mean +0.09), which independent rounding would not produce, so the check proves the *unit* is attempts per game,
+not that every individual zone count is exact — the panel says so.
 
 Figures are per game, rounded to a tenth, so a zone with fewer than 25 approximate season attempts is flagged "thin" and its percentage greyed. The league line is Σ makes / Σ attempts across
 every player with a row, weighted by games. The panel states that it is descriptive: role, teammates and scheme choose shots as much as ability does.

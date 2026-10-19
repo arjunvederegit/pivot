@@ -14,7 +14,8 @@
  *    see listed rather than dropped;
  *  - Contract — the imported contract, or the honest notice that there is none.
  *
- * There is no shot-profile tab: Pivot has no shot-location data, so it draws none.
+ * The Advanced tab also carries the R9.3A panels: measured performance, a shot profile (descriptive, from
+ * BALLDONTLIE shot-zone averages) and a closed-by-default research preview of experimental estimates.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -230,10 +231,10 @@ export default function PlayerPage({ params }: { params: Promise<{ playerId: str
             {/* R9.3A: measured performance and shot profile first, then the closed-by-default research
                 preview; the legacy percentile skill profile keeps its place below. */}
             <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-              <ObservedPerformancePanel playerId={playerId} />
+              <ObservedPerformancePanel playerId={playerId} asOf={data.season_context?.performance?.season ?? null} />
               <ShotProfilePanel playerId={playerId} />
             </div>
-            <ResearchPreviewPanel playerId={playerId} />
+            <ResearchPreviewPanel playerId={playerId} asOf={data.season_context?.performance?.season ?? null} />
             <SkillsPanel intelligence={intelligence} error={intelligenceError} />
             <UnmeasuredPanel intelligence={intelligence} />
           </div>

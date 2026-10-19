@@ -10,7 +10,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatDay } from "@/lib/format";
 import { Badge, Panel, SkeletonRows, SourceRail } from "@/components/ui";
 
 interface InjuryPayload {
@@ -49,7 +49,7 @@ export function InjuryCard({ playerId }: { playerId: string }) {
           </div>
           <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-y-1 text-[13px]">
             <dt className="text-faint">Expected return</dt>
-            <dd className="text-foreground">{data.return_date ? formatDate(data.return_date) : "not reported"}</dd>
+            <dd className="text-foreground">{data.return_date ? formatDay(data.return_date) : "not reported"}</dd>
             <dt className="text-faint">Pivot read it</dt>
             <dd className="text-foreground">{formatDate(data.retrieved_at)}</dd>
           </dl>

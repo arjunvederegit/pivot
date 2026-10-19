@@ -62,3 +62,22 @@ def test_a_closed_row_says_no_longer_reported_not_healthy(db: Session) -> None:
 
 def test_an_unknown_player(db: Session) -> None:
     assert injury_status(db, "nope")["available"] is False
+
+
+def test_a_reading_with_no_retrieval_time_does_not_crash_and_says_its_age_is_unknown(db: Session) -> None:
+    """Round-2 F9: a NULL ``source_retrieved_at`` raised ``TypeError`` formatting ``None`` (a 500 from the route)."""
+    p = make_player(db, 1, "Undated", make_team(db, 1, "AAA"))
+    db.add(Injury(player_id=p.id, status="Out", source_provider="balldontlie", source_retrieved_at=None))
+    db.commit()
+    out = injury_status(db, p.id, now=NOW)
+    assert out["available"] and out["freshness"] == "stale"
+    assert any("age is unknown" in c for c in out["caveats"])
+
+
+def test_return_date_passed_is_judged_in_the_league_timezone(db: Session) -> None:
+    """Round-2 F5: ``today`` was the UTC date, so a return date of 'today' (ET) read as passed from 8 pm ET."""
+    p = make_player(db, 1, "Hurt", make_team(db, 1, "AAA"))
+    _injury(db, p, hours_ago=1, return_date=date(2026, 10, 19))
+    late_evening_et = datetime(2026, 10, 20, 1, 0, tzinfo=UTC)  # 9 pm on Oct 19 in New York
+    out = injury_status(db, p.id, now=late_evening_et)
+    assert out["return_date_passed"] is False

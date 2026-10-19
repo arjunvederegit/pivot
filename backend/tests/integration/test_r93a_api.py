@@ -127,6 +127,29 @@ class TestCapOutlook:
         assert any(w["conclusion"] == "Seasons after 2026-27" for w in fin["withheld"])
 
 
+class TestContractLengthKnownness:
+    def test_a_per_season_contract_with_no_horizon_is_not_called_expiring(self, client, db, cap_params) -> None:
+        a = make_team(db, 5, "EEE", "Epsilon")
+        p = make_player(db, 501, "Unknown Length", a, salary=None, contract_type=None)
+        _contract(db, p, {"2026-27": 9_000_000})
+        db.add(DataSyncRun(job_name="sync_contracts", status="succeeded", finished_at=NOW, detail={"season": "2026-27", "outcome": "complete", "teams_failed": []}))
+        db.commit()
+        row = client.get(f"/api/v1/teams/{a.id}/cap-outlook").json()["players"][0]
+        assert row["contract_length_known"] is False and row["expiring"] is None
+        assert row["contract_end"]["status"] == "unknown"
+
+    def test_the_retrieval_time_shown_is_the_financial_seasons_own(self, client, db, world) -> None:
+        from sqlalchemy import select
+
+        old, new = datetime(2026, 10, 18, 3, 0, tzinfo=UTC), datetime(2026, 10, 19, 13, 0, tzinfo=UTC)
+        contract = db.scalar(select(Contract).where(Contract.player_id == world["star"].id))
+        for y in db.scalars(select(ContractYear).where(ContractYear.contract_id == contract.id)).all():
+            y.source_retrieved_at = old if y.season == "2026-27" else new
+        db.commit()
+        body = client.get(f"/api/v1/players/{world['star'].id}/contract").json()
+        assert body["financials"]["source"]["retrieved_at"].startswith("2026-10-18"), body["financials"]["source"]
+
+
 class TestRosterAndPlayerContract:
     def test_roster_salary_is_the_cap_hit_and_years_flag_a_lower_bound(self, client, world) -> None:
         body = client.get(f"/api/v1/teams/{world['a'].id}/roster").json()
@@ -299,3 +322,37 @@ class TestQueryBudgets:
             "pick_moves": [],
         }
         assert self._count(db, lambda: client.post("/api/v1/trades/validate", json=body)) <= 80
+
+
+class TestDataHealthReadsTheFinancialSeasonsCoverage:
+    """Found in the browser: after the 2027-28 … 2030-31 loads the contracts card read the LATEST run (2030-31, which
+    prices 19 players) and reported "19/526 rostered players priced"."""
+
+    def test_a_later_season_run_does_not_become_the_rosters_coverage(self, client, db, world) -> None:
+        for season, priced in (("2026-27", 434), ("2027-28", 338), ("2030-31", 19)):
+            db.add(
+                DataSyncRun(
+                    job_name="sync_contracts", status="succeeded", finished_at=NOW,
+                    detail={
+                        "season": season, "outcome": "complete", "teams_failed": [],
+                        "coverage": {
+                            "roster_players_total": 526,
+                            "roster_players_with_salary_for_cap_league_year": priced,
+                            "roster_coverage_share": priced / 526,
+                        },
+                    },
+                )
+            )
+            db.commit()
+        health = client.get("/api/v1/data-health").json()
+        card = next(c for c in health["source_cards"] if c["key"] == "contracts")
+        assert "434/526" in card["coverage"], card["coverage"]
+        assert "19/526" not in card["coverage"]
+
+
+class TestShotZoneFloatBoundary:
+    def test_a_gap_of_exactly_the_tolerance_in_tenths_is_accepted(self, client, db, world) -> None:
+        """Round-2 F8: 4.8 - 4.4 evaluates to 0.4000000000000004 and was rejected as over a 0.4 tolerance."""
+        _zones(db, world["star"], fga_pg=14.0, base_fga=13.6)  # zone total 14.0 vs FGA 13.6: a 0.4 gap, in tenths
+        body = client.get(f"/api/v1/players/{world['star'].id}/shot-zones").json()
+        assert body["available"] is True, body

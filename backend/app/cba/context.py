@@ -10,7 +10,10 @@ A trade is NEVER labeled legal when only partial validation was possible."""
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
+
+if TYPE_CHECKING:  # annotation only: the financial service does not import the CBA package
+    from app.services.financials import PlayerFinancials
 
 RuleStatus = Literal["pass", "fail", "warning", "unavailable"]
 LegalityStatus = Literal[
@@ -33,8 +36,8 @@ class PlayerAsset:
     #: ``False``, when that cannot be shown. ``contract_type`` is still only ever what a source stated.
     not_two_way: bool | None = None
     not_two_way_basis: str | None = None
-    #: Financial facts for display and for the trade's financial analysis (a ``PlayerFinancials``).
-    financials: object | None = None
+    #: Financial facts for display and for the trade's financial analysis.
+    financials: "PlayerFinancials | None" = None
 
     @property
     def matching_class(self) -> str | None:

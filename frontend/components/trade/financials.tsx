@@ -340,7 +340,13 @@ export function SalaryAndContracts({
                         const row = t.commitments_by_season.find((c) => c.season === season);
                         return (
                           <Td key={t.team_id} numeric>
-                            <span title={row ? `out ${money(row.outgoing.known_total)} · in ${money(row.incoming.known_total)}` : undefined}>
+                            <span
+                              title={
+                                row
+                                  ? `out ${row.outgoing.complete ? money(row.outgoing.known_total) : `unknown (${row.outgoing.unknown_players.join(", ")})`} · in ${row.incoming.complete ? money(row.incoming.known_total) : `unknown (${row.incoming.unknown_players.join(", ")})`}`
+                                  : undefined
+                              }
+                            >
                               {row ? signedMillions(row.net_known) : "—"}
                             </span>
                           </Td>

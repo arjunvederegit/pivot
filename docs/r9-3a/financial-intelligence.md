@@ -81,17 +81,26 @@ wording was changed from "Legal / Illegal" to "Passes checks / Fails a check".
    `unavailable` for all 434 priced players. A cap hit **above the sourced league two-way salary** ($678,882 for 2026-27) proves the contract is not a two-way deal (a two-way
    contract is paid exactly that figure), and "not two-way" is all matching needs. It is deduced in one direction only, never written to `contract_type`, flagged
    `confidence: medium`, and a cap hit at or below the figure proves nothing. `TestNotTwoWayDeduction`.
+   **A failure that rests on a deduced type is an indication, never a verified failure** (`_indication_if_deduced`): the rule returns `unavailable` with the failure in `indicated_failure`, and the
+   assessment lists it. The second-round reviewer found why this matters: with the deduction, `SECOND_APRON_AGGREGATION` (which already refutes from a payroll floor) began returning a verified `fail`
+   where it had been `unavailable`, and a verified failure suppresses the basketball evaluation — 4 of 80 random real-data trades flipped from "scored" to "suppressed", and the acquisition battery's
+   per-team rejection counts moved by 1–2 candidates in three teams. That would have changed the Trade Evaluator's behaviour for deals the previous engine could not classify, contradicting this
+   document's own invariant; it is now prevented and pinned (`TestADeducedTypeNeverCreatesAVerifiedFailure`). Failures that rest only on *stated* types behave exactly as before.
 3. **Floor-based failure indications.** When a payroll is a floor, matching can still be *indicated* to fail (the floor already exceeds the first apron so the standard
    exception binds; or incoming exceeds even the most generous limit and the floor exceeds the cap). The rule stays `unavailable` — the existing standard "partial data
    refutes but never passes" is kept, and an indication that rested on a roster snapshot must not suppress the basketball evaluation — and the assessment lists it as an
    **indication**. A deal within the strictest limit is reported as "every regime would accept it" and **still not a pass**. `TestPartialPayrollIndicationsNeverDecide`.
-4. **Provisional roster counts.** A roster-count failure measured on the provisional preseason snapshot is downgraded to a low-confidence **warning** (the count may include
-   camp deals that will be cut). Settled rosters still fail. `TestProvisionalRosterCountIsNotAVerifiedFailure`.
+4. **Provisional roster counts are qualified, not re-decided.** The roster-count rule fails above 18 players on whatever snapshot it is given, and that outcome gates the basketball evaluation
+   (a verified-illegal deal is not scored), so R9.3A does **not** change it — an earlier draft that downgraded the failure to a warning on a provisional roster changed five existing tests and
+   would have changed which deals the adversarial battery scores, and was reverted. Instead the assessment marks such a failure **low confidence** and says the count is of a provisional preseason
+   snapshot that may still hold camp, Exhibit 10 and two-way players. `TestProvisionalRosterCountIsQualifiedNotChanged`.
 
 ### What is not changed
 
-The basketball evaluation (TEI, fit, simulation, drivers) is untouched: `evaluate_for_team` receives the same legality object it always did, and a trade is suppressed only
-when an implemented rule fails on *complete* inputs, exactly as before. The R9.2 candidate models are not read by the Trade Evaluator.
+The basketball evaluation (TEI, fit, simulation, drivers) is untouched, and so is **what gates it**: `evaluate_for_team` receives a legality object whose verified-illegal status is
+determined exactly as before for every deal the previous engine could classify. Two things move the gate, both documented and tested: (a) the cap-room alternative *removes a false failure*
+for a team that ends at or under the cap with a complete payroll; (b) nothing else — deduced types, floor-based matching indications and provisional-roster counts are all reported as
+indications or lowered confidence, never as new verified failures. The R9.2 candidate models are not read by the Trade Evaluator.
 
 ## 5. Mathematics of the comparison
 

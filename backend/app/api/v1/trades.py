@@ -12,9 +12,9 @@ from app.api.schemas import (
     TradeIn,
     ValidateRequest,
 )
+from app.canonical.tool_seasons import tool_seasons
 from app.cba.builder import build_trade_context
 from app.cba.engine import TradeLegalityEngine
-from app.canonical.tool_seasons import tool_seasons
 from app.core.errors import DomainError, NotFoundError
 from app.core.provenance import describe_providers
 from app.db.base import get_db

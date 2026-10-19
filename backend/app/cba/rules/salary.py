@@ -13,6 +13,42 @@ from ..context import CapParams, RuleResult, TeamContext, TradeContext
 CBA_REF = "2023 CBA Art. VII §6; cbaguide.com/transactions/trades/tpe"
 
 
+def _deduced_types(team: TeamContext) -> list[str]:
+    """Traded players whose matching class is *deduced* (cap hit above the two-way salary), not stated by a source."""
+    return [p.name for p in team.outgoing + team.incoming if p.contract_type is None and p.matching_class == "standard"]
+
+
+def _indication_if_deduced(result: RuleResult, team: TeamContext | None, kind: str) -> RuleResult:
+    """A failure that rests on a deduced contract type is an *indication*, not a verified failure.
+
+    R9.3A deduces "not a two-way contract" from the cap hit (``PlayerAsset.matching_class``). That is sound, but it is
+    new information the engine never had, and a verified failure gates the basketball evaluation (a deal that fails an
+    implemented rule is not scored). Letting a deduction newly suppress evaluations would change the Trade Evaluator's
+    behaviour for deals the previous engine could not classify — found by the round-2 reviewer on 4 of 80 real-data
+    trades. So such a failure is returned ``unavailable`` with the failure carried in ``indicated_failure`` (surfaced
+    by the legality assessment), exactly as a floor-based matching indication is. Failures that rest only on stated
+    types are untouched.
+    """
+    names = _deduced_types(team) if team is not None else []
+    if result.status != "fail" or not names:
+        return result
+    return RuleResult(
+        rule_code=result.rule_code,
+        status="unavailable",
+        team_id=result.team_id,
+        message=(
+            f"Not verified: {result.message} This rests on a contract type that is deduced from the cap hit, not "
+            f"stated by a source, for {', '.join(names)} — an indication, not a verified failure."
+        ),
+        calculation={
+            **result.calculation,
+            "indicated_failure": {"kind": kind, "explanation": result.message, "rests_on_deduced_type": names},
+        },
+        source_reference=result.source_reference,
+        confidence="medium",
+    )
+
+
 def max_incoming_below_first_apron(outgoing: float, params: CapParams) -> float:
     """Expanded TPE bands. The CBA's dollar boundaries make the three formulas exactly
     continuous at the band edges (2x + allowance meets x + band2_add at band1_max, which
@@ -337,7 +373,10 @@ class SalaryMatchingRule:
         )
 
     def evaluate(self, context: TradeContext) -> list[RuleResult]:
-        return [self._team_result(team, context) for team in context.teams]
+        return [
+            _indication_if_deduced(self._team_result(team, context), team, "salary_matching")
+            for team in context.teams
+        ]
 
 
 class SecondApronAggregationRule:
@@ -456,7 +495,10 @@ class SecondApronAggregationRule:
                     source_reference=CBA_REF,
                 )
             )
-        return results
+        by_team = {t.team_id: t for t in context.teams}
+        return [
+            _indication_if_deduced(r, by_team.get(r.team_id or ""), "second_apron_aggregation") for r in results
+        ]
 
 
 class MinimumTeamSalaryRule:

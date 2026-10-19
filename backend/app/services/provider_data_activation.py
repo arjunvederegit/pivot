@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import MetaData, Table, create_engine, select, text
+from sqlalchemy import Table, create_engine, select, text
 from sqlalchemy.engine import Engine
 
 from app.db.models import Base

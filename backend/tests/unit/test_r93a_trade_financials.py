@@ -218,25 +218,120 @@ class TestDeducedMatchingClass:
 # ------------------------------------------------------------ provisional roster counts
 
 
-class TestProvisionalRosterCountIsNotAVerifiedFailure:
+class TestProvisionalRosterCountIsQualifiedNotChanged:
+    """The roster-count rule gates the basketball evaluation, so this release does not change its outcome; the
+    assessment says when the failing count was measured on a provisional snapshot and lowers its confidence."""
+
     def _ceiling_trade(self, db: Session, provisional: bool):
         team_a, team_b = make_team(db, 1, "AAA"), make_team(db, 2, "BBB")
-        ra = _roster(db, team_a, [5_000_000] * 18, 1000)
+        _roster(db, team_a, [5_000_000] * 18, 1000)
         rb = _roster(db, team_b, [5_000_000] * 14, 2000)
         moves = [{"player_id": rb[0].id, "from_team_id": team_b.id, "to_team_id": team_a.id}]
         context = build_trade_context(db, [team_a.id, team_b.id], moves)
         context.roster_provisional = provisional
         legality = TradeLegalityEngine().evaluate(context)
-        row = next(r for r in legality["rule_results"] if r["rule_code"] == "ROSTER_SIZE" and r["team_id"] == team_a.id)
-        return row, legality, ra
+        return legality, trade_financial_analysis(context, legality)["legality_assessment"]
 
-    def test_a_settled_roster_over_the_ceiling_still_fails(self, db: Session, cap_params) -> None:
-        row, legality, _ = self._ceiling_trade(db, provisional=False)
-        assert row["status"] == "fail"
-        assert legality["overall_status"] == "verified_illegal"
+    def test_the_engine_outcome_is_the_same_whether_or_not_the_roster_is_provisional(self, db: Session, cap_params) -> None:
+        a, _ = self._ceiling_trade(db, provisional=False)
+        assert a["overall_status"] == "verified_illegal"
 
-    def test_a_provisional_roster_over_the_ceiling_is_a_low_confidence_warning(self, db: Session, cap_params) -> None:
-        row, legality, _ = self._ceiling_trade(db, provisional=True)
-        assert row["status"] == "warning" and row["confidence"] == "low"
-        assert "provisional preseason snapshot" in row["message"]
+    def test_a_settled_roster_failure_keeps_its_confidence(self, db: Session, cap_params) -> None:
+        _, la = self._ceiling_trade(db, provisional=False)
+        row = next(f for f in la["failed"] if f["rule_code"] == "ROSTER_SIZE")
+        assert row["confidence"] != "low" and "provisional" not in row["message"]
+
+    def test_a_provisional_roster_failure_says_so_and_lowers_its_confidence(self, db: Session, cap_params) -> None:
+        legality, la = self._ceiling_trade(db, provisional=True)
+        assert legality["overall_status"] == "verified_illegal"  # unchanged: the evaluation gate is not touched
+        row = next(f for f in la["failed"] if f["rule_code"] == "ROSTER_SIZE")
+        assert row["confidence"] == "low" and "provisional preseason roster snapshot" in row["message"]
+        assert la["verdict"] == "prohibited" and "Confidence is reduced" in la["headline"]
+
+
+# --------------------------------------------- per-season commitments: ended is known zero, unknown is unknown
+
+
+class TestCommitmentsBySeason:
+    def _two_player_deal(self, db: Session, *, give_horizon: bool):
+        from datetime import UTC, datetime
+
+        from app.canonical.records import SINGLE_SEASON_CONTRACT_SOURCE
+        from app.db.models import Contract, ContractYear, DataSyncRun
+
+        team_a, team_b = make_team(db, 1, "AAA"), make_team(db, 2, "BBB")
+        ra = _roster(db, team_a, [20_000_000] * 13, 1000, contract_type=None)
+        rb = _roster(db, team_b, [10_000_000] * 13, 2000, contract_type=None)
+        # AAA's outgoing player: one-year deal (2026-27 only); BBB's: three years.
+        c_out = db.query(Contract).filter_by(player_id=ra[0].id).one()
+        c_in = db.query(Contract).filter_by(player_id=rb[0].id).one()
+        for c in (c_out, c_in):
+            c.source_name = SINGLE_SEASON_CONTRACT_SOURCE
+        for season in ("2027-28", "2028-29"):
+            db.add(ContractYear(contract_id=c_in.id, season=season, salary=10_000_000, salary_basis="cap_hit"))
+        db.commit()
+        if give_horizon:
+            for season in ("2026-27", "2027-28", "2028-29"):
+                db.add(DataSyncRun(job_name="sync_contracts", status="succeeded", finished_at=datetime.now(UTC),
+                                   detail={"season": season, "outcome": "complete", "teams_failed": []}))
+            db.commit()
+        moves = [
+            {"player_id": ra[0].id, "from_team_id": team_a.id, "to_team_id": team_b.id},
+            {"player_id": rb[0].id, "from_team_id": team_b.id, "to_team_id": team_a.id},
+        ]
+        context = build_trade_context(db, [team_a.id, team_b.id], moves)
+        analysis = trade_financial_analysis(context, TradeLegalityEngine().evaluate(context))
+        return team_a, analysis
+
+    def test_a_contract_that_has_ended_contributes_a_known_zero_so_the_net_is_stated(self, db: Session, cap_params) -> None:
+        a, analysis = self._two_player_deal(db, give_horizon=True)
+        seasons = {c["season"]: c for c in analysis["teams"][a.id]["commitments_by_season"]}
+        later = seasons["2027-28"]
+        assert later["outgoing"] == {"known_total": 0, "unknown_players": [], "complete": True}
+        assert later["incoming"]["known_total"] == 10_000_000 and later["net_known"] == 10_000_000
+        assert seasons["2026-27"]["net_known"] == 10_000_000 - 20_000_000
+
+    def test_without_a_horizon_later_seasons_are_not_stated_never_zero(self, db: Session, cap_params) -> None:
+        a, analysis = self._two_player_deal(db, give_horizon=False)
+        later = {c["season"]: c for c in analysis["teams"][a.id]["commitments_by_season"]}["2027-28"]
+        assert later["outgoing"]["complete"] is False and later["outgoing"]["unknown_players"]
+        assert later["net_known"] is None
+
+
+# ------------------------------------------ deduced types never gate the basketball evaluation (round 2, F1)
+
+
+class TestADeducedTypeNeverCreatesAVerifiedFailure:
+    """A failure that rests on a contract type deduced from the cap hit is an indication, not a verified failure:
+    the engine's verified-illegal gate (which suppresses the basketball evaluation) must stay exactly where the
+    previous engine had it, for every deal the previous engine could not classify."""
+
+    def _second_apron_aggregation(self, db: Session, contract_type, two_way: bool):
+        # AAA is far above the second apron on known salaries and sends two salaries in one deal.
+        team_a, team_b = make_team(db, 1, "AAA"), make_team(db, 2, "BBB")
+        ra = _roster(db, team_a, [40_000_000] * 7 + [3_000_000] * 6, 1000, contract_type=contract_type)
+        rb = _roster(db, team_b, [60_000_000] + [5_000_000] * 12, 2000, contract_type=contract_type)
+        moves = [
+            {"player_id": ra[0].id, "from_team_id": team_a.id, "to_team_id": team_b.id},
+            {"player_id": ra[1].id, "from_team_id": team_a.id, "to_team_id": team_b.id},
+            {"player_id": rb[0].id, "from_team_id": team_b.id, "to_team_id": team_a.id},
+        ]
+        context = build_trade_context(db, [team_a.id, team_b.id], moves)
+        legality = TradeLegalityEngine().evaluate(context)
+        row = next(r for r in legality["rule_results"] if r["rule_code"] == "SECOND_APRON_AGGREGATION" and r["team_id"] == team_a.id)
+        return legality, row, trade_financial_analysis(context, legality)
+
+    def test_stated_types_still_fail_exactly_as_before(self, db: Session, cap_params) -> None:
+        legality, row, _ = self._second_apron_aggregation(db, "standard", two_way=False)
+        assert row["status"] == "fail" and legality["overall_status"] == "verified_illegal"
+
+    def test_deduced_types_are_an_indication_and_do_not_suppress_the_evaluation(self, db: Session, cap_params) -> None:
+        cap_params.extras = {"two_way_salary": 678_882}
+        db.commit()
+        legality, row, analysis = self._second_apron_aggregation(db, None, two_way=False)
+        assert row["status"] == "unavailable" and row["confidence"] == "medium"
+        assert row["calculation"]["indicated_failure"]["kind"] == "second_apron_aggregation"
+        assert row["calculation"]["indicated_failure"]["rests_on_deduced_type"]
         assert legality["overall_status"] != "verified_illegal"
+        la = analysis["legality_assessment"]
+        assert la["verdict"] == "indeterminate" and any(i["rule_code"] == "SECOND_APRON_AGGREGATION" for i in la["indications"])

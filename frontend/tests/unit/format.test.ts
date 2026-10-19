@@ -51,3 +51,13 @@ describe("count", () => {
     expect(count(1151, "team-side")).toBe("1,151 team-sides");
   });
 });
+
+describe("formatDay (R9.3A) — a bare date is a day, not an instant", () => {
+  it("does not shift an expected-return date to the previous evening or invent a time", async () => {
+    const { formatDay } = await import("@/lib/format");
+    expect(formatDay("2026-10-20")).toBe("Oct 20, 2026");
+    expect(formatDay("2027-07-01")).toBe("Jul 1, 2027");
+    expect(formatDay(null)).toBe("unknown");
+    expect(formatDay("2026-10-20")).not.toMatch(/PM|AM/);
+  });
+});
