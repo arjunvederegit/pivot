@@ -16,6 +16,13 @@ Commands
   build-features   Build modeling features from ingested data
   train            Train impact model + archetypes; persist model versions
   score            Score current players, compute availability and team needs
+  backtest         R9.1 rolling-origin backtest: backtest <development|holdout> [--target T|all]
+                   [--out DIR] [--decisions FILE] [--min-target-minutes N] [--acknowledge-reread].
+                   Read-only on the database; writes artifacts under models/experiments/.
+  train-candidate  R9.1 candidate-only training: train-candidate --model M --target T
+                   [--origin SEASON] [--experiment DIR]. Writes a candidate model_versions row and
+                   candidate_estimates only; refuses to change anything else.
+  candidates       List candidate and rejected model versions (read-only).
   validate-data    Run data-quality checks
   index-assets     Index local player photos / team logos into the media manifest
   import-stats-csv <path> [season]  Import the user-supplied season-totals CSV (default season 2025-26; default
@@ -430,6 +437,96 @@ def _balldontlie_evaluate(args: list[str]) -> int:
     return 2 if failed else 0
 
 
+def _modeling_command(command: str, args: list[str]) -> int:
+    """R9.1 evaluation and candidate-training commands (see ``app.modeling``)."""
+    from pathlib import Path
+
+    from app.config import BACKEND_DIR
+    from app.modeling import registry
+    from app.modeling.experiment import HoldoutReadRefused, run_stage
+    from app.modeling.panel import PanelValidationError, PlayerSeasonPanel
+    from app.modeling.targets import TARGETS
+
+    def option(name: str) -> str | None:
+        return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else None
+
+    with SessionLocal() as db:
+        if command == "candidates":
+            print(json.dumps(registry.list_candidates(db), indent=2, default=str))
+            return 0
+        if command == "train-candidate":
+            model, target = option("--model"), option("--target")
+            if not model or not target:
+                print(json.dumps({"error": "usage: train-candidate --model M --target T [--origin SEASON] [--experiment DIR]"}))
+                return 2
+            try:
+                panel = PlayerSeasonPanel.from_db(db)
+                origin = option("--origin") or panel.seasons[-1]
+                evaluation = None
+                if option("--experiment"):
+                    exp = Path(option("--experiment"))  # type: ignore[arg-type]
+                    decisions = json.loads((exp / "decisions.json").read_text())
+                    verdict = (decisions.get("candidates") or {}).get(model)
+                    evaluation = {
+                        "evaluation_status": "development_only",
+                        "experiment": exp.name,
+                        "decision": verdict,
+                    }
+                record = registry.train_candidate(db, model, target, origin, evaluation=evaluation)
+            except (PanelValidationError, registry.CandidateError, registry.ProtectedStateViolation) as exc:
+                print(json.dumps({"error": type(exc).__name__, "message": str(exc)}, indent=2))
+                return 2
+            except Exception as exc:  # a database without the R9.1 migration, for one
+                print(json.dumps({"error": type(exc).__name__, "message": str(exc)[:300],
+                                  "hint": "run `make migrate` on a COPY of the database first"}, indent=2))
+                return 2
+            print(json.dumps(record.__dict__, indent=2, default=str))
+            return 0
+
+        # backtest
+        stage = args[0] if args and not args[0].startswith("--") else None
+        if stage not in ("development", "holdout"):
+            print(json.dumps({"error": "usage: backtest <development|holdout> [--target T|all] [--out DIR]"}))
+            return 2
+        try:
+            panel = PlayerSeasonPanel.from_db(db)
+        except PanelValidationError as exc:
+            print(json.dumps({"error": "PanelValidationError", "message": str(exc)}, indent=2))
+            return 2
+        standings = registry.league_standings(db)
+    out = Path(option("--out") or BACKEND_DIR.parent / "models" / "experiments")
+    wanted = option("--target") or "impact_proxy"
+    targets = list(TARGETS) if wanted == "all" else [wanted]
+    minutes = float(option("--min-target-minutes") or 500)
+    summary = {}
+    for name in targets:
+        advanced = None
+        if stage == "holdout":
+            path = option("--decisions")
+            if not path:
+                print(json.dumps({"error": "a holdout run needs --decisions <development experiment>/decisions.json"}))
+                return 2
+            advanced = json.loads(Path(path).read_text())
+        try:
+            outcome = run_stage(
+                panel, standings, stage, name, out,
+                advanced_from=advanced, min_target_minutes=minutes,
+                acknowledge_reread="--acknowledge-reread" in args,
+            )
+        except HoldoutReadRefused as exc:
+            print(json.dumps({"error": "HoldoutReadRefused", "message": str(exc)}, indent=2))
+            return 2
+        summary[name] = {
+            "directory": str(outcome.directory),
+            "reference_baseline": outcome.decisions.get("reference_baseline")
+            or outcome.decisions.get("reference_baseline_from_development"),
+            "advanced": outcome.decisions.get("advanced"),
+            "confirmed": outcome.decisions.get("confirmed"),
+        }
+    print(json.dumps(summary, indent=2, default=str))
+    return 0
+
+
 def main() -> None:
     configure_logging()
     if len(sys.argv) < 2:
@@ -713,8 +810,12 @@ def main() -> None:
         from app.analytics.train import train_all
 
         with SessionLocal() as db:
-            summary = train_all(db)
+            summary = train_all(db, preserve_history="--preserve-history" in sys.argv[2:])
         print(json.dumps(summary, indent=2, default=str))
+    elif command in ("backtest", "train-candidate", "candidates"):
+        code = _modeling_command(command, sys.argv[2:])
+        if code:
+            sys.exit(code)
     elif command == "score":
         from app.analytics.score import score_all
 

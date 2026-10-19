@@ -108,6 +108,7 @@ def _register_model(
         select(ModelVersion).where(ModelVersion.model_name == name, ModelVersion.is_active)
     ).all():
         old.is_active = False
+        old.status = "retired"
     version = _content_version(name, algorithm, training_period, features, metrics)
     # Retraining on unchanged data produces the same content hash; reactivate that row
     # rather than inserting a duplicate (the table has no unique constraint today, and
@@ -119,6 +120,7 @@ def _register_model(
     )
     if existing is not None:
         existing.is_active = True
+        existing.status = "active"
         existing.trained_at = datetime.now(UTC)
         existing.validation_metrics = metrics
         existing.artifact_path = artifact_path
@@ -281,7 +283,10 @@ def _fit_pick_curve(db: Session, season_df: pd.DataFrame, seasons: list[str]) ->
     return metrics
 
 
-def train_all(db: Session) -> dict[str, Any]:
+def train_all(db: Session, *, preserve_history: bool = False) -> dict[str, Any]:
+    """Legacy training. ``preserve_history=True`` keeps superseded impact estimates (R9.1);
+    the default still deletes them, exactly as before. For an experiment use
+    ``app.modeling.registry.train_candidate``, which never deletes anything."""
     settings = get_settings()
     seasons = settings.history_season_list
     version = datetime.now(UTC).strftime("v%Y%m%d%H%M")
@@ -366,7 +371,7 @@ def train_all(db: Session) -> dict[str, Any]:
                 setattr(existing, k, v)
         written += 1
 
-    orphaned = _gc_superseded_estimates(db)
+    orphaned = 0 if preserve_history else _gc_superseded_estimates(db)
 
     # Archetypes
     assignments, archetype_meta = fit_archetypes(scored)

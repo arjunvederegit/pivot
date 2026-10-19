@@ -14,6 +14,7 @@ E2E_DB ?= $(CURDIR)/backend/rosterlab-e2e.db
         import-draft-picks pick-ownership fetch-transactions import-transactions \
         transaction-coverage comparable-validation acquisition-validation lineup-availability \
         adversarial-validation \
+        backtest train-candidate candidates \
         data-status season-status refresh link-balldontlie refresh-balldontlie balldontlie-plan balldontlie-preflight balldontlie-evaluate \
         assistant-setup assistant-models assistant-dev assistant-test assistant-eval \
         assistant-eval-selftest assistant-eval-retrieval assistant-eval-conversations
@@ -58,6 +59,16 @@ test-backend:
 
 test-frontend:
 	cd $(FRONTEND) && npm run test -- --run
+
+backtest: ## R9.1 rolling-origin backtest (read-only on the DB): make backtest STAGE=development TARGET=impact_proxy|all [OUT=dir]
+	cd $(BACKEND) && .venv/bin/python -m app.cli backtest $(STAGE) $(if $(TARGET),--target $(TARGET),) $(if $(OUT),--out $(OUT),) $(if $(DECISIONS),--decisions $(DECISIONS),)
+
+train-candidate: ## R9.1 candidate-only training (never changes an active model): make train-candidate MODEL=ridge_boxscore TARGET=impact_proxy [ORIGIN=2025-26]
+	@test -n "$(MODEL)" -a -n "$(TARGET)" || (echo "usage: make train-candidate MODEL=<name> TARGET=<target> [ORIGIN=<season>] [EXPERIMENT=<dir>]"; exit 2)
+	cd $(BACKEND) && .venv/bin/python -m app.cli train-candidate --model $(MODEL) --target $(TARGET) $(if $(ORIGIN),--origin $(ORIGIN),) $(if $(EXPERIMENT),--experiment $(EXPERIMENT),)
+
+candidates: ## List candidate and rejected model versions
+	cd $(BACKEND) && .venv/bin/python -m app.cli candidates
 
 sync-corpus-stats: ## Ingest player stats + standings + calendar for every CORPUS_SEASONS season
 	cd $(BACKEND) && .venv/bin/python -m app.cli sync-corpus-stats
@@ -132,8 +143,8 @@ sync-data: ## Ingest current NBA data via nba_api (network required)
 build-features: ## Build modeling features from ingested data
 	cd $(BACKEND) && .venv/bin/python -m app.cli build-features
 
-train: ## Train player-impact model and archetypes
-	cd $(BACKEND) && .venv/bin/python -m app.cli train
+train: ## LEGACY: retrains and ACTIVATES the impact model and deletes superseded impact estimates (add ARGS=--preserve-history to keep them); for experiments use `make train-candidate`
+	cd $(BACKEND) && .venv/bin/python -m app.cli train $(ARGS)
 
 score: ## Score current players and compute team needs
 	cd $(BACKEND) && .venv/bin/python -m app.cli score

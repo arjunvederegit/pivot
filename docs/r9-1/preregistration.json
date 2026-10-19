@@ -1,0 +1,95 @@
+{
+  "constants": {
+    "coverage_band": [
+      0.75,
+      0.85
+    ],
+    "min_folds_improved_of_5_development_folds": 4,
+    "team_gate_targets": [
+      "impact_proxy",
+      "pie"
+    ],
+    "team_gate_tolerance": 0.05
+  },
+  "models": [
+    {
+      "description": "Training-period mean of the target among eligible players",
+      "family": "baseline",
+      "name": "league_mean"
+    },
+    {
+      "description": "Last season's value, uncorrected (a player who missed the season uses the mean of the seasons they played; with no evidence at all, the training mean)",
+      "family": "baseline",
+      "name": "persistence"
+    },
+    {
+      "description": "OLS y = a + b*last_season: regression toward the mean",
+      "family": "baseline",
+      "name": "regressed_persistence"
+    },
+    {
+      "description": "OLS y = a + b*last_season + c*age + d*age^2: persistence with an age curve",
+      "family": "baseline",
+      "name": "regressed_persistence_age"
+    },
+    {
+      "description": "The production TEI at the cutoff, as shipped (TEI / 2.5, the scale its own validation used)",
+      "family": "baseline",
+      "name": "incumbent_tei"
+    },
+    {
+      "description": "OLS y = a + b*TEI: the incumbent's ranking information on the target's own scale",
+      "family": "baseline",
+      "name": "incumbent_tei_recalibrated"
+    },
+    {
+      "description": "Prior = age-adjusted league mean; prediction = prior + b * E/(E+k) * (windowed history - prior), where E is the evidence (minutes or attempts) behind the history and k is chosen by leave-one-transition-out error",
+      "family": "candidate",
+      "name": "eb_shrinkage"
+    },
+    {
+      "description": "Ridge on the player's own history only: last 3 values, windowed mean, evidence, age curve",
+      "family": "candidate",
+      "name": "ridge_history"
+    },
+    {
+      "description": "Ridge on that history plus the incumbent's box-score z-features (does other box-score information improve the forecast of this target?)",
+      "family": "candidate",
+      "name": "ridge_boxscore"
+    }
+  ],
+  "preregistration": {
+    "advance_if_all": {
+      "ci": "player-cluster bootstrap 95% interval of MAE(candidate) - MAE(reference) lies entirely below 0 on development folds",
+      "folds": "candidate has lower MAE than the reference in at least 4 of the 5 development folds",
+      "interval_coverage": "pooled development coverage of the nominal 80% interval lies in [0.75, 0.85]",
+      "team_gate": "for pie and impact_proxy: concurrent team win% R^2 is not more than 0.05 below the incumbent's"
+    },
+    "claims_not_made": [
+      "that any model measures underlying ability",
+      "that results hold for seasons after 2025-26",
+      "that any candidate should be promoted"
+    ],
+    "confirm_on_holdout_if": "pooled holdout bootstrap interval vs the development-chosen reference lies entirely below 0, and the candidate improves MAE in every holdout fold",
+    "folds": "rolling origin; >= 2 training transitions; the last 2 folds are the locked holdout",
+    "population": {
+      "evaluated": "scored players who played >= 500 minutes in the target season (same rows for every model)",
+      "scored": "players with >= 200 minutes over the last 3 seasons ending at the cutoff",
+      "sensitivity_min_target_minutes": [
+        250,
+        1000
+      ]
+    },
+    "primary_target": "impact_proxy",
+    "reference_baseline": "the baseline with the lowest pooled development MAE for that target",
+    "secondary_targets": [
+      "pie",
+      "ts_pct",
+      "ast_pct",
+      "reb_pct",
+      "usg_pct"
+    ],
+    "version": "r9.1-prereg-1"
+  },
+  "statement": "Written and committed BEFORE the official development run. A pre-run engineering smoke test (all folds, impact_proxy, before the development/holdout split was enforced in code) did read the holdout folds; no model, parameter or rule was changed in response. See docs/r9-1/qa-and-validation-report.md."
+}

@@ -66,3 +66,6 @@ docs/qa/
 
 # Ask Pivot evaluation runs (regenerate with `cd backend && .venv/bin/python -m scripts.eval_rag ...`)
 backend/.assistant_eval/
+
+# R9.1 experiment artifacts (predictions per player-season; regenerate with `make backtest`)
+models/experiments/

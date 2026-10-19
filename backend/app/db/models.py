@@ -505,6 +505,12 @@ class DataQualityIssue(Base, TimestampMixin):
 # ----------------------------------------------------------------------------- models
 
 
+def _default_model_status(context) -> str:  # type: ignore[no-untyped-def]
+    """A row created with ``is_active=True`` is ``active``; anything else is ``retired`` unless the
+    caller says otherwise (``candidate``). Keeps every pre-R9.1 writer correct without editing it."""
+    return "active" if context.get_current_parameters().get("is_active") else "retired"
+
+
 class ModelVersion(Base, TimestampMixin):
     __tablename__ = "model_versions"
     # A version string must identify a model. Before R1-9 it was a training-run
@@ -527,6 +533,19 @@ class ModelVersion(Base, TimestampMixin):
     code_commit: Mapped[str | None] = mapped_column(String(50))
     data_snapshot_id: Mapped[str | None] = mapped_column(String(36))
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: R9.1. ``active`` (exactly the rows with ``is_active``) | ``retired`` (was active, superseded) |
+    #: ``candidate`` (trained for evaluation; never read by any serving path and never touched by the
+    #: legacy ``train``/``score`` garbage collector) | ``rejected`` (a candidate a reviewer declined).
+    #: Promotion is a separate, audited step that R9.1 deliberately does not implement.
+    status: Mapped[str] = mapped_column(
+        String(12), default=_default_model_status, server_default="retired"
+    )
+    #: R9.1. The full, JSON-serialisable specification that produced this model (candidate spec,
+    #: target, hyper-parameters, eligibility rules). Enough, with ``lineage``, to retrain it.
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    #: R9.1. Where the model came from: data-snapshot fingerprint, random seed, dependency versions,
+    #: code commit and the experiment that evaluated it.
+    lineage: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class PlayerImpactEstimate(Base, TimestampMixin):
@@ -551,6 +570,49 @@ class PlayerImpactEstimate(Base, TimestampMixin):
     inputs: Mapped[dict] = mapped_column(JSON, default=dict)
 
     player: Mapped[Player] = relationship(lazy="joined")
+
+
+class CandidateEstimate(Base, TimestampMixin):
+    """One estimate produced by a *candidate* model (R9.1).
+
+    Kept apart from ``player_impact_estimates`` on purpose. The serving tables are read by
+    every tool and counted by the data-health pages; a candidate row placed there would be one
+    unfiltered query away from reaching a user. Here it cannot be: nothing in the serving path
+    reads this table, so a candidate is isolated by construction rather than by every future
+    reader remembering a filter.
+
+    The row says what kind of quantity it is (``output_kind``: ``projected`` for a forecast of a
+    future season, ``inferred`` for an estimate of underlying ability), which statistical season
+    it was computed from, which season it concerns, and carries its interval and sample size.
+    It is generic over ``target`` so R9.2's skill estimates use the same table.
+    """
+
+    __tablename__ = "candidate_estimates"
+    __table_args__ = (
+        UniqueConstraint(
+            "model_version_id", "player_id", "season", "target", name="uq_candidate_estimate"
+        ),
+        Index("ix_candidate_estimates_version", "model_version_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_pk)
+    model_version_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id"))
+    player_id: Mapped[str] = mapped_column(ForeignKey("players.id"), index=True)
+    #: The statistical season the estimate is computed *from* (the information cutoff).
+    season: Mapped[str] = mapped_column(String(10))
+    #: The season the quantity is about (``season`` itself for inferred ability, the next season
+    #: for a projection).
+    target_season: Mapped[str] = mapped_column(String(10))
+    target: Mapped[str] = mapped_column(String(40))
+    output_kind: Mapped[str] = mapped_column(String(10))  # measured | inferred | projected
+    estimate: Mapped[float] = mapped_column(Float)
+    interval_low: Mapped[float | None] = mapped_column(Float)
+    interval_high: Mapped[float | None] = mapped_column(Float)
+    #: Nominal level of the interval (e.g. 0.8). Nominal, not measured: the measured coverage of
+    #: the method is in the candidate's ``validation_metrics``.
+    interval_level: Mapped[float | None] = mapped_column(Float)
+    exposure: Mapped[float | None] = mapped_column(Float)  # minutes (or attempts) behind the estimate
+    inputs: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class PlayerArchetype(Base, TimestampMixin):
