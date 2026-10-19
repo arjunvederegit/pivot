@@ -37,7 +37,7 @@ BALLDONTLIE API ──(server-side client, key never leaves the backend)──�
 | **Total new requests this session** | | | **139** | cap was ≈150; no 429, no 5xx, no retries |
 
 The 120 future-season requests are the same canonical job R8.3 used (`sync_contracts_from_balldontlie`), run once per season with `--season`. Raw
-responses were recorded to a local cache directory (outside Git) so any step can be re-run with `--replay` at zero cost. **No raw provider payload is
+responses were recorded to `~/pivot-r9-3a-data/provider-cache/` (139 files, outside Git) so any step can be re-run with `--replay` at zero cost. **No raw provider payload is
 committed**; only derived rows live in the (uncommitted) databases.
 
 The deferred historical advanced-statistics backfill (~260 requests, needs historical identity and survivor-bias handling) was **not** started.

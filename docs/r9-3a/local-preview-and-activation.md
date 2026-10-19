@@ -56,6 +56,7 @@ No `BALLDONTLIE_API_KEY` is needed to *run* the preview. It is needed only to *r
 * *Cap Center says "contract provider not configured"* → the backend was started without the flag; use `make preview-up`, not a bare `uvicorn`.
 * *Player Explorer shows no "Research preview"* → the backend is running without `PLAYER_INTELLIGENCE_PREVIEW=true` (the panel hides itself on a 404).
 * *Numbers look stale* → the preview is a point-in-time copy: contracts and roster as of 2026-10-18/19, statistics 2025-26. It does not refresh itself.
+* *Do not run `next build` while the preview is up* — it overwrites the dev server's `.next` output and every static asset 404s (restart with `make preview-down && make preview-up`).
 * *Disk* → the machine this was built on had ~6 GB free; each database copy is ~71 MB. `make preview-down` and deleting `…/backups/*.pre-r93a-*.db` frees space.
 
 ## 2. How the preview database was built (reproducible)
@@ -66,7 +67,7 @@ No `BALLDONTLIE_API_KEY` is needed to *run* the preview. It is needed only to *r
 4. `make materialise-skills SKILL_ORIGIN=2025-26` on this **copy** (four candidate models, none promoted).
 5. A byte-identical copy → `backups/preview-ready.db` with its SHA-256.
 
-Raw provider responses were cached outside Git for replay; nothing licensed is committed.
+Raw provider responses are cached in `…/provider-cache/` (outside Git) so every contract load can be re-run at zero requests with `--cache <dir> --replay`; nothing licensed is committed.
 
 ## 3. Verify what the preview holds
 

@@ -41,7 +41,7 @@ cd /Users/arjunvedere/pivot-r9-3a-worktree && make preview-up      # Cap Center 
 
 ## What independent review found, and what it changed
 
-Four structured review rounds by fresh agents (financial correctness, analytical integrity, frontend, adversarial end-to-end) plus mutation testing (36 planted defects; every killable one caught). The headline defect, found by two reviewers independently,
+Four structured review rounds by fresh agents (financial correctness, analytical integrity, frontend, adversarial end-to-end; final: backend 3,327 passed / 0 failed, frontend 345 passed, PostgreSQL subset 193 passed) plus mutation testing (35 own planted defects plus 44 by the round-4 reviewer; every one that would mislead a user is now caught). The headline defect, found by two reviewers independently,
 was that the new two-way deduction would have made a floor-based second-apron failure reachable and **newly suppressed the basketball evaluation on ~5 % of real trades** — contradicting the release's own invariant; fixed and pinned. The rest (ingestion guards, honest freshness,
 gap handling, phantom movers, one-contract-per-player, wording and date handling) are listed with evidence in `qa-and-regression-report.md`.
 

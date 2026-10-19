@@ -47,15 +47,64 @@ Defects found (1 high — the F1 above, found independently — and 6 medium, 5 
 
 ## 4. Round 3 — frontend and user experience
 
-__ROUND3__
+A reviewer drove the running app in the in-app browser at 100 % zoom (1440 px), 768 and 390 px, on real data: all 30 Cap Center teams, two- and three-team deals, the Wilson (no contract) deal, the connected flow, every Player Explorer tab, keyboard/contrast/heading basics, and Home, Team Outlook, Strategy Lab, Data Health and About for regressions. **No critical defects; 13 findings (mostly medium/low).**
+
+| ID | Finding | Resolution |
+| --- | --- | --- |
+| F1 | the trade lane card called a floor "PAYROLL" and clipped its own caveat | the cell reads **"Known salary"** (and "Payroll" only when every contract is priced) |
+| F2 | after a no-contract player moved, payroll read "— not imported" though contracts were imported | falls back to the roster floor; "a salary is unknown" instead of "no salaries" |
+| F3 | "BOS's side fails a **verified** rule" named the wrong team and contradicted the lowered-confidence note | reworded: the deal fails an implemented rule for at least one team; a roster-count failure is measured on a snapshot that can be provisional (the gate itself is unchanged by design) |
+| F4 | "Back to your trade" depended on browser history | the deal travels in the link (`&deal=`), so Back is a plain link that works in a new tab; history is the fallback |
+| F6 | inconsistent thin-season handling; "equivalent to about 1,359 attempts" read as one season | the evidence is stated as pooled across the seasons used; the observed panel's flags are consistent (see round 2) |
+| F7 | rule evidence printed `payroll coverage [object Object]` (renderer pre-dates R9.3A) | coverage objects render as "14 of 17 priced (floor)" |
+| F9 | the "contract years loaded" tile is league-wide but sat beside a per-team chart | relabelled "League-wide years loaded" |
+| F11 | projection sentence capitalisation, `aria-controls` | fixed (the toggle keeps `aria-expanded`) |
+| F5, F8, F10, F12, F13 | clipped 3-team lane names (pre-existing), scrolling-table names, a bogus team id silently showing ATL (pre-existing), a conservative "not stated" subtotal, an extra pre-existing intelligence fetch | **not changed** — recorded as limitations |
+
+Exercised and fine (reviewer): all 30 Cap Center teams (no payroll or apron claim anywhere, HOU's floor exactly at the tax line still not called payroll); the Wilson deal never shows $0, net "not stated", verdict *Indeterminate*, footer never says "legal"; arithmetic checked on three-team deals; the experimental endpoint is **not** requested until the toggle is opened (then once, with `include_experimental=true`); every estimate labelled; carried-player notice verified and a valid-player-on-the-wrong-team link gets a "not verified" notice; a `<script>` string in `player=` is dropped; muted-text contrast ≥ 5.6:1; no horizontal overflow at 390 px on any page; Data Health reads "434/526 rostered players priced".
 
 ## 5. Round 4 — adversarial end-to-end
 
-__ROUND4__
+A reviewer attacked the integration with 14 scenario families on real data and on controlled copies (incl. provider outages, partial/duplicate/stale ingestion in replay, an old schema, invalid flags, alternative seasons, mixed roster/financial seasons, two-roster players, kill -9 mid-activation, WAL/read-only/symlinked targets) and planted 44 defects. **13 findings (1 high, 7 medium, 5 low); all but two low items fixed, each with a regression test.**
+
+| ID | Sev | Finding | Resolution |
+| --- | --- | --- | --- |
+| F1 | high | a team answering 200 with nothing (or a re-read that dropped teams) was recorded `complete`, making later-season contracts read "ends early" | a re-read that no longer lists ≥ 3 previously priced contracts is `partial` (one or two waivers tolerated; threshold documented); the horizon already ignores partial seasons |
+| F2–F3 | med | the activation dry run missed unique-key collisions; several failure modes (read-only target, locked file, backup dir a file) ended in raw tracebacks and stray backups | dry run checks `uq_provider_entity` / `uq_contract_year` and the other unique keys; every failure is an `ActivationRefused` that names the kept verified backup |
+| F4 | med | an estimate attached to an active (serving) model could be copied | estimates are copied only for the candidate models that are copied |
+| F5 | low | two databases with no `alembic_version` passed the revision check | refused |
+| F6 | med | `overall_status` could say `verified_legal` (only warnings) beside an `indeterminate` assessment | the chip is derived from the stricter assessment; the memo wording is "Passes the rules Pivot checks (not a statement that the trade is legal)" (latent: unreachable on today's data) |
+| F7 | med | a database without the R9.1 migration 500'd on cap-outlook/validate (a regression: R9.2 answered 200) | the season basis falls back to "unavailable"; the rest still serves |
+| F8 | med | `CAP_LEAGUE_YEAR=banana` produced 500s | validated at startup |
+| F9 | med | a roster from another season was summed with this season's cap hits | withheld, with the reason; no "cleared thresholds" claim |
+| F10 | low | a player on two current rosters was counted for both teams | surfaced as a roster conflict; payroll withheld |
+| F11 | low | a contract that ended before the financial season read "no 2027-28 cap hit" / "no contract" | "ended before 2027-28 (last year on file: 2026-27)" |
+| F12 | low | an empty injury feed closed every open injury | refused while injuries are open |
+| F13 | low | future retrieval read as fresh; wording | stale; "never read an injury feed" |
+
+**Mutation results.** Of 44 planted defects the named test files caught 35; the other 9 survivors, plus 2 more when the whole R9.3A suite was used, were reviewed one by one: the ones that would mislead a user (cap-room boundary, `apron_status_after` built from a floor, shot-zone tolerance, injury freshness window, warnings counted as passes, a zero-row/refused season entering the horizon, activation candidate filter and backup verification, the two-way salary accepting non-positive values) each gained a test (`test_r93a_round4_regressions.py`). Four survivors were **not** given a test and remain open, low impact: the calendar-based `roster_is_provisional` never returning true, the roster payload showing a length for an unpriced player, a two-way hint without the base-salary check, and commitments excluding an unpriced player's later seasons.
+
+Held up under attack: all 30 teams are floors (never payroll); Wilson in 1-for-1, 2-for-1, three-team and no-return deals; 526 players × five endpoints with no unlabelled experimental value and **zero cross-endpoint disagreements** on cap hit / base / cash / length / source; 1,307 random trades with **no** `passes_checked_rules` or `verified_legal`; `CAP_LEAGUE_YEAR` of 2027-28 and 2031-32 give a 409 and apply no 2026-27 threshold; replay ingestion is idempotent and *Hansen Yang* stays quarantined; synthetic name collisions are refused; every injury edge reads stale, never "healthy"; backup/restore, kill -9 mid-apply, WAL and symlinked targets are safe.
 
 ## 6. Round 5 — release-candidate verification
 
-__ROUND5__
+Run on the final release candidate (after every fix above):
+
+| Check | Result |
+| --- | --- |
+| Backend full suite (SQLite) | **3,327 passed, 19 skipped, 0 failed** (baseline 3,188 / 19) |
+| PostgreSQL 16, new and related files | **193 passed** |
+| Frontend vitest | **345 passed** (baseline 311) |
+| `ruff check`, `mypy app` (194 files), `eslint`, `tsc` | clean |
+| `next build --webpack` | succeeds |
+| `alembic check`; up/down/up on a fresh DB; up→down on a copy of the real DB | no drift; round trip clean; **all 37 tables byte-identical** after |
+| Validation batteries vs R9.2 | byte-identical (the acquisition battery's `same_need_teams_hear_more_alike` fails identically on R9.2: pre-existing) |
+| 300 random real-data trades, R9.2 vs R9.3A engine | identical statuses |
+| Replay re-ingestion of 2027-28 and 2030-31 on a copy of the preview | complete; 0 created, 0 updated, 334 / 19 unchanged; 0 requests |
+| Preview snapshot vs your database | 27 core tables (players, teams, rosters, statistics, TEI estimates, archetypes, scenarios, saved trades, historical trades, picks, cap parameters …) row-identical; 19 non-candidate model rows unchanged |
+| Real-data activation rehearsal | see `local-preview-and-activation.md` §4.1 |
+| Not run | Playwright e2e; the full backend suite on PostgreSQL |
+| One note | `test_worker_and_issue_growth.py::test_an_unknown_job_is_a_configuration_error_not_a_failure` failed once in a *combined* targeted run (a log-capture order sensitivity) and passes alone and in every full run; it is unrelated to R9.3A |
 
 ## 7. Browser verification at 100 % zoom (author)
 
