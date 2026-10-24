@@ -243,7 +243,7 @@ class TestSyncDispatch:
 
 
 class TestNetworkCommandsAreRefusedOffline:
-    """Two commands reach a third party, and the suite runs every documented command."""
+    """Some commands reach a third party, and the suite runs every documented command."""
 
     def test_declared_network_commands_refuse_when_offline(self, monkeypatch, capsys):
         for command in sorted(cli.NETWORK_COMMANDS):
@@ -257,7 +257,14 @@ class TestNetworkCommandsAreRefusedOffline:
     def test_every_fetching_command_is_declared(self):
         """A new command that reaches a third party must be added to the set, or the
         suite will start making requests on someone else's servers."""
-        assert set(cli.NETWORK_COMMANDS) == {"fetch-transactions", "lineup-availability"}
+        assert set(cli.NETWORK_COMMANDS) == {
+            "fetch-transactions",
+            "lineup-availability",
+            "refresh",
+            "link-balldontlie",
+            "balldontlie-evaluate",
+            "refresh-balldontlie",
+        }
 
     def test_the_guard_is_off_by_default(self, monkeypatch):
         monkeypatch.delenv("ROSTERLAB_OFFLINE", raising=False)
@@ -266,3 +273,76 @@ class TestNetworkCommandsAreRefusedOffline:
         assert cli.offline() is False
         monkeypatch.setenv("ROSTERLAB_OFFLINE", "1")
         assert cli.offline() is True
+
+
+class TestR8Commands:
+    def test_data_status_reports_every_dataset_and_provider(self, monkeypatch, capsys, cli_db):
+        run(monkeypatch, "data-status")
+        payload = printed_json(capsys.readouterr().out)
+        assert set(payload["datasets"]) >= {"rosters", "standings", "player_stats", "contracts"}
+        assert payload["datasets"]["rosters"]["freshness"] == "missing"
+        assert {p["provider"] for p in payload["providers"]} >= {"nba_api", "balldontlie"}
+
+    def test_refresh_with_no_dataset_names_the_choices(self, monkeypatch, capsys, cli_db):
+        monkeypatch.delenv("ROSTERLAB_OFFLINE", raising=False)
+        with pytest.raises(SystemExit) as exit_info:
+            run(monkeypatch, "refresh")
+        assert exit_info.value.code == 2
+        assert "rosters" in printed_json(capsys.readouterr().out)["datasets"]
+
+    def test_refresh_rejects_an_unknown_dataset(self, monkeypatch, capsys, cli_db):
+        monkeypatch.delenv("ROSTERLAB_OFFLINE", raising=False)
+        with pytest.raises(SystemExit):
+            run(monkeypatch, "refresh", "rosters,the-moon")
+        assert "the-moon" in printed_json(capsys.readouterr().out)["error"]
+
+    def test_refresh_runs_the_named_jobs_and_reports_freshness(self, monkeypatch, capsys, cli_db):
+        monkeypatch.delenv("ROSTERLAB_OFFLINE", raising=False)
+        from app.ingestion import jobs
+
+        monkeypatch.setattr(jobs, "sync_rosters", lambda db: 7)
+        monkeypatch.setattr(jobs, "sync_standings", lambda db: (_ for _ in ()).throw(RuntimeError("boom")))
+        with pytest.raises(SystemExit) as exit_info:
+            run(monkeypatch, "refresh", "rosters,standings")
+        payload = printed_json(capsys.readouterr().out)
+        assert payload["results"]["rosters"] == {"status": "succeeded", "rows": 7}
+        assert payload["results"]["standings"]["status"] == "failed"
+        assert "boom" in payload["results"]["standings"]["error"]
+        assert exit_info.value.code == 2, "a failed dataset must fail the command"
+
+    def test_the_trial_plan_prints_cost_without_a_key(self, monkeypatch, capsys):
+        run(monkeypatch, "balldontlie-plan", "trial")
+        plan = printed_json(capsys.readouterr().out)
+        assert plan["tier"] == "trial" and plan["estimated_requests"] > 0
+
+    def test_evaluate_and_link_refuse_without_a_key_and_request_nothing(
+        self, monkeypatch, capsys, cli_db
+    ):
+        monkeypatch.delenv("ROSTERLAB_OFFLINE", raising=False)
+        monkeypatch.delenv("BALLDONTLIE_API_KEY", raising=False)
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+        for command in ("balldontlie-evaluate", "link-balldontlie"):
+            with pytest.raises(SystemExit) as exit_info:
+                run(monkeypatch, command)
+            assert exit_info.value.code == 2
+            assert "BALLDONTLIE_API_KEY is not set" in printed_json(capsys.readouterr().out)["error"]
+
+
+class TestRefreshBalldontlieCommand:
+    def test_needs_a_known_step_and_never_calls_out_without_a_key(self, monkeypatch, capsys):
+        monkeypatch.delenv("ROSTERLAB_OFFLINE", raising=False)
+        monkeypatch.delenv("BALLDONTLIE_API_KEY", raising=False)
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+        try:
+            assert cli._refresh_balldontlie([]) == 2
+            assert cli._refresh_balldontlie(["bogus"]) == 2
+            assert cli._refresh_balldontlie(["identities,bogus"]) == 2
+            capsys.readouterr()
+            assert cli._refresh_balldontlie(["identities,contracts"]) == 2
+            assert "BALLDONTLIE_API_KEY is not set" in capsys.readouterr().out
+        finally:
+            get_settings.cache_clear()

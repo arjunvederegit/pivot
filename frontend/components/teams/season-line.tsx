@@ -11,13 +11,15 @@
  */
 
 import { count, ordinal, pct } from "@/lib/format";
-import type { Team, TeamProfile, Vocabulary } from "@/lib/types";
+import type { SeasonContext, Team, TeamProfile, Vocabulary } from "@/lib/types";
 import { Skeleton, SourceRail } from "@/components/ui";
 import { diagnosisSummary, type SummaryRow } from "@/components/teams/strengths-needs";
 
 export interface TeamDetail {
   team: Team;
   season: string;
+  /** R8.2: the roster season sits beside `season` (the statistics season). */
+  season_context?: SeasonContext;
   standing: {
     wins: number;
     losses: number;

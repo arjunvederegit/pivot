@@ -35,6 +35,7 @@ from collections.abc import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.canonical.rosters import current_roster_clause
 from app.cba import resolver
 from app.db.models import Contract, ContractYear, RosterEntry, Team
 
@@ -43,9 +44,7 @@ def contract_coverage(db: Session, season: str, league_year: str) -> dict:
     """Roster-side coverage for `league_year`, plus the shape of what is on file."""
     entries = list(
         db.scalars(
-            select(RosterEntry).where(
-                RosterEntry.season == season, RosterEntry.is_current
-            )
+            select(RosterEntry).where(current_roster_clause(season))
         ).all()
     )
     teams = {t.id: t.abbreviation for t in db.scalars(select(Team)).all()}
@@ -128,9 +127,7 @@ def roster_side_unmatched(
     """
     entries = list(
         db.scalars(
-            select(RosterEntry).where(
-                RosterEntry.season == season, RosterEntry.is_current
-            )
+            select(RosterEntry).where(current_roster_clause(season))
         ).all()
     )
     resolved = resolver.salaries(db, [e.player_id for e in entries], league_year)

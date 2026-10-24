@@ -290,6 +290,14 @@ export function LeaderPanel({
               </span>
             </p>
           )}
+          {(alt.membership_warnings ?? []).length > 0 && (
+            <p data-testid="membership-warning" className="mt-2.5 text-[12px] leading-snug text-conditional">
+              <span className="font-semibold">Unverified roster membership. </span>
+              {(alt.membership_warnings ?? []).map((w) => w.name).join(", ")}{" "}
+              {(alt.membership_warnings ?? []).length === 1 ? "is" : "are"} on no current roster in
+              Pivot&apos;s snapshot, so this deal is scored as if the move were possible — not confirmed.
+            </p>
+          )}
           {unmodeled.length > 0 && (
             <p className="mt-2.5 text-[12px] leading-snug text-unavail">
               {unmodeled.length === 1 ? "1 player has" : `${unmodeled.length} players have`} no impact
@@ -460,6 +468,12 @@ export function ChallengerList({
                   In {alt.incoming.map((p) => p.name).join(", ") || "—"} · out{" "}
                   {alt.outgoing.map((p) => p.name).join(", ") || "—"}
                 </p>
+                {(alt.membership_warnings ?? []).length > 0 && (
+                  <p data-testid="membership-warning-alt" className="mt-1.5 text-[12px] leading-snug text-conditional">
+                    Unverified roster membership: {(alt.membership_warnings ?? []).map((w) => w.name).join(", ")}{" "}— on no
+                    current roster in Pivot&apos;s snapshot; scored as if the move were possible.
+                  </p>
+                )}
                 {alt.has_unmodeled_players && (alt.unmodeled_players ?? []).length > 0 && (
                   <p className="mt-1.5 text-[12px] leading-snug text-unavail">
                     No impact estimate for {(alt.unmodeled_players ?? []).join(", ")} — left out of the

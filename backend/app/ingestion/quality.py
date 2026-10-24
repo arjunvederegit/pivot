@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.canonical.rosters import current_roster_clause, resolve_roster_season
 from app.config import get_settings
 from app.db.models import (
     ContractYear,
@@ -96,9 +97,103 @@ def prune_resolved_issues(db: Session, older_than_days: int = RESOLVED_RETENTION
     return len(stale)
 
 
+def _r8_checks(db: Session) -> list[dict]:
+    """Checks added with the canonical data foundation (R8).
+
+    Each one is a property a consumer silently relies on: that a dataset is recent enough to
+    act on, that every stored ``stat_type`` has a definition, that a player has at most one
+    contract header, and that every provider link points at something that still exists.
+    """
+    from app.canonical.provenance import Freshness
+    from app.canonical.stats import known_stat_types
+    from app.db.models import Contract, ProviderEntityId
+    from app.services.data_provenance import dataset_freshness
+
+    found: list[dict] = []
+    for name, meta in dataset_freshness(db).items():
+        if name == "contracts":
+            continue  # optional, user-supplied; absence is disclosed elsewhere
+        if meta.freshness is Freshness.STALE:
+            found.append(
+                _record(
+                    db,
+                    "stale_dataset",
+                    f"{name}: {meta.status_reason}; consumers will report it stale",
+                    "warning",
+                    entity=name,
+                )
+            )
+        if meta.refresh_failing and meta.last_refresh:
+            found.append(
+                _record(
+                    db,
+                    "refresh_failing",
+                    f"{name}: the latest {meta.last_refresh['job']} run failed "
+                    f"({meta.last_refresh['error']}); the stored rows are from the last "
+                    "successful refresh",
+                    "warning",
+                    entity=name,
+                )
+            )
+
+    known = set(known_stat_types())
+    unknown = {
+        row
+        for (row,) in db.execute(select(PlayerSeasonStats.stat_type).distinct())
+        if row not in known
+    }
+    for stat_type in sorted(unknown):
+        found.append(
+            _record(
+                db,
+                "unknown_stat_type",
+                f"player_season_stats holds stat_type {stat_type!r}, which has no definition "
+                "in app.canonical.stats; its aggregation and units are unknown",
+                "error",
+                entity=stat_type,
+            )
+        )
+
+    duplicated = db.execute(
+        select(Contract.player_id, func.count(Contract.id))
+        .group_by(Contract.player_id)
+        .having(func.count(Contract.id) > 1)
+    ).all()
+    for player_id, count in duplicated:
+        found.append(
+            _record(
+                db,
+                "duplicate_contract_header",
+                f"player {player_id} has {count} contract headers; payroll reads the first",
+                "warning",
+                entity=player_id,
+            )
+        )
+
+    dangling = 0
+    players = set(db.scalars(select(Player.id)).all())
+    teams = set(db.scalars(select(Team.id)).all())
+    for link in db.scalars(select(ProviderEntityId)).all():
+        target = players if link.entity_type == "player" else teams
+        if link.internal_id not in target:
+            dangling += 1
+    if dangling:
+        found.append(
+            _record(
+                db,
+                "dangling_provider_link",
+                f"{dangling} provider id link(s) point at a player/team that no longer exists",
+                "error",
+            )
+        )
+    return found
+
+
 def validate_data(db: Session) -> list[dict]:
     settings = get_settings()
-    season = settings.current_season
+    # R8.2: roster checks run on the roster season; the statistics checks below keep `settings.current_season`.
+    season = resolve_roster_season(db)
+    stats_season = settings.current_season
     issues: list[dict] = []
 
     # Resolve previously recorded open issues; current state is re-derived each run.
@@ -130,7 +225,7 @@ def validate_data(db: Session) -> list[dict]:
 
     multi_roster = db.execute(
         select(RosterEntry.player_id, func.count(RosterEntry.id))
-        .where(RosterEntry.is_current, RosterEntry.season == season)
+        .where(current_roster_clause(season))
         .group_by(RosterEntry.player_id)
         .having(func.count(RosterEntry.id) > 1)
     ).all()
@@ -148,7 +243,7 @@ def validate_data(db: Session) -> list[dict]:
 
     roster_counts = db.execute(
         select(RosterEntry.team_id, func.count(RosterEntry.id))
-        .where(RosterEntry.is_current, RosterEntry.season == season)
+        .where(current_roster_clause(season))
         .group_by(RosterEntry.team_id)
     ).all()
     for team_id, count in roster_counts:
@@ -214,13 +309,13 @@ def validate_data(db: Session) -> list[dict]:
             )
         )
 
-    cap = db.scalar(select(LeagueCapParameters).where(LeagueCapParameters.league_year == season))
+    cap = db.scalar(select(LeagueCapParameters).where(LeagueCapParameters.league_year == stats_season))
     if cap is None:
         issues.append(
             _record(
                 db,
                 "cap_parameters_missing",
-                f"no cap parameters loaded for league year {season}; run `make seed-config`",
+                f"no cap parameters loaded for league year {stats_season}; run `make seed-config`",
                 "error",
             )
         )
@@ -229,7 +324,7 @@ def validate_data(db: Session) -> list[dict]:
     stale_standings = (
         db.scalar(
             select(func.count(Standing.id)).where(
-                Standing.season == season, Standing.source_retrieved_at < stale_cutoff
+                Standing.season == stats_season, Standing.source_retrieved_at < stale_cutoff
             )
         )
         or 0
@@ -260,6 +355,8 @@ def validate_data(db: Session) -> list[dict]:
                 "error",
             )
         )
+
+    issues.extend(_r8_checks(db))
 
     pruned = prune_resolved_issues(db)
     if pruned:

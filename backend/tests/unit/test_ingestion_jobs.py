@@ -233,6 +233,26 @@ class FakeProvider:
         )
 
 
+def _roster(*pairs: tuple[str, int]) -> list[dict]:
+    """Roster rows for (nba_team_id, nba_player_id) pairs."""
+    return [
+        {
+            "nba_team_id": int(team),
+            "nba_player_id": player,
+            "player_name": f"Player {player}",
+            "jersey_number": "1",
+            "position": "G",
+            "age": 25.0,
+            "source_record_id": f"roster:{team}:{player}",
+            "source_retrieved_at": NOW,
+        }
+        for team, player in pairs
+    ]
+
+
+_BASE_ROSTER = _roster(("1610612737", 201939), ("1610612737", 300001), ("1610612738", 999999))
+
+
 @pytest.fixture()
 def provider() -> FakeProvider:
     return FakeProvider()
@@ -286,14 +306,82 @@ class TestSyncTeamsAndPlayers:
 
 
 class TestSyncRosters:
-    def test_it_supersedes_the_previous_snapshot(self, db: Session, synced: FakeProvider):
+    def test_an_unchanged_roster_is_confirmed_not_duplicated(
+        self, db: Session, synced: FakeProvider
+    ):
+        """R8: membership that has not changed keeps its row and its `valid_from`.
+
+        Before R8 every run superseded and re-inserted every row (~1.5M rows a year at the
+        worker's six-hour cadence) and `valid_from` was reset to "now" each time, so it could
+        never mean "first observed on this team".
+        """
+        jobs.sync_rosters(db, SEASON, synced)
+        first = {e.player_id: e.valid_from for e in db.query(RosterEntry).all()}
         jobs.sync_rosters(db, SEASON, synced)
         jobs.sync_rosters(db, SEASON, synced)
-        current = db.query(RosterEntry).filter_by(is_current=True).all()
-        superseded = db.query(RosterEntry).filter_by(is_current=False).all()
-        assert len(current) == 2, "one snapshot is current"
-        assert len(superseded) == 2, "the previous one is kept, marked, and dated"
-        assert all(entry.valid_to is not None for entry in superseded)
+        entries = db.query(RosterEntry).all()
+        assert len(entries) == 2, "no new rows for unchanged membership"
+        assert all(e.is_current and e.valid_to is None for e in entries)
+        assert {e.player_id: e.valid_from for e in entries} == first
+
+    def test_a_player_who_changes_team_closes_one_row_and_opens_another(
+        self, db: Session, synced: FakeProvider
+    ):
+        jobs.sync_rosters(db, SEASON, FakeProvider(rosters=_BASE_ROSTER))
+        # Curry moves ATL -> BOS; both teams stay populated, as a real league's would.
+        moved = FakeProvider(
+            rosters=_roster(("1610612737", 300001), ("1610612738", 201939), ("1610612738", 999999))
+        )
+        jobs.sync_rosters(db, SEASON, moved)
+        curry = db.query(Player).filter_by(nba_player_id=201939).one()
+        rows = db.query(RosterEntry).filter_by(player_id=curry.id).all()
+        assert sorted((r.is_current, r.valid_to is not None) for r in rows) == [
+            (False, True),
+            (True, False),
+        ]
+        current = next(r for r in rows if r.is_current)
+        assert current.team.nba_team_id == 1610612738
+        assert db.query(RosterEntry).filter_by(is_current=True).count() == 3
+
+    def test_a_player_no_longer_listed_is_closed_not_deleted(
+        self, db: Session, synced: FakeProvider
+    ):
+        jobs.sync_rosters(db, SEASON, FakeProvider(rosters=_BASE_ROSTER))
+        jobs.sync_rosters(
+            db, SEASON, FakeProvider(rosters=_roster(("1610612737", 201939), ("1610612738", 999999)))
+        )
+        gone = db.query(Player).filter_by(nba_player_id=300001).one()
+        entry = db.query(RosterEntry).filter_by(player_id=gone.id).one()
+        assert entry.is_current is False and entry.valid_to is not None
+
+    def test_an_empty_provider_answer_does_not_erase_the_league(
+        self, db: Session, synced: FakeProvider
+    ):
+        """The provider *answered* with nothing. That must not supersede every roster."""
+        from app.ingestion.jobs import SnapshotRejectedError
+
+        jobs.sync_rosters(db, SEASON, synced)
+        with pytest.raises(SnapshotRejectedError):
+            jobs.sync_rosters(db, SEASON, FakeProvider(rosters=[]))
+        assert db.query(RosterEntry).filter_by(is_current=True).count() == 2
+        run = (
+            db.query(DataSyncRun)
+            .filter_by(job_name="sync_rosters")
+            .order_by(DataSyncRun.started_at.desc())
+            .first()
+        )
+        assert run.status == "failed" and run.error_class == "SnapshotRejectedError"
+
+    def test_a_snapshot_covering_a_fraction_of_the_league_is_rejected(
+        self, db: Session, synced: FakeProvider
+    ):
+        from app.ingestion.jobs import SnapshotRejectedError
+
+        jobs.sync_rosters(db, SEASON, synced)
+        # One of the two previously covered teams only: 50 % < the 90 % coverage floor.
+        with pytest.raises(SnapshotRejectedError, match="teams"):
+            jobs.sync_rosters(db, SEASON, FakeProvider(rosters=_roster(("1610612737", 201939))))
+        assert db.query(RosterEntry).filter_by(is_current=True).count() == 2
 
     def test_a_player_unknown_to_static_data_is_created_from_the_roster_row(
         self, db: Session, synced: FakeProvider
@@ -314,9 +402,50 @@ class TestSyncRosters:
         assert (curry.height_inches, curry.weight_lbs, curry.years_experience) == (74, 185, 16)
         assert curry.birth_date == date(1988, 3, 14)
 
-    def test_team_history_is_appended(self, db: Session, synced: FakeProvider):
-        jobs.sync_rosters(db, SEASON, synced)
+    def test_team_history_records_each_sighting_once(self, db: Session, synced: FakeProvider):
+        """Three syncs of the same roster: two history rows, not six (R8 audit W3)."""
+        for _ in range(3):
+            jobs.sync_rosters(db, SEASON, synced)
         assert db.query(PlayerTeamHistory).count() == 2
+
+    def test_history_gains_a_row_only_for_a_new_team(self, db: Session, synced: FakeProvider):
+        jobs.sync_rosters(db, SEASON, FakeProvider(rosters=_BASE_ROSTER))
+        jobs.sync_rosters(
+            db,
+            SEASON,
+            FakeProvider(
+                rosters=_roster(("1610612737", 300001), ("1610612738", 201939), ("1610612738", 999999))
+            ),
+        )
+        curry = db.query(Player).filter_by(nba_player_id=201939).one()
+        assert db.query(PlayerTeamHistory).filter_by(player_id=curry.id).count() == 2
+
+
+class TestEmptySeasonAnswersAreRejectedNotRecordedAsSuccess:
+    @pytest.mark.parametrize(
+        ("job", "override"),
+        [
+            (jobs.sync_standings, "standings"),
+            (jobs.sync_player_stats, "player_stats"),
+            (jobs.sync_team_stats, "team_stats"),
+            (jobs.sync_games, "games"),
+        ],
+    )
+    def test_zero_rows_fail_the_run(self, db: Session, job, override: str):
+        from app.ingestion.jobs import SnapshotRejectedError
+
+        provider = FakeProvider(**{override: []})
+        jobs.sync_teams(db, provider)
+        jobs.sync_players(db, provider)
+        with pytest.raises(SnapshotRejectedError):
+            job(db, provider=provider) if job is not jobs.sync_player_stats else job(
+                db, [SEASON], provider
+            )
+
+    def test_season_type_is_written_explicitly(self, db: Session, synced: FakeProvider):
+        jobs.sync_rosters(db, SEASON, synced)
+        jobs.sync_player_stats(db, [SEASON], synced)
+        assert {r.season_type for r in db.query(PlayerSeasonStats).all()} == {"regular"}
 
 
 class TestSyncStandings:

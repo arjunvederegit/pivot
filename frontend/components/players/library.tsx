@@ -104,6 +104,16 @@ export function LibraryCard({
             </span>
             <span className="numeral font-normal tracking-normal text-foreground/90">{player.gp}</span>{" "}
             <span className="text-faint">GP</span>
+            {/* R8.2: these totals belong to the team they were earned with, not the current one. */}
+            {player.season_team_abbr && player.season_team_abbr !== player.team_abbr && (
+              <span
+                className="pl-1.5 text-faint"
+                title={`These totals were accumulated with ${player.season_team_abbr}`}
+                data-testid="totals-team"
+              >
+                · totals with {player.season_team_abbr}
+              </span>
+            )}
           </p>
           {/* Team line, drawn above the name (as on the player file) but read after it. */}
           <div className="order-first flex min-w-0 items-center justify-between gap-2">

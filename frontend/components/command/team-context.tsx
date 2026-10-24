@@ -158,8 +158,9 @@ export function YourTeamCard({
       </header>
 
       <dl className="mx-5 mt-4 grid grid-cols-3 gap-3 border-b border-hairline pb-4">
+        {/* R8.2: the record and point differential are the statistics season's, not the roster's. */}
         <Reading
-          label="Record"
+          label={detail?.season ? `${detail.season} record` : "Record"}
           loading={detailPending}
           value={standing ? `${standing.wins}–${standing.losses}` : "—"}
         />

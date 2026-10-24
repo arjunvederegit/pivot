@@ -192,7 +192,9 @@ function DataStatus({ collapsed = false }: { collapsed?: boolean }) {
         <span className="min-w-0 leading-tight">
           <span className="block truncate font-medium text-foreground">{label}</span>
           <span className="block truncate text-[11px] text-faint">
-            {data.current_season} season
+            {data.roster_season && data.roster_season !== data.current_season
+              ? `${data.roster_season} rosters · ${data.current_season} stats`
+              : `${data.current_season} season`}
             {ageDays !== null ? ` · ${ageDays}d since sync` : ""}
           </span>
         </span>
@@ -498,7 +500,11 @@ function SidebarTeamContext({ collapsed }: { collapsed: boolean }) {
           <span className="min-w-0 leading-tight">
             <span className="block truncate text-[13.5px] text-foreground">{name}</span>
             {health?.current_season && (
-              <span className="block text-[11.5px] text-faint">{health.current_season} season</span>
+              <span className="block text-[11.5px] text-faint">
+                {health.roster_season && health.roster_season !== health.current_season
+                  ? `${health.roster_season} roster · ${health.current_season} stats`
+                  : `${health.current_season} season`}
+              </span>
             )}
           </span>
         )}

@@ -74,6 +74,17 @@ class TestTrainAll:
             "pick_value_curve",
         }
 
+    def test_every_registered_algorithm_label_fits_its_column(self, db: Session, trainable: dict):
+        """SQLite never enforced VARCHAR(50), so 51- and 97-character labels shipped; PostgreSQL
+        rejects them and `make train` could not register a model there (found in R8.1)."""
+        train_all(db)
+        limit = ModelVersion.__table__.c.algorithm.type.length
+        labels = {m.algorithm for m in db.query(ModelVersion)}
+        assert labels and all(len(label) <= limit for label in labels), {
+            label: len(label) for label in labels if len(label) > limit
+        }
+        assert max(len(label) for label in labels) > 50, "the case that broke Postgres is exercised"
+
     def test_it_writes_impact_estimates_and_archetypes(self, db: Session, trainable: dict):
         summary = train_all(db)
         assert summary["impact"]["players_scored"] > 0

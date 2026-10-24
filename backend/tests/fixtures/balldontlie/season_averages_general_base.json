@@ -1,0 +1,59 @@
+{
+ "_fixture": "SYNTHETIC FIXTURE. Values are invented; the STRUCTURE was confirmed against live responses on 2026-10-18 (R8.3). Not a captured live response.",
+ "data": [
+  {
+   "player": {
+    "id": 101,
+    "first_name": "Alex",
+    "last_name": "Fixture",
+    "position": "G",
+    "height": "6-4",
+    "weight": "195",
+    "jersey_number": "3",
+    "college": "Fixture U",
+    "country": "USA",
+    "draft_year": 2019,
+    "draft_round": 1,
+    "draft_number": 10
+   },
+   "season": 2025,
+   "season_type": "regular",
+   "stats": {
+    "gp": 70,
+    "min": 32.5,
+    "pts": 26.0,
+    "ast": 6.0,
+    "reb": 4.5,
+    "fg_pct": 0.471,
+    "fg3_pct": null,
+    "pts_rank": 12,
+    "label": "ignored text"
+   }
+  },
+  {
+   "player": {
+    "id": 103,
+    "first_name": "Blake",
+    "last_name": "Fixture",
+    "position": "G",
+    "height": "6-4",
+    "weight": "195",
+    "jersey_number": "3",
+    "college": "Fixture U",
+    "country": "USA",
+    "draft_year": 2019,
+    "draft_round": 1,
+    "draft_number": 10
+   },
+   "season": 2025,
+   "season_type": "playoffs",
+   "stats": {
+    "gp": 5,
+    "pts": 11.0
+   }
+  }
+ ],
+ "meta": {
+  "per_page": 100
+ }
+}

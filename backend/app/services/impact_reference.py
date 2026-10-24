@@ -33,6 +33,7 @@ from bisect import bisect_left, bisect_right
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.canonical.rosters import current_roster_clause, resolve_roster_season
 from app.config import get_settings
 from app.db.models import ModelVersion, PlayerImpactEstimate, RosterEntry
 
@@ -91,7 +92,7 @@ def impact_reference(db: Session) -> dict:
     rostered_ids = set(
         db.scalars(
             select(RosterEntry.player_id).where(
-                RosterEntry.season == settings.current_season, RosterEntry.is_current
+                current_roster_clause(resolve_roster_season(db))
             )
         ).all()
     )

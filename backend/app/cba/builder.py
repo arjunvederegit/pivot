@@ -2,6 +2,7 @@
 
 from sqlalchemy.orm import Session
 
+from app.canonical.rosters import resolve_roster_season
 from app.config import get_settings
 from app.core.errors import DataUnavailableError, InvalidTradeError, NotFoundError
 from app.db.models import (
@@ -174,7 +175,8 @@ def build_trade_context(
     """
     settings = get_settings()
     league_year = league_year or settings.cap_league_year
-    season = settings.current_season
+    # R8.2: membership is checked against the roster season, not the statistics season.
+    season = resolve_roster_season(db)
     params = load_cap_params(db, league_year)
 
     _validate_player_moves(db, player_moves, season)

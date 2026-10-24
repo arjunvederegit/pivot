@@ -1,0 +1,48 @@
+{
+ "_fixture": "SYNTHETIC FIXTURE. Values are invented; the STRUCTURE was confirmed against live responses on 2026-10-18 (R8.3). Not a captured live response.",
+ "data": [
+  {
+   "player": {
+    "id": 101,
+    "first_name": "Alex",
+    "last_name": "Fixture",
+    "position": "G",
+    "height": "6-4",
+    "weight": "195",
+    "jersey_number": "3",
+    "college": "Fixture U",
+    "country": "USA",
+    "draft_year": 2019,
+    "draft_round": 1,
+    "draft_number": 10,
+    "team_id": 1
+   },
+   "return_date": "2026-11-03",
+   "description": "Ankle sprain",
+   "status": "Out"
+  },
+  {
+   "player": {
+    "id": 103,
+    "first_name": "Blake",
+    "last_name": "Fixture",
+    "position": "G",
+    "height": "6-4",
+    "weight": "195",
+    "jersey_number": "3",
+    "college": "Fixture U",
+    "country": "USA",
+    "draft_year": 2019,
+    "draft_round": 1,
+    "draft_number": 10,
+    "team_id": 2
+   },
+   "return_date": null,
+   "description": null,
+   "status": "Day-To-Day"
+  }
+ ],
+ "meta": {
+  "per_page": 25
+ }
+}

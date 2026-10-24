@@ -18,6 +18,10 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 # reachable` runs every CLI command, and two of them fetch from a third party; this makes
 # them refuse instead.
 os.environ.setdefault("ROSTERLAB_OFFLINE", "1")
+# The suite's fixtures are 2025-26 data. Pin the season so tests do not change meaning when the
+# calendar crosses the 2026-27 rollover; the calendar-derived behaviour is tested explicitly with
+# injected dates (tests/unit/test_season_readiness.py).
+os.environ.setdefault("CURRENT_SEASON", "2025-26")
 
 from app.db.models import (  # noqa: E402
     Base,
@@ -57,16 +61,26 @@ def _no_langchain_tracing_in_assistant_tests(request: pytest.FixtureRequest, mon
 
 @pytest.fixture()
 def db() -> Session:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,  # one shared connection: TestClient threads see the schema
-    )
+    #: R8.1: set PIVOT_TEST_DB_URL to a DISPOSABLE PostgreSQL database to run any test file against
+    #: Postgres instead of SQLite (the schema is dropped and recreated per test, so never point it
+    #: at data you want to keep). Unset — the default, and CI — nothing changes.
+    pg_url = os.environ.get("PIVOT_TEST_DB_URL", "")
+    if pg_url:
+        engine = create_engine(pg_url)
+        Base.metadata.drop_all(engine)
+    else:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,  # one shared connection: TestClient threads see the schema
+        )
     Base.metadata.create_all(engine)
     TestSession = sessionmaker(bind=engine, expire_on_commit=False)
     session = TestSession()
     yield session
     session.close()
+    if pg_url:
+        engine.dispose()
 
 
 @pytest.fixture()

@@ -46,6 +46,7 @@ import {
   type SeasonLine,
 } from "@/components/players/career";
 import { PlayerFileHeader, type PlayerRecord } from "@/components/players/file-header";
+import type { SeasonContext } from "@/lib/types";
 import {
   FitCard,
   ImpactPanel,
@@ -56,6 +57,8 @@ import {
 } from "@/components/players/profile";
 
 interface PlayerDetail {
+  /** R8.2: which season the team, the impact estimate and the statistics each belong to. */
+  season_context?: SeasonContext;
   player: PlayerRecord;
   impact: PlayerImpact;
   archetype: ArchetypeAssignment | null;
@@ -155,6 +158,7 @@ export default function PlayerPage({ params }: { params: Promise<{ playerId: str
         impact={data.impact}
         archetype={data.archetype}
         age={age}
+        seasonContext={data.season_context}
         seasons={stats?.seasons}
         seasonsSource={stats?.source}
         seasonsError={statsError}

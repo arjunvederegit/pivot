@@ -27,6 +27,7 @@ from app.api.v1 import (
     health,
     intelligence,
     players,
+    provenance,
     scenarios,
     teams,
     trades,
@@ -125,6 +126,7 @@ app.add_middleware(assistant.AskDisconnectMiddleware, path=f"{API}/assistant/ask
 app.include_router(health.router, prefix=API)
 app.include_router(teams.router, prefix=API)
 app.include_router(players.router, prefix=API)
+app.include_router(provenance.router, prefix=API)
 app.include_router(scenarios.router, prefix=API)
 app.include_router(trades.router, prefix=API)
 app.include_router(comparisons.router, prefix=API)

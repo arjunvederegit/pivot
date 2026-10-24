@@ -15,6 +15,7 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.canonical.rosters import current_roster_clause
 from app.config import BACKEND_DIR, get_settings
 from app.core.logging import get_logger
 from app.db.models import (
@@ -318,7 +319,10 @@ def train_all(db: Session) -> dict[str, Any]:
 
     availability = availability_from_history(season_df, seasons).set_index("player_id")
     rostered_ids = {
-        r.player_id for r in db.scalars(select(RosterEntry).where(RosterEntry.is_current)).all()
+        r.player_id
+        for r in db.scalars(
+            select(RosterEntry).where(current_roster_clause(settings.current_season))
+        ).all()
     }
 
     written = 0
@@ -414,7 +418,9 @@ def train_all(db: Session) -> dict[str, Any]:
     team_rows = []
     net_by_team_season: dict[tuple[str, str], float] = {}
     for stats in db.scalars(
-        select(TeamSeasonStats).where(TeamSeasonStats.stat_type == "advanced")
+        select(TeamSeasonStats).where(
+            TeamSeasonStats.stat_type == "advanced", TeamSeasonStats.season_type == "regular"
+        )
     ).all():
         standing = db.scalar(
             select(Standing).where(

@@ -1,0 +1,32 @@
+{
+ "_fixture": "SYNTHETIC FIXTURE. Shaped after the BALLDONTLIE OpenAPI document (retrieved 2026-10-18). Player names and figures are invented. NOT a captured live response and not evidence of live behaviour.",
+ "data": [
+  {
+   "id": 1,
+   "conference": "East",
+   "division": "Southeast",
+   "city": "Atlanta",
+   "name": "Hawks",
+   "full_name": "Atlanta Hawks",
+   "abbreviation": "ATL"
+  },
+  {
+   "id": 2,
+   "conference": "East",
+   "division": "Atlantic",
+   "city": "Boston",
+   "name": "Celtics",
+   "full_name": "Boston Celtics",
+   "abbreviation": "BOS"
+  },
+  {
+   "id": 99,
+   "conference": "West",
+   "division": "Pacific",
+   "city": "Nowhere",
+   "name": "Placeholders",
+   "full_name": "Nowhere Placeholders",
+   "abbreviation": "NWP"
+  }
+ ]
+}

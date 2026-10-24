@@ -40,6 +40,7 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup, Comment, Tag
 
+from app.canonical.identity import TEAM_CODE_ALIASES_BY_SOURCE
 from app.core.logging import get_logger
 
 from .base import ContractRecord
@@ -51,7 +52,7 @@ SOURCE_NAME = "basketball-reference.com contracts snapshot"
 MAX_PLAUSIBLE_SALARY = 100_000_000
 
 # BBRef uses its own 3-letter codes for a few franchises; all others pass through.
-BBREF_TO_NBA_TEAM = {"BRK": "BKN", "CHO": "CHA", "PHO": "PHX"}
+BBREF_TO_NBA_TEAM = TEAM_CODE_ALIASES_BY_SOURCE["bbref"]
 
 _SEASON_LABEL_RE = re.compile(r"^\d{4}-\d{2}$")
 _SALARY_STAT_RE = re.compile(r"^y\d+$")

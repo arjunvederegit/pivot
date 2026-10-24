@@ -70,7 +70,7 @@ class NBAApiClient:
                 raise ProviderSchemaError(
                     endpoint_name, f"dataset index {dataset_index} missing ({len(frames)} datasets)"
                 )
-            return validate_dataframe(endpoint_name, frames[dataset_index])
+            return validate_dataframe(endpoint_name, frames[dataset_index], require_rows=False)
 
         try:
             df = with_retries(endpoint_name, run, self.settings.nba_api_max_retries)
@@ -81,6 +81,12 @@ class NBAApiClient:
             get_provider_health().record_failure(endpoint_name, str(error))
             raise error from exc
 
+        if df.empty:
+            # Well-formed and empty: reported as such, after the retry loop and the breaker, and
+            # deliberately not cached so the next call asks again.
+            from .exceptions import ProviderEmptyError
+
+            raise ProviderEmptyError(endpoint_name, "response contained zero rows")
         meta = {
             "provider": "nba_api",
             "upstream": "NBA.com",

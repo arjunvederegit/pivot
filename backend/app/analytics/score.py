@@ -9,6 +9,7 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.canonical.rosters import current_roster_clause
 from app.config import get_settings
 from app.core.logging import get_logger
 from app.db.models import (
@@ -49,6 +50,7 @@ def _advanced_ast_pct(db: Session, season: str) -> dict[str, float]:
         for row in db.scalars(
             select(PlayerSeasonStats).where(
                 PlayerSeasonStats.season == season,
+                PlayerSeasonStats.season_type == "regular",
                 PlayerSeasonStats.stat_type == "advanced",
             )
         ).all():
@@ -65,9 +67,7 @@ def _roster_profile(db: Session, team_id: str, season: str) -> dict[str, Any] | 
         # otherwise emits one SELECT per rostered player.
         select(RosterEntry)
         .options(joinedload(RosterEntry.player))
-        .where(
-            RosterEntry.team_id == team_id, RosterEntry.season == season, RosterEntry.is_current
-        )
+        .where(RosterEntry.team_id == team_id, current_roster_clause(season))
     ).all()
     if not entries:
         return None

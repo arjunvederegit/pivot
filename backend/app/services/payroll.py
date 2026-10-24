@@ -20,6 +20,7 @@ The summary now carries three separate things, and they are never merged:
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.canonical.rosters import current_roster_clause, resolve_roster_season
 from app.cba.builder import load_cap_params
 from app.cba.context import CapParams, PayrollCoverage
 from app.cba.resolver import salaries
@@ -32,16 +33,14 @@ from app.integrations.contracts import get_contract_provider
 def team_payroll_summary(db: Session, team: Team) -> dict:
     settings = get_settings()
     league_year = settings.cap_league_year
-    season = settings.current_season
+    season = resolve_roster_season(db)
     try:
         params = load_cap_params(db, league_year)
     except DataUnavailableError:
         params = None
 
     entries = db.scalars(
-        select(RosterEntry).where(
-            RosterEntry.team_id == team.id, RosterEntry.season == season, RosterEntry.is_current
-        )
+        select(RosterEntry).where(RosterEntry.team_id == team.id, current_roster_clause(season))
     ).all()
 
     resolved = salaries(db, [entry.player_id for entry in entries], league_year)
@@ -73,6 +72,9 @@ def team_payroll_summary(db: Session, team: Team) -> dict:
     provider_configured = get_contract_provider() is not None
     summary: dict = {
         "league_year": league_year,
+        # R8.2: the roster the payroll is summed over, and the season the salaries are for. They
+        # are looked up for `league_year` only; no other season's salary stands in for it.
+        "roster_season": season,
         "roster_size": coverage.players_total,
         "players_with_salary": coverage.players_known,
         "players_without_salary": coverage.players_unknown,

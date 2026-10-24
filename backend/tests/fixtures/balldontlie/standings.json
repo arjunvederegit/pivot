@@ -1,0 +1,45 @@
+{
+ "_fixture": "SYNTHETIC FIXTURE. Shaped after the BALLDONTLIE OpenAPI document (retrieved 2026-10-18). Player names and figures are invented. NOT a captured live response and not evidence of live behaviour.",
+ "data": [
+  {
+   "team": {
+    "id": 1,
+    "conference": "East",
+    "division": "Southeast",
+    "city": "Atlanta",
+    "name": "Hawks",
+    "full_name": "Atlanta Hawks",
+    "abbreviation": "ATL"
+   },
+   "conference_record": "26-26",
+   "conference_rank": 9,
+   "division_record": "8-8",
+   "division_rank": 3,
+   "wins": 40,
+   "losses": 42,
+   "home_record": "22-19",
+   "road_record": "18-23",
+   "season": 2025
+  },
+  {
+   "team": {
+    "id": 2,
+    "conference": "East",
+    "division": "Atlantic",
+    "city": "Boston",
+    "name": "Celtics",
+    "full_name": "Boston Celtics",
+    "abbreviation": "BOS"
+   },
+   "conference_record": "30-22",
+   "conference_rank": 3,
+   "division_record": "10-6",
+   "division_rank": 1,
+   "wins": 55,
+   "losses": 27,
+   "home_record": "30-11",
+   "road_record": "25-16",
+   "season": 2025
+  }
+ ]
+}

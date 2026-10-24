@@ -1,0 +1,85 @@
+{
+ "_fixture": "SYNTHETIC FIXTURE. Shaped after the BALLDONTLIE OpenAPI document (retrieved 2026-10-18). Player names and figures are invented. NOT a captured live response and not evidence of live behaviour.",
+ "data": [
+  {
+   "id": 101,
+   "first_name": "Alex",
+   "last_name": "Fixture",
+   "position": "G",
+   "height": "6-4",
+   "weight": "195",
+   "jersey_number": "3",
+   "college": "Fixture U",
+   "country": "USA",
+   "draft_year": 2019,
+   "draft_round": 1,
+   "draft_number": 10,
+   "team": {
+    "id": 1,
+    "conference": "East",
+    "division": "Southeast",
+    "city": "Atlanta",
+    "name": "Hawks",
+    "full_name": "Atlanta Hawks",
+    "abbreviation": "ATL"
+   }
+  },
+  {
+   "id": 102,
+   "first_name": "Sam",
+   "last_name": "Williams",
+   "position": "G",
+   "height": "6-4",
+   "weight": "195",
+   "jersey_number": "3",
+   "college": "Fixture U",
+   "country": "USA",
+   "draft_year": 2015,
+   "draft_round": 2,
+   "draft_number": 40,
+   "team": null
+  },
+  {
+   "id": 103,
+   "first_name": "Sam",
+   "last_name": "Williams",
+   "position": "G",
+   "height": "6-4",
+   "weight": "195",
+   "jersey_number": "3",
+   "college": "Fixture U",
+   "country": "USA",
+   "draft_year": 2022,
+   "draft_round": 1,
+   "draft_number": 12,
+   "team": {
+    "id": 2,
+    "conference": "East",
+    "division": "Atlantic",
+    "city": "Boston",
+    "name": "Celtics",
+    "full_name": "Boston Celtics",
+    "abbreviation": "BOS"
+   }
+  },
+  {
+   "id": 104,
+   "first_name": "Blank",
+   "last_name": "Fields",
+   "position": "",
+   "height": "",
+   "weight": "",
+   "jersey_number": "",
+   "college": "",
+   "country": "",
+   "draft_year": null,
+   "draft_round": null,
+   "draft_number": null,
+   "team": null
+  }
+ ],
+ "meta": {
+  "next_cursor": 104,
+  "per_page": 4
+ }
+}

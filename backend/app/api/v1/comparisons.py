@@ -114,6 +114,8 @@ def get_comparison(comparison_id: str, db: Session = Depends(get_db)) -> dict:
                 "confidence": evaluation.get("confidence"),
                 "has_unmodeled_players": evaluation.get("has_unmodeled_players", False),
                 "unmodeled_players": evaluation.get("unmodeled_players", []),
+                # R8.2: players in the deal who are on no current roster; scored, but unverified.
+                "membership_warnings": evaluation.get("membership_warnings", []),
                 "composite_utility": evaluation["composite_utility"],
                 "components": evaluation["components"],
                 # A suppressed evaluation carries no detail at all — the deal cannot be

@@ -159,9 +159,17 @@ class PlayerGameStats(Base, ProvenanceMixin):
 
 
 class PlayerSeasonStats(Base, ProvenanceMixin):
+    """One player's statistics for one scope (season, season type) and one stat type.
+
+    What a ``stat_type`` means — per-game average or season total, observed or modelled —
+    is defined in ``app.canonical.stats``. In particular ``minutes`` is *minutes per game*
+    for ``base``/``advanced``/``estimated`` rows and *minutes for the season* for
+    ``totals`` rows; read it through ``minutes_per_game`` rather than directly.
+    """
+
     __tablename__ = "player_season_stats"
     __table_args__ = (
-        UniqueConstraint("player_id", "season", "stat_type", name="uq_pss"),
+        UniqueConstraint("player_id", "season", "season_type", "stat_type", name="uq_pss_scope"),
         Index("ix_pss_season", "season", "stat_type"),
     )
 
@@ -169,7 +177,11 @@ class PlayerSeasonStats(Base, ProvenanceMixin):
     player_id: Mapped[str] = mapped_column(ForeignKey("players.id"), index=True)
     team_id: Mapped[str | None] = mapped_column(ForeignKey("teams.id"))
     season: Mapped[str] = mapped_column(String(10))
-    stat_type: Mapped[str] = mapped_column(String(20))  # base | advanced | estimated
+    #: regular | playoffs | play_in | preseason | ist (`app.canonical.seasons.SeasonType`).
+    #: Every row ingested before R8 is a regular-season row (NBA.com's default, and the
+    #: imported CSV's games-played matches the regular-season base row for all 573 players).
+    season_type: Mapped[str] = mapped_column(String(12), default="regular", server_default="regular")
+    stat_type: Mapped[str] = mapped_column(String(20))  # base | advanced | estimated | totals
     games_played: Mapped[int | None] = mapped_column(Integer)
     minutes: Mapped[float | None] = mapped_column(Float)
     stats: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -179,11 +191,14 @@ class PlayerSeasonStats(Base, ProvenanceMixin):
 
 class TeamSeasonStats(Base, ProvenanceMixin):
     __tablename__ = "team_season_stats"
-    __table_args__ = (UniqueConstraint("team_id", "season", "stat_type", name="uq_tss"),)
+    __table_args__ = (
+        UniqueConstraint("team_id", "season", "season_type", "stat_type", name="uq_tss_scope"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_pk)
     team_id: Mapped[str] = mapped_column(ForeignKey("teams.id"), index=True)
     season: Mapped[str] = mapped_column(String(10), index=True)
+    season_type: Mapped[str] = mapped_column(String(12), default="regular", server_default="regular")
     stat_type: Mapped[str] = mapped_column(String(20))
     stats: Mapped[dict] = mapped_column(JSON, default=dict)
 
@@ -276,6 +291,12 @@ class ContractYear(Base, ProvenanceMixin):
     guaranteed: Mapped[int | None] = mapped_column(Integer)
     player_option: Mapped[bool | None] = mapped_column(Boolean)
     team_option: Mapped[bool | None] = mapped_column(Boolean)
+    #: R8.3. ``salary`` is the figure every reader uses; ``salary_basis`` names what it is
+    #: ("cap_hit" for BALLDONTLIE rows, NULL for earlier snapshots whose basis was never stated).
+    #: ``base_salary`` and ``total_cash`` are different quantities and are kept, not merged.
+    base_salary: Mapped[int | None] = mapped_column(Integer)
+    total_cash: Mapped[int | None] = mapped_column(Integer)
+    salary_basis: Mapped[str | None] = mapped_column(String(20))
 
     contract: Mapped[Contract] = relationship(back_populates="years")
 
@@ -290,6 +311,8 @@ class Injury(Base, ProvenanceMixin):
     status: Mapped[str] = mapped_column(String(30))
     description: Mapped[str | None] = mapped_column(Text)
     reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: The provider's expected return date, if it gives one. Absent is NULL, never "healthy".
+    return_date: Mapped[date | None] = mapped_column(Date)
 
 
 class Transaction(Base, ProvenanceMixin):
@@ -493,7 +516,8 @@ class ModelVersion(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_pk)
     model_name: Mapped[str] = mapped_column(String(50), index=True)
     version: Mapped[str] = mapped_column(String(30))
-    algorithm: Mapped[str] = mapped_column(String(50))
+    #: 200: the real labels run to 97 characters (SQLite never enforced the old 50; PostgreSQL does).
+    algorithm: Mapped[str] = mapped_column(String(200))
     training_period: Mapped[str | None] = mapped_column(String(50))
     feature_list: Mapped[list] = mapped_column(JSON, default=list)
     target: Mapped[str | None] = mapped_column(String(100))
@@ -731,3 +755,97 @@ class MediaAsset(Base, ProvenanceMixin):
     confidence: Mapped[str] = mapped_column(String(20), default="high")  # high|medium|unmatched
     source_label: Mapped[str] = mapped_column(String(100))  # e.g. folder name the file came from
     alt_text: Mapped[str] = mapped_column(String(200))
+    #: Whether Pivot may show this file, and where. `unverified` is the honest default for
+    #: anything whose licence nobody has checked; it is never inferred from a file being
+    #: publicly reachable. Values: unverified | dev_only | licensed | restricted.
+    usage_status: Mapped[str] = mapped_column(
+        String(20), default="unverified", server_default="unverified"
+    )
+    #: A pointer to the licence/permission record (contract id, Commons file page, ...).
+    license_ref: Mapped[str | None] = mapped_column(String(300))
+    #: Where the file originally came from, when known.
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+
+
+# ---------------------------------------------------------- provider identity crosswalk
+
+
+class ProviderEntityId(Base, TimestampMixin):
+    """Maps a provider's identifier for a player/team to Pivot's own internal id.
+
+    ``players.nba_player_id`` and ``teams.nba_team_id`` remain the NBA.com keys and need no
+    row here. This table exists for every *other* provider: BALLDONTLIE's player id 237
+    is not NBA.com's 2544, and nothing in BALLDONTLIE's payload says which is which. Each
+    link records how it was made (``match_method``), how sure that was, and the evidence, so
+    a wrong link is findable and a new link never silently overwrites an old one.
+    """
+
+    __tablename__ = "provider_entity_ids"
+    __table_args__ = (
+        UniqueConstraint("entity_type", "provider", "provider_id", name="uq_provider_entity"),
+        Index("ix_provider_entity_internal", "entity_type", "internal_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_pk)
+    entity_type: Mapped[str] = mapped_column(String(10))  # player | team
+    provider: Mapped[str] = mapped_column(String(50))
+    provider_id: Mapped[str] = mapped_column(String(100))
+    #: `players.id` / `teams.id` (the UUID), not the NBA.com integer.
+    internal_id: Mapped[str] = mapped_column(String(36))
+    match_method: Mapped[str] = mapped_column(String(40))
+    confidence: Mapped[str] = mapped_column(String(10), default="high")  # high|medium|manual
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# ----------------------------------------------------------- provider statistics (R8.3)
+
+
+class ProviderStatSnapshot(Base, TimestampMixin):
+    """One provider's statistics for one player or team over one scope, in its own vocabulary.
+
+    Deliberately separate from ``player_season_stats``/``team_season_stats``, whose ``stat_type``
+    vocabulary is NBA.com's and whose unique key has no provider: a BALLDONTLIE row written there
+    would collide with, or silently replace, an NBA.com row. ``values`` keeps the provider's field
+    names; missing figures are JSON null, never 0; provider-relative ``*_rank`` fields are dropped.
+    ``aggregation`` says what the figures are per (``per_game`` was verified against NBA.com for
+    ``general/base``; ``unspecified`` where it has not been).
+    """
+
+    __tablename__ = "provider_stat_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider", "entity_type", "internal_id", "season", "season_type", "stat_group",
+            name="uq_provider_stat_scope",
+        ),
+        Index(
+            "ix_pss_provider_scope", "provider", "entity_type", "season", "season_type", "stat_group"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_pk)
+    provider: Mapped[str] = mapped_column(String(50))
+    entity_type: Mapped[str] = mapped_column(String(10))  # player | team
+    #: `players.id` / `teams.id` (the UUID), as in ``provider_entity_ids``.
+    internal_id: Mapped[str] = mapped_column(String(36))
+    season: Mapped[str] = mapped_column(String(10))
+    season_type: Mapped[str] = mapped_column(String(12))
+    stat_group: Mapped[str] = mapped_column(String(40))  # "general/advanced", "hustle"
+    aggregation: Mapped[str] = mapped_column(String(20))
+    basis: Mapped[str] = mapped_column(String(12), default="observed", server_default="observed")
+    games_played: Mapped[int | None] = mapped_column(Integer)
+    values: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_record_id: Mapped[str | None] = mapped_column(String(100))
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ingestion_run_id: Mapped[str | None] = mapped_column(String(36))
+
+    # The canonical provenance summariser (`build_source_meta`) reads these two names.
+    @property
+    def source_provider(self) -> str:
+        return self.provider
+
+    @property
+    def source_retrieved_at(self) -> datetime:
+        return self.retrieved_at

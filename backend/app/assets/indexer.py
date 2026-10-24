@@ -17,6 +17,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.assets.normalize import DERIVED_DIRNAME, normalize_logo
+from app.canonical.identity import TEAM_CODE_ALIASES_BY_SOURCE
+from app.canonical.rosters import current_roster_clause, resolve_roster_season
 from app.config import get_settings
 from app.core.logging import get_logger
 from app.db.models import DataQualityIssue, MediaAsset, Player, RosterEntry, Team
@@ -28,7 +30,7 @@ logger = get_logger(__name__)
 SOURCE_PROVIDER = "local_assets"
 
 # Logo filename stems that do not equal the NBA abbreviation lowercased.
-LOGO_STEM_OVERRIDES = {"phl": "PHI", "uth": "UTA"}
+LOGO_STEM_OVERRIDES = {k.lower(): v for k, v in TEAM_CODE_ALIASES_BY_SOURCE["asset_filename"].items()}
 
 _CONTENT_TYPES = {
     ".png": "image/png",
@@ -45,6 +47,17 @@ _PRIMARY_IMAGE_RE = re.compile(r"^image_(\d+)\.(jpe?g|png|gif|webp)$", re.IGNORE
 
 _UNMATCHED_LOGO_CHECK = "asset_unmatched_team_logo"
 _UNMATCHED_PLAYER_CHECK = "asset_unmatched_player_dir"
+
+
+def _image_size(path: Path) -> tuple[int | None, int | None]:
+    """Pixel dimensions from the file header, or (None, None). Never raises."""
+    try:
+        from PIL import Image
+
+        with Image.open(path) as image:
+            return image.width, image.height
+    except Exception:  # noqa: BLE001 - unreadable/unsupported files are indexed without dimensions
+        return None, None
 
 
 def normalize_name(name: str) -> str:
@@ -175,6 +188,7 @@ def index_assets(db: Session) -> dict:
                     "match_method": "abbreviation",
                     "source_label": stem,
                 }
+                values["width"], values["height"] = _image_size(derived or path)
                 if team is None:
                     values.update(
                         team_id=None,
@@ -231,6 +245,8 @@ def index_assets(db: Session) -> dict:
                     "match_method": method,
                     "source_label": dirname,
                 }
+                if primary is not None:
+                    values["width"], values["height"] = _image_size(primary)
                 if matched is None or primary is None:
                     values.update(
                         player_id=None,
@@ -267,6 +283,7 @@ def index_assets(db: Session) -> dict:
 def coverage(db: Session) -> dict:
     """Coverage of matched assets: logos over all teams (30 in production), photos
     over currently rostered players (RosterEntry.is_current)."""
+    roster_season = resolve_roster_season(db)
     teams_total = db.scalar(select(func.count(Team.id))) or 0
     teams_with_logo = (
         db.scalar(
@@ -286,7 +303,9 @@ def coverage(db: Session) -> dict:
     )
     rostered_players = (
         db.scalar(
-            select(func.count(func.distinct(RosterEntry.player_id))).where(RosterEntry.is_current)
+            select(func.count(func.distinct(RosterEntry.player_id))).where(
+                current_roster_clause(roster_season)
+            )
         )
         or 0
     )
@@ -296,7 +315,7 @@ def coverage(db: Session) -> dict:
             .select_from(RosterEntry)
             .join(MediaAsset, MediaAsset.player_id == RosterEntry.player_id)
             .where(
-                RosterEntry.is_current,
+                current_roster_clause(roster_season),
                 MediaAsset.entity_type == "player",
                 MediaAsset.is_primary,
             )
@@ -319,7 +338,26 @@ def coverage(db: Session) -> dict:
         )
         or 0
     )
+    usage: dict[str, int] = {
+        str(status): int(count)
+        for status, count in db.execute(
+            select(MediaAsset.usage_status, func.count(MediaAsset.id)).group_by(
+                MediaAsset.usage_status
+            )
+        ).all()
+    }
+    licensed = usage.get("licensed", 0)
     return {
+        # Rights, not coverage: a file being servable says nothing about the right to show
+        # it. `unverified` is the default and is never inferred from a file being reachable.
+        "usage_status": usage,
+        "assets_cleared_for_public_display": licensed,
+        "rights_note": (
+            None
+            if licensed
+            else "No indexed asset has a recorded licence. These files are for local "
+            "development only; see docs/r8/resource-research.md before any public display."
+        ),
         "team_logo_coverage": round(teams_with_logo / teams_total, 4) if teams_total else 0.0,
         "teams_total": teams_total,
         "teams_with_logo": teams_with_logo,
