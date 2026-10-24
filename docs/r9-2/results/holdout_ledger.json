@@ -1,0 +1,66 @@
+[
+  {
+    "config_hash": "c2587ccf1df08177545dc9ea53de55c06a24617067739b06a303455db6eab8da",
+    "data_fingerprint": "56bff0c2e4a1856bd2caed6f7a46d700b24ecb89fc2ef29b4b0168caeaad5335",
+    "development_run": "exp-development-fg3_pct-1bafdc35-56bff0c2",
+    "experiment": "exp-holdout-fg3_pct-c2587ccf-56bff0c2",
+    "models": [
+      "beta_binomial",
+      "eb_shrinkage",
+      "incumbent_tei",
+      "incumbent_tei_recalibrated",
+      "league_mean",
+      "ols_history",
+      "persistence",
+      "regressed_persistence",
+      "regressed_persistence_age",
+      "state_space"
+    ],
+    "protocol": "r9.2-prereg-1",
+    "read_at": "2026-10-19T06:30:41.357753+00:00",
+    "reread": false,
+    "target": "fg3_pct"
+  },
+  {
+    "config_hash": "c0b58ebf2435de8443f378766d045d96499cc558849df3aef8e68be45fe4c746",
+    "data_fingerprint": "56bff0c2e4a1856bd2caed6f7a46d700b24ecb89fc2ef29b4b0168caeaad5335",
+    "development_run": "exp-development-ft_pct-5a5d4ad3-56bff0c2",
+    "experiment": "exp-holdout-ft_pct-c0b58ebf-56bff0c2",
+    "models": [
+      "incumbent_tei",
+      "incumbent_tei_recalibrated",
+      "league_mean",
+      "ols_history",
+      "persistence",
+      "regressed_persistence",
+      "regressed_persistence_age",
+      "state_space",
+      "state_space_role"
+    ],
+    "protocol": "r9.2-prereg-1",
+    "read_at": "2026-10-19T06:34:04.088917+00:00",
+    "reread": false,
+    "target": "ft_pct"
+  },
+  {
+    "config_hash": "c3b64edcfb5aede0972f06e4fa9ade98936123e89573c8f5da0c305b0b10ccad",
+    "data_fingerprint": "56bff0c2e4a1856bd2caed6f7a46d700b24ecb89fc2ef29b4b0168caeaad5335",
+    "development_run": "exp-development-ts_pct-80563995-56bff0c2",
+    "experiment": "exp-holdout-ts_pct-c3b64edc-56bff0c2",
+    "models": [
+      "incumbent_tei",
+      "incumbent_tei_recalibrated",
+      "league_mean",
+      "ols_history",
+      "persistence",
+      "regressed_persistence",
+      "regressed_persistence_age",
+      "state_space",
+      "state_space_role"
+    ],
+    "protocol": "r9.2-prereg-1",
+    "read_at": "2026-10-19T06:37:40.689648+00:00",
+    "reread": true,
+    "target": "ts_pct"
+  }
+]

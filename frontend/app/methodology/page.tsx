@@ -203,12 +203,15 @@ export default function MethodologyPage() {
                     ),
                   },
                   {
-                    term: "Likely range",
+                    term: "Model range",
                     body: (
                       <>
-                        Each estimate&apos;s 10–90% band, with both ends placed in the same
+                        Each estimate&apos;s nominal 10–90% band, with both ends placed in the same
                         population. A wide range means the box score cannot pin the position down —
-                        neighbouring ranks usually overlap inside it.
+                        neighbouring ranks usually overlap inside it. <strong>It is not a calibrated
+                        80% interval:</strong> tested out of time (R9.1), it contained the next
+                        season&apos;s outcome about 57–61% of the time. Use it to compare how
+                        uncertain two estimates are, not as odds.
                       </>
                     ),
                   },
@@ -267,7 +270,10 @@ slope 2.235 wins/point · fit on 90 team-seasons · R²=0.953 · σ=2.9 wins`}
                 at the allocation above, and the ≈15 net-rating coefficient is held fixed, so the
                 band leaves out that conversion&apos;s own uncertainty. Reported: median,
                 10th–90th percentile, P(deal helps). Availability is historical games played — not
-                a medical prediction.
+                a medical prediction. <strong>The σ comes from the TEI band, which tested out of
+                time (R9.1) contained the outcome only about 57–61% of the time, not 80%:</strong>{" "}
+                the simulated spread and P(deal helps) therefore understate uncertainty and are
+                best read as a comparison of relative risk between deals, not as calibrated odds.
               </p>
             </DocTech>
           </DocSection>

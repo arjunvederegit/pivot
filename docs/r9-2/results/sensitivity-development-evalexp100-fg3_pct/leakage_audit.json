@@ -1,0 +1,102 @@
+[
+  {
+    "any_nan_forecast": false,
+    "max_abs_difference": 0.0,
+    "origin": "2018-19",
+    "passed": true,
+    "perturbations": [
+      "later numeric statistics permuted and rescaled",
+      "later rows re-assigned to other players and teams",
+      "one third of later rows deleted"
+    ],
+    "rows_compared": 6996,
+    "same_scored_players": true,
+    "scrambled_seasons": [
+      "2019-20",
+      "2020-21",
+      "2021-22",
+      "2022-23",
+      "2023-24",
+      "2024-25",
+      "2025-26"
+    ]
+  },
+  {
+    "any_nan_forecast": false,
+    "max_abs_difference": 0.0,
+    "origin": "2019-20",
+    "passed": true,
+    "perturbations": [
+      "later numeric statistics permuted and rescaled",
+      "later rows re-assigned to other players and teams",
+      "one third of later rows deleted"
+    ],
+    "rows_compared": 6984,
+    "same_scored_players": true,
+    "scrambled_seasons": [
+      "2020-21",
+      "2021-22",
+      "2022-23",
+      "2023-24",
+      "2024-25",
+      "2025-26"
+    ]
+  },
+  {
+    "any_nan_forecast": false,
+    "max_abs_difference": 0.0,
+    "origin": "2020-21",
+    "passed": true,
+    "perturbations": [
+      "later numeric statistics permuted and rescaled",
+      "later rows re-assigned to other players and teams",
+      "one third of later rows deleted"
+    ],
+    "rows_compared": 7176,
+    "same_scored_players": true,
+    "scrambled_seasons": [
+      "2021-22",
+      "2022-23",
+      "2023-24",
+      "2024-25",
+      "2025-26"
+    ]
+  },
+  {
+    "any_nan_forecast": false,
+    "max_abs_difference": 0.0,
+    "origin": "2021-22",
+    "passed": true,
+    "perturbations": [
+      "later numeric statistics permuted and rescaled",
+      "later rows re-assigned to other players and teams",
+      "one third of later rows deleted"
+    ],
+    "rows_compared": 7272,
+    "same_scored_players": true,
+    "scrambled_seasons": [
+      "2022-23",
+      "2023-24",
+      "2024-25",
+      "2025-26"
+    ]
+  },
+  {
+    "any_nan_forecast": false,
+    "max_abs_difference": 0.0,
+    "origin": "2022-23",
+    "passed": true,
+    "perturbations": [
+      "later numeric statistics permuted and rescaled",
+      "later rows re-assigned to other players and teams",
+      "one third of later rows deleted"
+    ],
+    "rows_compared": 7092,
+    "same_scored_players": true,
+    "scrambled_seasons": [
+      "2023-24",
+      "2024-25",
+      "2025-26"
+    ]
+  }
+]

@@ -1,0 +1,639 @@
+{
+  "development_origins": [
+    "2018-19",
+    "2019-20",
+    "2020-21",
+    "2021-22",
+    "2022-23"
+  ],
+  "measured_dimension_stability": {
+    "ast_pct": {
+      "n_pairs": 2575,
+      "pearson": 0.8997559599837075,
+      "spearman": 0.8785699063363531
+    },
+    "ast_to_ratio": {
+      "n_pairs": 2575,
+      "pearson": 0.775845588665396,
+      "spearman": 0.7852435023612834
+    },
+    "dreb_pct": {
+      "n_pairs": 2575,
+      "pearson": 0.9181526397120908,
+      "spearman": 0.9025394569624392
+    },
+    "games_played": {
+      "n_pairs": 2575,
+      "pearson": 0.22593252706215142,
+      "spearman": 0.26402014390585554
+    },
+    "min_minutes_both_seasons": 500.0,
+    "minutes_per_game": {
+      "n_pairs": 2575,
+      "pearson": 0.7556256373765515,
+      "spearman": 0.7735219491735389
+    },
+    "oreb_pct": {
+      "n_pairs": 2575,
+      "pearson": 0.9339587580529215,
+      "spearman": 0.9000420753860436
+    },
+    "reb_pct": {
+      "n_pairs": 2575,
+      "pearson": 0.9456663964649799,
+      "spearman": 0.9301086295260489
+    },
+    "usg_pct": {
+      "n_pairs": 2575,
+      "pearson": 0.8782315685920313,
+      "spearman": 0.854186045633782
+    }
+  },
+  "note": "development folds only; the holdout is not read here",
+  "protocol": "r9.2-prereg-1",
+  "quantities": {
+    "fg3_pct": {
+      "ability_vs_raw": {
+        "folds": {
+          "2018-19": {
+            "n": 258,
+            "spearman_ability_vs_next": 0.3776187616391383,
+            "spearman_raw_last_vs_next": 0.3010731630983245
+          },
+          "2019-20": {
+            "n": 266,
+            "spearman_ability_vs_next": 0.41184259541494644,
+            "spearman_raw_last_vs_next": 0.31222595217779464
+          },
+          "2020-21": {
+            "n": 276,
+            "spearman_ability_vs_next": 0.37042940273504726,
+            "spearman_raw_last_vs_next": 0.29224824198661087
+          },
+          "2021-22": {
+            "n": 277,
+            "spearman_ability_vs_next": 0.4838657860685129,
+            "spearman_raw_last_vs_next": 0.3225113251037686
+          },
+          "2022-23": {
+            "n": 272,
+            "spearman_ability_vs_next": 0.4176533965237266,
+            "spearman_raw_last_vs_next": 0.33842019470653195
+          }
+        },
+        "mean_spearman_ability_vs_next": 0.4122819884762743,
+        "mean_spearman_raw_last_vs_next": 0.31329577541460607
+      },
+      "method": "state_space",
+      "participation": {
+        "appears_next_season": 0.6935810810810811,
+        "by_prior_attempts": {
+          "[0, 100)": {
+            "appears": 0.5021186440677966,
+            "meets_condition": 0.10805084745762712,
+            "n": 944
+          },
+          "[100, 200)": {
+            "appears": 0.5985221674876847,
+            "meets_condition": 0.3448275862068966,
+            "n": 406
+          },
+          "[200, 400)": {
+            "appears": 0.6966292134831461,
+            "meets_condition": 0.4868913857677903,
+            "n": 534
+          },
+          "[400, 800)": {
+            "appears": 0.8444816053511706,
+            "meets_condition": 0.7224080267558528,
+            "n": 598
+          },
+          "[800, 10000)": {
+            "appears": 0.9602510460251046,
+            "meets_condition": 0.9058577405857741,
+            "n": 478
+          }
+        },
+        "meets_evaluation_condition": 0.4618243243243243,
+        "scored": 2960
+      },
+      "predictive_check": {
+        "by_fold_coverage_80": {
+          "2018-19": 0.7692307692307693,
+          "2019-20": 0.7481481481481481,
+          "2020-21": 0.7634408602150538,
+          "2021-22": 0.8345070422535211,
+          "2022-23": 0.791970802919708
+        },
+        "by_prior_attempts": {
+          "[0, 100)": {
+            "coverage_80": 0.7843137254901961,
+            "n": 102,
+            "sd_z": 1.0489512553502154
+          },
+          "[100, 200)": {
+            "coverage_80": 0.7642857142857142,
+            "n": 140,
+            "sd_z": 1.076636476699977
+          },
+          "[200, 400)": {
+            "coverage_80": 0.7769230769230769,
+            "n": 260,
+            "sd_z": 1.0639897685897808
+          },
+          "[400, 800)": {
+            "coverage_80": 0.7824074074074074,
+            "n": 432,
+            "sd_z": 1.0635934101664002
+          },
+          "[800, 10000)": {
+            "coverage_80": 0.789838337182448,
+            "n": 433,
+            "sd_z": 0.9815464166006637
+          }
+        },
+        "by_target_attempts": {
+          "[0, 100)": {
+            "coverage_80": 0.7283236994219653,
+            "n": 173,
+            "sd_z": 1.089966481424702
+          },
+          "[100, 200)": {
+            "coverage_80": 0.8115942028985508,
+            "n": 414,
+            "sd_z": 1.0170128513059398
+          },
+          "[200, 400)": {
+            "coverage_80": 0.7716814159292036,
+            "n": 565,
+            "sd_z": 1.0065495676281861
+          },
+          "[400, 800)": {
+            "coverage_80": 0.7924528301886793,
+            "n": 212,
+            "sd_z": 0.9562909872119524
+          }
+        },
+        "coverage": {
+          "0.5": 0.47622531089978054,
+          "0.8": 0.7820043891733723,
+          "0.9": 0.8814923189465984
+        },
+        "mean_share_of_forecast_variance_from_ability_uncertainty": 0.18127099299194305,
+        "mean_z": 0.011174649877692466,
+        "n": 1367,
+        "sd_z": 1.0394577725378429
+      },
+      "reliability": {
+        "cutoff": "2022-23",
+        "one_season_reliability_by_attempts": {
+          "100": {
+            "posterior_sd": 0.02244547304368105,
+            "prior_equivalent_attempts": 411.89167619780784,
+            "reliability": 0.1953538309955981
+          },
+          "1600": {
+            "posterior_sd": 0.011321800542000552,
+            "prior_equivalent_attempts": 411.89167619780784,
+            "reliability": 0.7952714447448656
+          },
+          "200": {
+            "posterior_sd": 0.020529601710426545,
+            "prior_equivalent_attempts": 411.89167619780784,
+            "reliability": 0.3268552388925543
+          },
+          "25": {
+            "posterior_sd": 0.024295783630699657,
+            "prior_equivalent_attempts": 411.89167619780784,
+            "reliability": 0.057222422312026344
+          },
+          "400": {
+            "posterior_sd": 0.017822505280202783,
+            "prior_equivalent_attempts": 411.89167619780784,
+            "reliability": 0.49267656231339985
+          },
+          "50": {
+            "posterior_sd": 0.023629129832214973,
+            "prior_equivalent_attempts": 411.89167619780784,
+            "reliability": 0.10825048940389914
+          },
+          "800": {
+            "posterior_sd": 0.01458766882452754,
+            "prior_equivalent_attempts": 411.89167619780784,
+            "reliability": 0.6601250059823185
+          }
+        },
+        "params": {
+          "beta": [
+            0.3598877097799684,
+            0.0015417475504645034,
+            -0.0002248964952328228
+          ],
+          "converged": true,
+          "loglik": 2897.993323392258,
+          "n_covariates": 0,
+          "n_pairs": 1593,
+          "omega2": 7.958812697476407e-06,
+          "phi": 1.1408339244536434,
+          "rho": 0.9936239389495678,
+          "tau": 0.025022245959922328,
+          "tau2": 0.0006261127928788492,
+          "unit_variance": 0.2260545047091464
+        }
+      },
+      "stability_of_measured_rate": {
+        "min_attempts_both_seasons": 100.0,
+        "n_pairs": 1860,
+        "pearson_year_over_year": 0.35133074364294453,
+        "spearman_year_over_year": 0.33438756024867156
+      }
+    },
+    "ft_pct": {
+      "ability_vs_raw": {
+        "folds": {
+          "2018-19": {
+            "n": 242,
+            "spearman_ability_vs_next": 0.7507536418422713,
+            "spearman_raw_last_vs_next": 0.7025263239970695
+          },
+          "2019-20": {
+            "n": 252,
+            "spearman_ability_vs_next": 0.7947904670750601,
+            "spearman_raw_last_vs_next": 0.7346337725004597
+          },
+          "2020-21": {
+            "n": 274,
+            "spearman_ability_vs_next": 0.7674328963884376,
+            "spearman_raw_last_vs_next": 0.7138945662138177
+          },
+          "2021-22": {
+            "n": 255,
+            "spearman_ability_vs_next": 0.8018552661504308,
+            "spearman_raw_last_vs_next": 0.7304637694609923
+          },
+          "2022-23": {
+            "n": 251,
+            "spearman_ability_vs_next": 0.7883639139773633,
+            "spearman_raw_last_vs_next": 0.7302563092767945
+          }
+        },
+        "mean_spearman_ability_vs_next": 0.7806392370867126,
+        "mean_spearman_raw_last_vs_next": 0.7223549482898268
+      },
+      "method": "state_space",
+      "participation": {
+        "appears_next_season": 0.6935810810810811,
+        "by_prior_attempts": {
+          "[0, 100)": {
+            "appears": 0.4542910447761194,
+            "meets_condition": 0.14925373134328357,
+            "n": 1072
+          },
+          "[100, 200)": {
+            "appears": 0.6879084967320261,
+            "meets_condition": 0.3366013071895425,
+            "n": 612
+          },
+          "[200, 400)": {
+            "appears": 0.8426791277258567,
+            "meets_condition": 0.559190031152648,
+            "n": 642
+          },
+          "[400, 800)": {
+            "appears": 0.9441964285714286,
+            "meets_condition": 0.8816964285714286,
+            "n": 448
+          },
+          "[800, 10000)": {
+            "appears": 0.9731182795698925,
+            "meets_condition": 0.9354838709677419,
+            "n": 186
+          }
+        },
+        "meets_evaluation_condition": 0.43716216216216214,
+        "scored": 2960
+      },
+      "predictive_check": {
+        "by_fold_coverage_80": {
+          "2018-19": 0.819672131147541,
+          "2019-20": 0.7764705882352941,
+          "2020-21": 0.8122743682310469,
+          "2021-22": 0.875,
+          "2022-23": 0.8503937007874016
+        },
+        "by_prior_attempts": {
+          "[0, 100)": {
+            "coverage_80": 0.85625,
+            "n": 160,
+            "sd_z": 0.8649862834283563
+          },
+          "[100, 200)": {
+            "coverage_80": 0.8106796116504854,
+            "n": 206,
+            "sd_z": 0.973439182689003
+          },
+          "[200, 400)": {
+            "coverage_80": 0.8050139275766016,
+            "n": 359,
+            "sd_z": 0.9871952113665151
+          },
+          "[400, 800)": {
+            "coverage_80": 0.8354430379746836,
+            "n": 395,
+            "sd_z": 1.0016590145376212
+          },
+          "[800, 10000)": {
+            "coverage_80": 0.8448275862068966,
+            "n": 174,
+            "sd_z": 0.9275744894457766
+          }
+        },
+        "by_target_attempts": {
+          "[0, 100)": {
+            "coverage_80": 0.8248337028824834,
+            "n": 451,
+            "sd_z": 0.9633397108212982
+          },
+          "[100, 200)": {
+            "coverage_80": 0.8123711340206186,
+            "n": 485,
+            "sd_z": 0.9838895453470962
+          },
+          "[200, 400)": {
+            "coverage_80": 0.8487084870848709,
+            "n": 271,
+            "sd_z": 0.9263958705995256
+          },
+          "[400, 800)": {
+            "coverage_80": 0.8470588235294118,
+            "n": 85,
+            "sd_z": 0.9795709795823792
+          }
+        },
+        "coverage": {
+          "0.5": 0.527047913446677,
+          "0.8": 0.8268933539412674,
+          "0.9": 0.910355486862442
+        },
+        "mean_share_of_forecast_variance_from_ability_uncertainty": 0.48459823589039897,
+        "mean_z": -0.004459147577795585,
+        "n": 1294,
+        "sd_z": 0.9676895920304635
+      },
+      "reliability": {
+        "cutoff": "2022-23",
+        "one_season_reliability_by_attempts": {
+          "100": {
+            "posterior_sd": 0.04047150412019746,
+            "prior_equivalent_attempts": 37.011896485216845,
+            "reliability": 0.7298636291104086
+          },
+          "1600": {
+            "posterior_sd": 0.011708535211024758,
+            "prior_equivalent_attempts": 37.011896485216845,
+            "reliability": 0.9773905757406626
+          },
+          "200": {
+            "posterior_sd": 0.03077112761853189,
+            "prior_equivalent_attempts": 37.011896485216845,
+            "reliability": 0.8438394990543211
+          },
+          "25": {
+            "posterior_sd": 0.06015766589735036,
+            "prior_equivalent_attempts": 37.011896485216845,
+            "reliability": 0.40314845081314055
+          },
+          "400": {
+            "posterior_sd": 0.022661145239389367,
+            "prior_equivalent_attempts": 37.011896485216845,
+            "reliability": 0.9153068903091774
+          },
+          "50": {
+            "posterior_sd": 0.05078543384322862,
+            "prior_equivalent_attempts": 37.011896485216845,
+            "reliability": 0.5746340675208119
+          },
+          "800": {
+            "posterior_sd": 0.016374297200390107,
+            "prior_equivalent_attempts": 37.011896485216845,
+            "reliability": 0.9557809194341952
+          }
+        },
+        "params": {
+          "beta": [
+            0.7950475491923371,
+            0.0020009762910965915,
+            -0.00034135156791522504
+          ],
+          "converged": true,
+          "loglik": 2339.5456540870014,
+          "n_covariates": 0,
+          "n_pairs": 1567,
+          "omega2": 0.00043776889650484844,
+          "phi": 1.3069056985993857,
+          "rho": 0.9632244377748321,
+          "tau": 0.07786778384907031,
+          "tau2": 0.006063391761565535,
+          "unit_variance": 0.17171677227277315
+        }
+      },
+      "stability_of_measured_rate": {
+        "min_attempts_both_seasons": 100.0,
+        "n_pairs": 1211,
+        "pearson_year_over_year": 0.8232289300664769,
+        "spearman_year_over_year": 0.8114432444200741
+      }
+    },
+    "ts_pct": {
+      "ability_vs_raw": {
+        "folds": {
+          "2018-19": {
+            "n": 297,
+            "spearman_ability_vs_next": 0.5624159075853017,
+            "spearman_raw_last_vs_next": 0.528680971183558
+          },
+          "2019-20": {
+            "n": 311,
+            "spearman_ability_vs_next": 0.6055662003640918,
+            "spearman_raw_last_vs_next": 0.5122888754287559
+          },
+          "2020-21": {
+            "n": 327,
+            "spearman_ability_vs_next": 0.5975666527616428,
+            "spearman_raw_last_vs_next": 0.5573991899202907
+          },
+          "2021-22": {
+            "n": 320,
+            "spearman_ability_vs_next": 0.6164423804597501,
+            "spearman_raw_last_vs_next": 0.5333039054493465
+          },
+          "2022-23": {
+            "n": 315,
+            "spearman_ability_vs_next": 0.6332022430383869,
+            "spearman_raw_last_vs_next": 0.5636244361192587
+          }
+        },
+        "mean_spearman_ability_vs_next": 0.6030386768418347,
+        "mean_spearman_raw_last_vs_next": 0.539059475620242
+      },
+      "method": "state_space",
+      "participation": {
+        "appears_next_season": 0.6935810810810811,
+        "by_prior_attempts": {
+          "[0, 100)": {
+            "appears": 0.3505747126436782,
+            "meets_condition": 0.10344827586206896,
+            "n": 174
+          },
+          "[100, 200)": {
+            "appears": 0.37388724035608306,
+            "meets_condition": 0.1661721068249258,
+            "n": 337
+          },
+          "[200, 400)": {
+            "appears": 0.5149863760217984,
+            "meets_condition": 0.2970027247956403,
+            "n": 367
+          },
+          "[400, 800)": {
+            "appears": 0.5928571428571429,
+            "meets_condition": 0.3821428571428571,
+            "n": 560
+          },
+          "[800, 10000)": {
+            "appears": 0.8837056504599211,
+            "meets_condition": 0.7844940867279895,
+            "n": 1522
+          }
+        },
+        "meets_evaluation_condition": 0.5375,
+        "scored": 2960
+      },
+      "predictive_check": {
+        "by_fold_coverage_80": {
+          "2018-19": 0.782608695652174,
+          "2019-20": 0.7547770700636943,
+          "2020-21": 0.8151515151515152,
+          "2021-22": 0.7545454545454545,
+          "2022-23": 0.7955974842767296
+        },
+        "by_prior_attempts": {
+          "[100, 200)": {
+            "coverage_80": 0.75,
+            "n": 56,
+            "sd_z": 1.1289535444879089
+          },
+          "[200, 400)": {
+            "coverage_80": 0.7247706422018348,
+            "n": 109,
+            "sd_z": 1.170580079251654
+          },
+          "[400, 800)": {
+            "coverage_80": 0.7570093457943925,
+            "n": 214,
+            "sd_z": 1.0586086586694252
+          },
+          "[800, 10000)": {
+            "coverage_80": 0.7922948073701842,
+            "n": 1194,
+            "sd_z": 1.0091920094442874
+          }
+        },
+        "by_target_attempts": {
+          "[100, 200)": {
+            "coverage_80": 0.7307692307692307,
+            "n": 104,
+            "sd_z": 1.1194083448315422
+          },
+          "[200, 400)": {
+            "coverage_80": 0.7946428571428571,
+            "n": 448,
+            "sd_z": 1.0564753706318093
+          },
+          "[400, 800)": {
+            "coverage_80": 0.7583333333333333,
+            "n": 600,
+            "sd_z": 1.0330707990333892
+          },
+          "[800, 10000)": {
+            "coverage_80": 0.8073394495412844,
+            "n": 436,
+            "sd_z": 0.9468558941528432
+          }
+        },
+        "coverage": {
+          "0.5": 0.48271527341294784,
+          "0.8": 0.7806411062225016,
+          "0.9": 0.8818353236957888
+        },
+        "mean_share_of_forecast_variance_from_ability_uncertainty": 0.41058759135064243,
+        "mean_z": 0.10373984309992261,
+        "n": 1591,
+        "sd_z": 1.0351081652365912
+      },
+      "reliability": {
+        "cutoff": "2022-23",
+        "one_season_reliability_by_attempts": {
+          "100": {
+            "posterior_sd": 0.03517438770822063,
+            "prior_equivalent_attempts": 219.68364167603306,
+            "reliability": 0.3128092494058231
+          },
+          "1600": {
+            "posterior_sd": 0.014743099878624728,
+            "prior_equivalent_attempts": 219.68364167603306,
+            "reliability": 0.8792737173403988
+          },
+          "200": {
+            "posterior_sd": 0.03069910627699171,
+            "prior_equivalent_attempts": 219.68364167603306,
+            "reliability": 0.4765494294733227
+          },
+          "25": {
+            "posterior_sd": 0.040205390573444,
+            "prior_equivalent_attempts": 219.68364167603306,
+            "reliability": 0.10217274775197505
+          },
+          "400": {
+            "posterior_sd": 0.025263978161946903,
+            "prior_equivalent_attempts": 219.68364167603306,
+            "reliability": 0.6454906553901218
+          },
+          "50": {
+            "posterior_sd": 0.038296532317764094,
+            "prior_equivalent_attempts": 219.68364167603306,
+            "reliability": 0.1854024207373477
+          },
+          "800": {
+            "posterior_sd": 0.01969491120425388,
+            "prior_equivalent_attempts": 219.68364167603306,
+            "reliability": 0.7845570599573967
+          }
+        },
+        "params": {
+          "beta": [
+            0.5882299118437152,
+            0.0029250284692527062,
+            -0.00047110354486450107
+          ],
+          "converged": true,
+          "loglik": 3570.945325309321,
+          "n_covariates": 0,
+          "n_pairs": 1880,
+          "omega2": 0.0002010763387019646,
+          "phi": 1.2334361727067538,
+          "rho": 0.9425059607033884,
+          "tau": 0.04243145200479686,
+          "tau2": 0.0018004281192353794,
+          "unit_variance": 0.3206688879097712
+        }
+      },
+      "stability_of_measured_rate": {
+        "min_attempts_both_seasons": 300.0,
+        "n_pairs": 1933,
+        "pearson_year_over_year": 0.636216254357363,
+        "spearman_year_over_year": 0.5984734558208405
+      }
+    }
+  }
+}

@@ -1,0 +1,189 @@
+{
+  "advanced": [
+    "ridge_boxscore"
+  ],
+  "candidates": {
+    "eb_shrinkage": {
+      "advance": false,
+      "checks": {
+        "folds_improved": false,
+        "interval_coverage_in_band": true,
+        "player_ci_below_zero": false,
+        "practical_floor": false,
+        "season_ci_below_zero": false,
+        "team_gate": true
+      },
+      "mean_width": 1.286781196298194,
+      "pooled_mae": 0.4254502127484613,
+      "reference_mean_width": 1.2227210488574711,
+      "team_gate": {
+        "ci95": [
+          -0.030095209107738042,
+          0.041552213589806736
+        ],
+        "delta": 0.005837874127291753,
+        "model": "eb_shrinkage",
+        "n_team_seasons": 150,
+        "r2_model": 0.39943097616043133,
+        "r2_reference": 0.3935931020331396,
+        "reference": "ols_history",
+        "view": "prospective_roster_known"
+      },
+      "vs_reference": {
+        "ci95": [
+          0.0034592798367576913,
+          0.020308744814827917
+        ],
+        "excludes_zero": true,
+        "fold_level": {
+          "ci95": [
+            0.0033726910008463427,
+            0.019787683077622464
+          ],
+          "df": 4,
+          "mean": 0.011580187039234404
+        },
+        "folds": 5,
+        "folds_improved": 0,
+        "mean_diff": 0.011667951286531386,
+        "metric": "MAE difference (model - reference); negative = model better",
+        "model": "eb_shrinkage",
+        "n": 1786,
+        "n_clusters": 579,
+        "per_fold_mean_diff": {
+          "2018-19": 0.010279626667605455,
+          "2019-20": 0.004834714429103118,
+          "2020-21": 0.019457818940368594,
+          "2021-22": 0.005941258642835546,
+          "2022-23": 0.017387516516259315
+        },
+        "reference": "ols_history",
+        "reference_mae": 0.4137822614619299,
+        "relative_diff": 0.028198287778957623
+      }
+    },
+    "ridge_boxscore": {
+      "advance": true,
+      "checks": {
+        "folds_improved": true,
+        "interval_coverage_in_band": true,
+        "player_ci_below_zero": true,
+        "practical_floor": true,
+        "season_ci_below_zero": true,
+        "team_gate": true
+      },
+      "mean_width": 1.229625704361792,
+      "pooled_mae": 0.40477088475297635,
+      "reference_mean_width": 1.2227210488574711,
+      "team_gate": {
+        "ci95": [
+          -0.04873259137223034,
+          0.036848627968157084
+        ],
+        "delta": -0.0031404188129107724,
+        "model": "ridge_boxscore",
+        "n_team_seasons": 150,
+        "r2_model": 0.3904526832202288,
+        "r2_reference": 0.3935931020331396,
+        "reference": "ols_history",
+        "view": "prospective_roster_known"
+      },
+      "vs_reference": {
+        "ci95": [
+          -0.016258821853571567,
+          -0.0016080176350696824
+        ],
+        "excludes_zero": true,
+        "fold_level": {
+          "ci95": [
+            -0.017337489249061158,
+            -0.0007777686768508079
+          ],
+          "df": 4,
+          "mean": -0.009057628962955982
+        },
+        "folds": 5,
+        "folds_improved": 5,
+        "mean_diff": -0.009011376708953566,
+        "metric": "MAE difference (model - reference); negative = model better",
+        "model": "ridge_boxscore",
+        "n": 1786,
+        "n_clusters": 579,
+        "per_fold_mean_diff": {
+          "2018-19": -0.0076912351943330135,
+          "2019-20": -0.015805460712236884,
+          "2020-21": -0.005181413847344515,
+          "2021-22": -0.01586510505491168,
+          "2022-23": -0.0007449300059538249
+        },
+        "reference": "ols_history",
+        "reference_mae": 0.4137822614619299,
+        "relative_diff": -0.021778064330538388
+      }
+    },
+    "ridge_history": {
+      "advance": false,
+      "checks": {
+        "folds_improved": false,
+        "interval_coverage_in_band": true,
+        "player_ci_below_zero": false,
+        "practical_floor": false,
+        "season_ci_below_zero": false,
+        "team_gate": true
+      },
+      "mean_width": 1.2386027752206352,
+      "pooled_mae": 0.4157294593020378,
+      "reference_mean_width": 1.2227210488574711,
+      "team_gate": {
+        "ci95": [
+          -0.011232377877089663,
+          0.02886999350999921
+        ],
+        "delta": 0.007940236996904049,
+        "model": "ridge_history",
+        "n_team_seasons": 150,
+        "r2_model": 0.4015333390300436,
+        "r2_reference": 0.3935931020331396,
+        "reference": "ols_history",
+        "view": "prospective_roster_known"
+      },
+      "vs_reference": {
+        "ci95": [
+          -0.0023844043962431356,
+          0.0061598057030627625
+        ],
+        "excludes_zero": false,
+        "fold_level": {
+          "ci95": [
+            -0.0033664516989420387,
+            0.007295293731098319
+          ],
+          "df": 4,
+          "mean": 0.00196442101607814
+        },
+        "folds": 5,
+        "folds_improved": 1,
+        "mean_diff": 0.0019471978401079167,
+        "metric": "MAE difference (model - reference); negative = model better",
+        "model": "ridge_history",
+        "n": 1786,
+        "n_clusters": 579,
+        "per_fold_mean_diff": {
+          "2018-19": 0.0043449029813910755,
+          "2019-20": 0.0004257316091587137,
+          "2020-21": 0.00652807899099008,
+          "2021-22": -0.004628036415661809,
+          "2022-23": 0.003151427914512641
+        },
+        "reference": "ols_history",
+        "reference_mae": 0.4137822614619299,
+        "relative_diff": 0.004705851413804671
+      }
+    }
+  },
+  "examined_candidates": 3,
+  "family": "confirmatory",
+  "reference_baseline": "ols_history",
+  "reference_pooled_mae": 0.4137822614619299,
+  "target": "impact_proxy"
+}

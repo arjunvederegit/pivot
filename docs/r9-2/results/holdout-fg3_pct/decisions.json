@@ -1,0 +1,86 @@
+{
+  "candidates": {
+    "beta_binomial": {
+      "confirmed": true,
+      "vs_reference": {
+        "ci95": [
+          -0.001915385633151269,
+          -0.00022734888445577787
+        ],
+        "excludes_zero": true,
+        "fold_level": null,
+        "folds": 2,
+        "folds_improved": 2,
+        "mean_diff": -0.001089293534130193,
+        "metric": "MAE difference (model - reference); negative = model better",
+        "model": "beta_binomial",
+        "n": 569,
+        "n_clusters": 358,
+        "per_fold_mean_diff": {
+          "2023-24": -0.001347372959958382,
+          "2024-25": -0.000842743429730755
+        },
+        "reference": "ols_history",
+        "reference_mae": 0.03164565393021636,
+        "relative_diff": -0.0344215839727078
+      }
+    },
+    "eb_shrinkage": {
+      "confirmed": false,
+      "vs_reference": {
+        "ci95": [
+          -0.001485277427703993,
+          6.003752265206342e-05
+        ],
+        "excludes_zero": false,
+        "fold_level": null,
+        "folds": 2,
+        "folds_improved": 2,
+        "mean_diff": -0.0007236333863003417,
+        "metric": "MAE difference (model - reference); negative = model better",
+        "model": "eb_shrinkage",
+        "n": 569,
+        "n_clusters": 358,
+        "per_fold_mean_diff": {
+          "2023-24": -0.0007646800559120445,
+          "2024-25": -0.0006844204167056565
+        },
+        "reference": "ols_history",
+        "reference_mae": 0.03164565393021636,
+        "relative_diff": -0.022866754085602625
+      }
+    },
+    "state_space": {
+      "confirmed": true,
+      "vs_reference": {
+        "ci95": [
+          -0.0019517298074582343,
+          -0.00010288762745817004
+        ],
+        "excludes_zero": true,
+        "fold_level": null,
+        "folds": 2,
+        "folds_improved": 2,
+        "mean_diff": -0.0010237668149207862,
+        "metric": "MAE difference (model - reference); negative = model better",
+        "model": "state_space",
+        "n": 569,
+        "n_clusters": 358,
+        "per_fold_mean_diff": {
+          "2023-24": -0.0012813137497725985,
+          "2024-25": -0.0007777254132410481
+        },
+        "reference": "ols_history",
+        "reference_mae": 0.03164565393021636,
+        "relative_diff": -0.032350945162275775
+      }
+    }
+  },
+  "confirmed": [
+    "state_space",
+    "beta_binomial"
+  ],
+  "family": "confirmatory",
+  "reference_baseline_from_development": "ols_history",
+  "target": "fg3_pct"
+}

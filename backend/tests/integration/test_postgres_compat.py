@@ -34,7 +34,19 @@ pytestmark = pytest.mark.skipif(not ADMIN_URL, reason="set PIVOT_TEST_POSTGRES_U
 
 PRE_R8 = "f2c8b41d6a05"
 R8 = "a9d4c6e18b53"
-HEAD = "c5e2b7d91f34"
+#: The newest migration. R8.1 pinned this at c5e2b7d91f34; R8.3 and R9.1 each added one and could not run this
+#: file (no PostgreSQL), so the pin went stale. It is now read from the migration scripts, so adding a migration
+#: cannot silently re-break it.
+def _script_head() -> str:
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    cfg = Config(str(BACKEND_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    return ScriptDirectory.from_config(cfg).get_current_head()
+
+
+HEAD = _script_head()
 
 
 def alembic(url: str, *args: str, check: bool = True) -> subprocess.CompletedProcess:

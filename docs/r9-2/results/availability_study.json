@@ -1,0 +1,248 @@
+{
+  "calibration_last_development_fold": [
+    {
+      "mean_predicted": 0.05440070666116121,
+      "n": 60,
+      "observed": 0.1
+    },
+    {
+      "mean_predicted": 0.1374918682824731,
+      "n": 59,
+      "observed": 0.1694915254237288
+    },
+    {
+      "mean_predicted": 0.42487777660732856,
+      "n": 59,
+      "observed": 0.6101694915254238
+    },
+    {
+      "mean_predicted": 0.6944224090496408,
+      "n": 59,
+      "observed": 0.6440677966101694
+    },
+    {
+      "mean_predicted": 0.8373353863973648,
+      "n": 59,
+      "observed": 0.8983050847457628
+    },
+    {
+      "mean_predicted": 0.9012636928970155,
+      "n": 59,
+      "observed": 0.9152542372881356
+    },
+    {
+      "mean_predicted": 0.937608031609453,
+      "n": 59,
+      "observed": 0.9322033898305084
+    },
+    {
+      "mean_predicted": 0.9582421092188281,
+      "n": 59,
+      "observed": 0.9830508474576272
+    },
+    {
+      "mean_predicted": 0.9749743414738665,
+      "n": 59,
+      "observed": 0.9830508474576272
+    },
+    {
+      "mean_predicted": 0.9879766902251382,
+      "n": 59,
+      "observed": 0.9830508474576272
+    }
+  ],
+  "development_origins": [
+    "2018-19",
+    "2019-20",
+    "2020-21",
+    "2021-22",
+    "2022-23"
+  ],
+  "folds": [
+    {
+      "appear": {
+        "auc_model": 0.9300416281221091,
+        "brier_base_rate": 0.2561145578707152,
+        "brier_model": 0.10248737919847017,
+        "brier_played_last_season_rule": 0.1341285319097075,
+        "logloss_base_rate": 0.7251634754885643,
+        "logloss_model": 0.33830879060954266
+      },
+      "appears_rate": 0.6449399656946827,
+      "n_appearing": 376,
+      "n_scored": 583,
+      "origin": "2018-19",
+      "share_given_appears": {
+        "mae_league_mean": 0.21679835577211543,
+        "mae_legacy_decayed_availability": 0.19008905342926374,
+        "mae_ols_history": 0.20673146101093004,
+        "mae_persistence": 0.20141498078857814
+      },
+      "total_availability_zero_if_absent": {
+        "mae_league_mean": 0.37102190832711635,
+        "mae_persistence": 0.198389850820268,
+        "mae_two_part_model": 0.20922291614111277,
+        "rmse_league_mean": 0.4135626356584057,
+        "rmse_persistence": 0.3036711956727206,
+        "rmse_two_part_model": 0.2654076945811231
+      }
+    },
+    {
+      "appear": {
+        "auc_model": 0.9313650255126082,
+        "brier_base_rate": 0.22421743679495837,
+        "brier_model": 0.10029645801473902,
+        "brier_played_last_season_rule": 0.10374912148957331,
+        "logloss_base_rate": 0.642714954737738,
+        "logloss_model": 0.3267124423245723
+      },
+      "appears_rate": 0.6752577319587629,
+      "n_appearing": 393,
+      "n_scored": 582,
+      "origin": "2019-20",
+      "share_given_appears": {
+        "mae_league_mean": 0.20798872039108032,
+        "mae_legacy_decayed_availability": 0.19861573945256467,
+        "mae_ols_history": 0.2001456112176979,
+        "mae_persistence": 0.21753324497802454
+      },
+      "total_availability_zero_if_absent": {
+        "mae_league_mean": 0.34366050467976966,
+        "mae_persistence": 0.18853811030700102,
+        "mae_two_part_model": 0.19862742623296606,
+        "rmse_league_mean": 0.3837617587641004,
+        "rmse_persistence": 0.2840439103840904,
+        "rmse_two_part_model": 0.27416984713944315
+      }
+    },
+    {
+      "appear": {
+        "auc_model": 0.9093233674272226,
+        "brier_base_rate": 0.19903581093116196,
+        "brier_model": 0.1043437987038051,
+        "brier_played_last_season_rule": 0.11762075236461458,
+        "logloss_base_rate": 0.5874378893945745,
+        "logloss_model": 0.35747637528091636
+      },
+      "appears_rate": 0.725752508361204,
+      "n_appearing": 434,
+      "n_scored": 598,
+      "origin": "2020-21",
+      "share_given_appears": {
+        "mae_league_mean": 0.22276439629793693,
+        "mae_legacy_decayed_availability": 0.19833721869039161,
+        "mae_ols_history": 0.19676766698360545,
+        "mae_persistence": 0.2118301485251017
+      },
+      "total_availability_zero_if_absent": {
+        "mae_league_mean": 0.33085752470603735,
+        "mae_persistence": 0.18585381715021165,
+        "mae_two_part_model": 0.1914912166548205,
+        "rmse_league_mean": 0.3664292288209148,
+        "rmse_persistence": 0.27004288450287134,
+        "rmse_two_part_model": 0.2530806712436218
+      }
+    },
+    {
+      "appear": {
+        "auc_model": 0.897988803649181,
+        "brier_base_rate": 0.21081533509066505,
+        "brier_model": 0.1173435399470926,
+        "brier_played_last_season_rule": 0.16849382615192648,
+        "logloss_base_rate": 0.6128287007086755,
+        "logloss_model": 0.36867530198795717
+      },
+      "appears_rate": 0.6996699669966997,
+      "n_appearing": 424,
+      "n_scored": 606,
+      "origin": "2021-22",
+      "share_given_appears": {
+        "mae_league_mean": 0.21222571747304284,
+        "mae_legacy_decayed_availability": 0.1859421083079144,
+        "mae_ols_history": 0.1962600196049143,
+        "mae_persistence": 0.1970561780426441
+      },
+      "total_availability_zero_if_absent": {
+        "mae_league_mean": 0.33651525082302675,
+        "mae_persistence": 0.20170248732190293,
+        "mae_two_part_model": 0.20510361959676054,
+        "rmse_league_mean": 0.37182456606191844,
+        "rmse_persistence": 0.2906732737449849,
+        "rmse_two_part_model": 0.2617651995795728
+      }
+    },
+    {
+      "appear": {
+        "auc_model": 0.9136719305733391,
+        "brier_base_rate": 0.20124201048000126,
+        "brier_model": 0.10079271857762885,
+        "brier_played_last_season_rule": 0.11408982635772177,
+        "logloss_base_rate": 0.5921846809124409,
+        "logloss_model": 0.3281870888020832
+      },
+      "appears_rate": 0.7208121827411168,
+      "n_appearing": 426,
+      "n_scored": 591,
+      "origin": "2022-23",
+      "share_given_appears": {
+        "mae_league_mean": 0.2281084675905974,
+        "mae_legacy_decayed_availability": 0.17377266591086146,
+        "mae_ols_history": 0.18702256218741398,
+        "mae_persistence": 0.18504114184713658
+      },
+      "total_availability_zero_if_absent": {
+        "mae_league_mean": 0.34045454076040876,
+        "mae_persistence": 0.17886178861788618,
+        "mae_two_part_model": 0.18680503044618008,
+        "rmse_league_mean": 0.3734478080880131,
+        "rmse_persistence": 0.26420684800542493,
+        "rmse_two_part_model": 0.2461191219556598
+      }
+    }
+  ],
+  "logistic_coefficients_last_fold": {
+    "age": -0.19732205635588257,
+    "age_sq": 0.0012000161029352941,
+    "intercept": -8.35268554705683,
+    "log_window_minutes": 1.2331561560106505,
+    "no_row_in_origin_season": -1.047070793203587,
+    "prior_seasons": -0.01767837661443679,
+    "share_lag1": -0.7333010206186659,
+    "share_lag2": -0.9991843358849003,
+    "share_t": 2.835577148129902
+  },
+  "note": "development folds only; analysis, not a served model; injuries are not used",
+  "pooled": {
+    "appear": {
+      "auc_model": 0.9162856127517749,
+      "brier_base_rate": 0.2180813755570106,
+      "brier_model": 0.10513478180725623,
+      "brier_played_last_season_rule": 0.12785489146953097,
+      "logloss_base_rate": 0.6315789212073857,
+      "logloss_model": 0.34409707475100865
+    },
+    "share_given_appears": {
+      "mae_league_mean": 0.21777564942984862,
+      "mae_legacy_decayed_availability": 0.18922281159594434,
+      "mae_ols_history": 0.19711216844806223,
+      "mae_persistence": 0.20240439767643664
+    },
+    "total_availability_zero_if_absent": {
+      "mae_league_mean": 0.34436008839212867,
+      "mae_persistence": 0.19069934806518965,
+      "mae_two_part_model": 0.19823798520498884,
+      "rmse_league_mean": 0.38162647994527105,
+      "rmse_persistence": 0.2824776212547705,
+      "rmse_two_part_model": 0.2600432062164367
+    }
+  },
+  "protocol": "r9.2-prereg-1",
+  "team_games_proxy_check": {
+    "denominator": "team wins + losses from the standings",
+    "rows_without_standings_fell_back_to_max_teammate_gp": 0,
+    "standings_vs_team_season_stats_GP": {
+      "share_equal": 1.0,
+      "team_seasons": 90
+    }
+  }
+}

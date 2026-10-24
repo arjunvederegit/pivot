@@ -1,0 +1,110 @@
+[
+  {
+    "config_hash": "48d7807ce43eb89a254669ec685b7dbb075dee894eff5ed983375d28735ffc61",
+    "data_fingerprint": "46bd0edc40c8430672bb2ddbcb6195ac13175010c6e5766a18b908a6d853f1b3",
+    "development_run": "exp-development-impact_proxy-2d96be1a-46bd0edc",
+    "experiment": "exp-holdout-impact_proxy-48d7807c-46bd0edc",
+    "models": [
+      "incumbent_tei",
+      "incumbent_tei_recalibrated",
+      "league_mean",
+      "ols_history",
+      "persistence",
+      "regressed_persistence",
+      "regressed_persistence_age"
+    ],
+    "read_at": "2026-10-19T05:03:23.893333+00:00",
+    "reread": false,
+    "target": "impact_proxy"
+  },
+  {
+    "config_hash": "ee5e4f861bbc19f8c32e59b695fc044941dbd8b70858af1d7a68e1f47a7f4cf7",
+    "data_fingerprint": "46bd0edc40c8430672bb2ddbcb6195ac13175010c6e5766a18b908a6d853f1b3",
+    "development_run": "exp-development-pie-5009b0c9-46bd0edc",
+    "experiment": "exp-holdout-pie-ee5e4f86-46bd0edc",
+    "models": [
+      "incumbent_tei",
+      "incumbent_tei_recalibrated",
+      "league_mean",
+      "ols_history",
+      "persistence",
+      "regressed_persistence",
+      "regressed_persistence_age"
+    ],
+    "read_at": "2026-10-19T05:03:26.906125+00:00",
+    "reread": false,
+    "target": "pie"
+  },
+  {
+    "config_hash": "7873ce08d09172c4710979f84d6fc011702cc26f4899a11a0223ac001a0c472e",
+    "data_fingerprint": "46bd0edc40c8430672bb2ddbcb6195ac13175010c6e5766a18b908a6d853f1b3",
+    "development_run": "exp-development-ts_pct-80563995-46bd0edc",
+    "experiment": "exp-holdout-ts_pct-7873ce08-46bd0edc",
+    "models": [
+      "incumbent_tei",
+      "incumbent_tei_recalibrated",
+      "league_mean",
+      "ols_history",
+      "persistence",
+      "regressed_persistence",
+      "regressed_persistence_age"
+    ],
+    "read_at": "2026-10-19T05:03:29.957142+00:00",
+    "reread": false,
+    "target": "ts_pct"
+  },
+  {
+    "config_hash": "21b4717a9e235b4bb1888b34275742089592220a84a28fcc74759dfd82523437",
+    "data_fingerprint": "46bd0edc40c8430672bb2ddbcb6195ac13175010c6e5766a18b908a6d853f1b3",
+    "development_run": "exp-development-ast_pct-619e077c-46bd0edc",
+    "experiment": "exp-holdout-ast_pct-21b4717a-46bd0edc",
+    "models": [
+      "incumbent_tei",
+      "incumbent_tei_recalibrated",
+      "league_mean",
+      "ols_history",
+      "persistence",
+      "regressed_persistence",
+      "regressed_persistence_age"
+    ],
+    "read_at": "2026-10-19T05:03:33.078686+00:00",
+    "reread": false,
+    "target": "ast_pct"
+  },
+  {
+    "config_hash": "3fc7dc229f5899e95a45f9ce57ec304a12449e1964a2fef25309171787b2fc3f",
+    "data_fingerprint": "46bd0edc40c8430672bb2ddbcb6195ac13175010c6e5766a18b908a6d853f1b3",
+    "development_run": "exp-development-reb_pct-4428b04d-46bd0edc",
+    "experiment": "exp-holdout-reb_pct-3fc7dc22-46bd0edc",
+    "models": [
+      "incumbent_tei",
+      "incumbent_tei_recalibrated",
+      "league_mean",
+      "ols_history",
+      "persistence",
+      "regressed_persistence",
+      "regressed_persistence_age"
+    ],
+    "read_at": "2026-10-19T05:03:36.124813+00:00",
+    "reread": false,
+    "target": "reb_pct"
+  },
+  {
+    "config_hash": "a1259fd2e50f9a32c05ae8b8892e519051ca66d4858900937e2213e44024efad",
+    "data_fingerprint": "46bd0edc40c8430672bb2ddbcb6195ac13175010c6e5766a18b908a6d853f1b3",
+    "development_run": "exp-development-usg_pct-821f7d3d-46bd0edc",
+    "experiment": "exp-holdout-usg_pct-a1259fd2-46bd0edc",
+    "models": [
+      "incumbent_tei",
+      "incumbent_tei_recalibrated",
+      "league_mean",
+      "ols_history",
+      "persistence",
+      "regressed_persistence",
+      "regressed_persistence_age"
+    ],
+    "read_at": "2026-10-19T05:03:39.159808+00:00",
+    "reread": false,
+    "target": "usg_pct"
+  }
+]

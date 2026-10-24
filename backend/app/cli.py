@@ -16,6 +16,18 @@ Commands
   build-features   Build modeling features from ingested data
   train            Train impact model + archetypes; persist model versions
   score            Score current players, compute availability and team needs
+  backtest         R9.1 rolling-origin backtest: backtest <development|holdout> [--target T|all]
+                   [--out DIR] [--eval-min-target-minutes N] [--acknowledge-reread]. A holdout run
+                   loads and verifies the development run in --out. Read-only on the database;
+                   writes artifacts under models/experiments/.
+  train-candidate  R9.1 candidate-only training: train-candidate --model M --target T
+                   [--origin SEASON] [--experiment DIR]. Writes a candidate model_versions row and
+                   candidate_estimates only; refuses to change anything else.
+  candidates       List candidate and rejected model versions (read-only).
+  materialise-skills
+                   R9.2: store, as candidates, the models the validation registry recommends for a
+                   cutoff: materialise-skills [--origin SEASON] [--evidence-dir DIR]. Same isolation
+                   guarantees as train-candidate; promotes nothing.
   validate-data    Run data-quality checks
   index-assets     Index local player photos / team logos into the media manifest
   import-stats-csv <path> [season]  Import the user-supplied season-totals CSV (default season 2025-26; default
@@ -430,6 +442,153 @@ def _balldontlie_evaluate(args: list[str]) -> int:
     return 2 if failed else 0
 
 
+def _modeling_command(command: str, args: list[str]) -> int:
+    """R9.1 evaluation and candidate-training commands (see ``app.modeling``).
+
+    Every refusal is a JSON object on stdout and exit code 2, like the other operator commands."""
+    from pathlib import Path
+
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
+    from app.config import BACKEND_DIR
+    from app.modeling import registry
+    from app.modeling.backtest import InsufficientDataError, NonFiniteForecastError
+    from app.modeling.experiment import (
+        DEFAULT_PROTOCOL,
+        R92_PROTOCOL,
+        HoldoutPrerequisiteError,
+        HoldoutReadRefused,
+        Protocol,
+        run_stage,
+    )
+    from app.modeling.panel import PanelValidationError, PlayerSeasonPanel
+    from app.modeling.predictors import PREDICTORS
+    from app.modeling.targets import TARGETS
+
+    def refuse(error: str, message: str, **extra: object) -> int:
+        print(json.dumps({"error": error, "message": message, **extra}, indent=2, default=str))
+        return 2
+
+    def option(name: str) -> str | None:
+        if name not in args:
+            return None
+        i = args.index(name) + 1
+        # A value is never another flag: `--model --target x` is a missing value, not a model called "--target".
+        return args[i] if i < len(args) and not args[i].startswith("--") else None
+
+    migration_hint = "run `make migrate` on a COPY of the database first"
+    try:
+        with SessionLocal() as db:
+            if command == "candidates":
+                print(json.dumps(registry.list_candidates(db), indent=2, default=str))
+                return 0
+            if command == "materialise-skills":
+                from app.player_intelligence.materialise import materialise_recommended
+
+                usage = "materialise-skills [--origin SEASON] [--evidence-dir DIR]  (writes candidate models; run on a COPY of the database)"
+                if any(a in ("--help", "-h") for a in args):
+                    print(usage)
+                    return 0
+                unknown = [a for a in args if a.startswith("-") and a not in ("--origin", "--evidence-dir")]
+                valueless = [f for f in ("--origin", "--evidence-dir") if f in args and not option(f)]
+                if valueless:
+                    return refuse("usage", f"{valueless} needs a value; nothing was written. {usage}")
+                if unknown or any(not a.startswith("-") and (i == 0 or args[i - 1] not in ("--origin", "--evidence-dir")) for i, a in enumerate(args)):
+                    return refuse("usage", f"unrecognised arguments {unknown or args}; nothing was written. {usage}")
+
+                skill_origin = option("--origin") or PlayerSeasonPanel.from_db(db).seasons[-1]
+                evidence = option("--evidence-dir")
+                done = materialise_recommended(db, skill_origin, Path(evidence) if evidence else None)
+                print(json.dumps(done, indent=2, default=str))
+                return 0
+            if command == "train-candidate":
+                model, target = option("--model"), option("--target")
+                if not model or not target:
+                    return refuse("usage", "train-candidate --model M --target T [--origin SEASON] [--experiment DIR]")
+                if model not in PREDICTORS:
+                    return refuse("CandidateError", f"unknown model {model!r}; registered: {sorted(PREDICTORS)}")
+                if target not in TARGETS:
+                    return refuse("CandidateError", f"unknown target {target!r}; registered: {sorted(TARGETS)}")
+                experiment = option("--experiment")
+                origin = option("--origin")
+                if origin is None:
+                    origin = PlayerSeasonPanel.from_db(db).seasons[-1]
+                record = registry.train_candidate(
+                    db, model, target, origin, experiment_dir=Path(experiment) if experiment else None
+                )
+                print(json.dumps(record.__dict__, indent=2, default=str))
+                return 0
+
+            stage = args[0] if args and not args[0].startswith("--") else None
+            if stage not in ("development", "holdout"):
+                return refuse("usage", "backtest <development|holdout> [--target T|all] [--out DIR] [--eval-min-target-minutes N]")
+            wanted = option("--target") or "impact_proxy"
+            if wanted != "all" and wanted not in TARGETS:
+                return refuse("CandidateError", f"unknown target {wanted!r}; registered: {sorted(TARGETS)}")
+            eval_raw = option("--eval-min-target-minutes")
+            try:
+                eval_minutes = float(eval_raw) if eval_raw is not None else None
+            except ValueError:
+                return refuse("usage", f"--eval-min-target-minutes needs a number, got {eval_raw!r}")
+            r92 = option("--protocol") == "r9.2"
+            exposure_raw = option("--eval-min-target-exposure")
+            try:
+                eval_exposure = float(exposure_raw) if exposure_raw is not None else None
+            except ValueError:
+                return refuse("usage", f"--eval-min-target-exposure needs a number, got {exposure_raw!r}")
+            if r92:
+                from app.player_intelligence.panel import build_skill_panel
+
+                panel = build_skill_panel(db)
+            else:
+                panel = PlayerSeasonPanel.from_db(db)
+            standings = registry.league_standings(db)
+    except PanelValidationError as exc:
+        return refuse("PanelValidationError", str(exc))
+    except (registry.CandidateError, registry.ProtectedStateViolation, InsufficientDataError, NonFiniteForecastError) as exc:
+        return refuse(type(exc).__name__, str(exc))
+    except (OperationalError, ProgrammingError) as exc:
+        return refuse("DatabaseError", str(exc)[:300], hint=migration_hint)
+
+    out = Path(option("--out") or BACKEND_DIR.parent / "models" / "experiments")
+    if r92:
+        # R9.1's holdout reads still count under R9.2: a target read there is a RE-read here.
+        prior = Path(option("--prior-ledger") or BACKEND_DIR.parent / "docs" / "r9-1" / "results" / "holdout_ledger.json")
+        protocol: Protocol = Protocol(preregistration=R92_PROTOCOL.preregistration, prior_ledgers=(prior,))
+    else:
+        protocol = DEFAULT_PROTOCOL
+    targets = list(TARGETS) if wanted == "all" else [wanted]
+    summary = {}
+    for name in targets:
+        development_dir = None
+        if stage == "holdout":
+            runs = sorted(out.glob(f"exp-development-{name}-*"))
+            if len(runs) != 1:
+                return refuse("HoldoutPrerequisiteError", f"a holdout run needs exactly one development run of {name} in {out}; found {len(runs)}")
+            development_dir = runs[0]
+        try:
+            outcome = run_stage(
+                panel, standings, stage, name, out,
+                development_dir=development_dir, eval_min_target_minutes=eval_minutes,
+                eval_min_target_exposure=eval_exposure, protocol=protocol,
+                acknowledge_reread="--acknowledge-reread" in args,
+                # The primary target is audited at every development origin; the rest at the last one.
+                audit_origins=None if (name == "impact_proxy" or r92) else 1,
+            )
+        except (HoldoutReadRefused, HoldoutPrerequisiteError, InsufficientDataError, NonFiniteForecastError) as exc:
+            return refuse(type(exc).__name__, str(exc))
+        summary[name] = {
+            "directory": str(outcome.directory),
+            "family": outcome.decisions.get("family"),
+            "reference_baseline": outcome.decisions.get("reference_baseline")
+            or outcome.decisions.get("reference_baseline_from_development"),
+            "advanced": outcome.decisions.get("advanced"),
+            "confirmed": outcome.decisions.get("confirmed"),
+        }
+    print(json.dumps(summary, indent=2, default=str))
+    return 0
+
+
 def main() -> None:
     configure_logging()
     if len(sys.argv) < 2:
@@ -713,8 +872,12 @@ def main() -> None:
         from app.analytics.train import train_all
 
         with SessionLocal() as db:
-            summary = train_all(db)
+            summary = train_all(db, preserve_history="--preserve-history" in sys.argv[2:])
         print(json.dumps(summary, indent=2, default=str))
+    elif command in ("backtest", "train-candidate", "candidates", "materialise-skills"):
+        code = _modeling_command(command, sys.argv[2:])
+        if code:
+            sys.exit(code)
     elif command == "score":
         from app.analytics.score import score_all
 

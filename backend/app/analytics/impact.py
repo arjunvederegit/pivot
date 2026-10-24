@@ -140,6 +140,27 @@ def _make_transitions(df: pd.DataFrame, seasons: list[str]) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
+#: R9.2. What is known about the coverage of the ``tei_low`` / ``tei_high`` band, stated wherever the band
+#: is served. The band is *nominally* a 10th-90th percentile (80%) range, but R9.1's out-of-time backtest
+#: (rolling origin, the production code run as of each cutoff, scored on the documented next-season
+#: target) found it contained the outcome 60.8% of the time in development (n=1,591) and 57.2% on the
+#: locked holdout (n=654). It is therefore *uncalibrated*: it ranks players' relative uncertainty (wider
+#: for less playing time) but must not be read as an 80% probability. The TEI formula is unchanged.
+TEI_BAND_CALIBRATION = {
+    "nominal_level": 0.8,
+    "status": "uncalibrated",
+    "measured_coverage": {"development": 0.608, "holdout": 0.572},
+    "measured_on": {"development": 1591, "holdout": 654, "unit": "player-seasons"},
+    "target": "next-season 0.6*z(PIE) + 0.4*z(NET_RATING), the documented TEI objective",
+    "reference": "docs/r9-1/current-model-assessment.md",
+    "reading": (
+        "A model-spread band, not an 80% interval: in Pivot's own out-of-time test it contained the next "
+        "season's outcome about 57-61% of the time. Use it to compare how uncertain two estimates are, not "
+        "as odds."
+    ),
+}
+
+
 def sigma_for_minutes(total_minutes: float) -> float:
     """Per-player TEI uncertainty as a function of playing time (R3-4).
 

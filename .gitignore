@@ -27,6 +27,9 @@ coverage/
 *.tsbuildinfo
 next-env.d.ts
 
+# Pickled frames (derived from licensed statistics; never committed)
+*.pkl
+
 # Databases & local data snapshots (provider-backed data is not redistributed)
 *.db
 *.sqlite
@@ -66,3 +69,6 @@ docs/qa/
 
 # Ask Pivot evaluation runs (regenerate with `cd backend && .venv/bin/python -m scripts.eval_rag ...`)
 backend/.assistant_eval/
+
+# R9.1 experiment artifacts (predictions per player-season; regenerate with `make backtest`)
+models/experiments/

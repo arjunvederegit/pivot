@@ -133,7 +133,9 @@ def impact_reference(db: Session) -> dict:
         "rank_method": RANK_METHOD,
         "limitations": [
             "Box-score inputs only: defense, screening and off-ball value are under-measured.",
-            "Each estimate carries a 10–90% band; neighbouring ranks usually overlap inside it.",
+            "Each estimate carries a model-spread band (nominally 10–90%); neighbouring ranks usually overlap inside it. "
+            "The band is uncalibrated: out of time it contained the next season's outcome about 57–61% of the "
+            "time, not 80%, so it shows relative uncertainty and is not odds.",
             "Players below the minutes threshold are unscored — not ranked last.",
             "A percentile places an index among measured players. It is not a calibrated "
             "0–100 rating.",

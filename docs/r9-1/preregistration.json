@@ -1,0 +1,192 @@
+{
+  "constants": {
+    "coverage_band": [
+      0.75,
+      0.85
+    ],
+    "holdout_origins": [
+      "2023-24",
+      "2024-25"
+    ],
+    "min_share_of_folds_improved": 0.8,
+    "practical_floor_relative_mae": 0.02,
+    "team_gate_targets": [
+      "impact_proxy",
+      "pie"
+    ]
+  },
+  "history": "v1 of this file (commit dfeeef1) was written before the first official development run. v2 (this file) incorporates three amendments made after that run and before any holdout read; see amendments[].",
+  "models": [
+    {
+      "description": "Training-period mean of the target among eligible players",
+      "family": "baseline",
+      "inputs": [],
+      "name": "league_mean"
+    },
+    {
+      "description": "Last season's value, uncorrected (a player who missed the season uses the mean of the seasons they played; with no evidence at all, the training mean)",
+      "family": "baseline",
+      "inputs": [
+        "x_t",
+        "x_bar"
+      ],
+      "name": "persistence"
+    },
+    {
+      "description": "OLS y = a + b*last_season: regression toward the mean",
+      "family": "baseline",
+      "inputs": [
+        "x_t",
+        "x_bar"
+      ],
+      "name": "regressed_persistence"
+    },
+    {
+      "description": "OLS y = a + b*last_season + c*age + d*age^2: persistence with an age curve",
+      "family": "baseline",
+      "inputs": [
+        "x_t",
+        "x_bar",
+        "age"
+      ],
+      "name": "regressed_persistence_age"
+    },
+    {
+      "description": "OLS y = a + b*last_season + c*windowed_history + d*age + e*age^2: simple regression with the same history the candidates see",
+      "family": "baseline",
+      "inputs": [
+        "x_t",
+        "x_bar",
+        "age"
+      ],
+      "name": "ols_history"
+    },
+    {
+      "description": "The production TEI at the cutoff, as shipped (TEI / 2.5, the scale its own validation used)",
+      "family": "baseline",
+      "inputs": [
+        "tei_window"
+      ],
+      "name": "incumbent_tei"
+    },
+    {
+      "description": "OLS y = a + b*TEI: the incumbent's ranking information put on the target's own scale (applies to every target: it asks what the existing Pivot estimate knows about this quantity)",
+      "family": "baseline",
+      "inputs": [
+        "tei_window"
+      ],
+      "name": "incumbent_tei_recalibrated"
+    },
+    {
+      "description": "Prior = age-adjusted league mean; prediction = prior + b * E/(E+k) * (windowed history - prior), where E is the evidence (minutes or attempts) behind the history and k is chosen by leave-one-transition-out error",
+      "family": "candidate",
+      "inputs": [
+        "x_bar",
+        "window_exposure",
+        "age"
+      ],
+      "name": "eb_shrinkage"
+    },
+    {
+      "description": "Ridge on the player's own history only: last 3 values, windowed mean, evidence, age curve",
+      "family": "candidate",
+      "inputs": [
+        "x_t",
+        "x_lag1",
+        "x_lag2",
+        "x_bar",
+        "window_exposure",
+        "age"
+      ],
+      "name": "ridge_history"
+    },
+    {
+      "description": "Ridge on that history plus the incumbent's box-score z-features (does other box-score information improve the forecast of this target?)",
+      "family": "candidate",
+      "inputs": [
+        "x_t",
+        "x_lag1",
+        "x_lag2",
+        "x_bar",
+        "window_exposure",
+        "age",
+        "z_pts_per75",
+        "z_TS_PCT",
+        "z_AST_PCT",
+        "z_TM_TOV_PCT",
+        "z_USG_PCT",
+        "z_OREB_PCT",
+        "z_DREB_PCT",
+        "z_stl_per_min",
+        "z_blk_per_min",
+        "z_PIE",
+        "z_NET_RATING",
+        "z_fg3a_rate",
+        "z_fta_rate",
+        "z_MIN"
+      ],
+      "name": "ridge_boxscore"
+    }
+  ],
+  "preregistration": {
+    "advance_if_all": {
+      "folds": "candidate has lower MAE than the reference in at least 80% of development folds (4 of 5)",
+      "interval_coverage": "pooled development coverage of the nominal 80% interval lies in [0.75, 0.85]",
+      "player_ci": "player-cluster bootstrap 95% interval of MAE(candidate) - MAE(reference) lies entirely below 0 on the development folds",
+      "practical": "MAE is at least 2% lower than the reference's",
+      "season_ci": "the 95% t-interval (k-1 d.f.) of the per-fold MAE differences lies entirely below 0",
+      "team_gate": "pie and impact_proxy only: the 95% team-season bootstrap interval of R2(candidate) - R2(reference) for prospective roster-known win% is not entirely below 0; if it cannot be computed the check FAILS"
+    },
+    "amendments": [
+      {
+        "change": "added baseline ols_history (OLS on last season, windowed history, age); incumbent_tei_recalibrated now applies to every target",
+        "direction": "more conservative (a stronger baseline set)",
+        "id": 1,
+        "reason": "independent methodology review: the baselines lacked the candidates' own information, so 'beats the best baseline' could mean only 'uses more than last season'",
+        "when": "after the first development run, before any holdout read"
+      },
+      {
+        "change": "added season-level (fold) t-interval, a 2% practical-significance floor, and replaced the concurrent, incumbent-referenced team gate with a prospective, reference-baseline gate that fails closed",
+        "direction": "more conservative",
+        "id": 2,
+        "reason": "review: the gate was silently skipped for pie, compared a forecast with the TEI on a circular target, and the player bootstrap ignores season-to-season dependence",
+        "when": "same"
+      },
+      {
+        "change": "holdout origins hard-coded; ledger mandatory and keyed by target; development decisions loaded and verified from artifacts; leakage audit strengthened (identity/team permutation, row deletion, population and eligibility compared) and run for every development origin of the primary target; sensitivity is evaluation-only",
+        "direction": "more conservative / stricter process",
+        "id": 3,
+        "reason": "review: holdout lock was policy not enforcement; audit could not detect survivorship or identity leaks",
+        "when": "same"
+      }
+    ],
+    "claims_not_made": [
+      "that any model measures underlying ability",
+      "that results hold for seasons after 2025-26",
+      "that any candidate should be promoted",
+      "that the incumbent's score measures impact"
+    ],
+    "confirm_on_holdout_if": "pooled holdout player-cluster interval vs the development-chosen reference lies entirely below 0 and the candidate improves MAE in every holdout fold",
+    "confirmatory_target": "impact_proxy",
+    "disclosures": [
+      "an engineering smoke test run before the development/holdout split was enforced in code scored all folds, including the holdout, for impact_proxy with the then-registered models. No model, parameter or rule was changed in response to it; but the impact_proxy holdout is NOT pristine and its confirmation is weaker evidence",
+      "the incumbent's own stored validation used the 2024-25 -> 2025-26 transition (one of the two holdout folds)"
+    ],
+    "exploratory_targets": [
+      "pie",
+      "ts_pct",
+      "ast_pct",
+      "reb_pct",
+      "usg_pct"
+    ],
+    "folds": "rolling origin; >= 2 training transitions; development = origins 2018-19..2022-23; locked holdout = origins 2023-24 and 2024-25 (hard-coded, independent of later ingestion)",
+    "multiplicity": "six targets x three candidates are examined. Only impact_proxy (the incumbent's own documented target) is confirmatory; every other target is exploratory and is reported without correction",
+    "population": {
+      "evaluated": "scored players who played >= 500 minutes in the target season (same rows for every model); training uses the same rule",
+      "scored": "players with >= 200 minutes over the last 3 seasons ending at the cutoff (including those who missed the cutoff season)",
+      "sensitivity": "evaluation-only cuts at 250 and 1000 target-season minutes, training unchanged"
+    },
+    "reference_baseline": "the baseline with the lowest pooled development MAE for that target",
+    "version": "r9.1-prereg-2"
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "backtest": {
+    "bootstrap_draws": 2000,
+    "eval_min_target_minutes": 250.0,
+    "features": {
+      "decay": 0.7,
+      "min_origin_minutes": 200.0,
+      "min_target_minutes": 500.0,
+      "window": 3
+    },
+    "interval_level": 0.8,
+    "min_train_transitions": 2,
+    "models": null,
+    "reference_models": [
+      "ols_history",
+      "regressed_persistence_age",
+      "incumbent_tei_recalibrated"
+    ],
+    "seed": 20260719,
+    "target": "ts_pct",
+    "test_origins": [
+      "2018-19",
+      "2019-20",
+      "2020-21",
+      "2021-22",
+      "2022-23"
+    ]
+  },
+  "preregistration": {
+    "advance_if_all": {
+      "folds": "candidate has lower MAE than the reference in at least 80% of development folds (4 of 5)",
+      "interval_coverage": "pooled development coverage of the nominal 80% interval lies in [0.75, 0.85]",
+      "player_ci": "player-cluster bootstrap 95% interval of MAE(candidate) - MAE(reference) lies entirely below 0 on the development folds",
+      "practical": "MAE is at least 2% lower than the reference's",
+      "season_ci": "the 95% t-interval (k-1 d.f.) of the per-fold MAE differences lies entirely below 0",
+      "team_gate": "not applicable: no R9.2 target is a team-level contribution measure"
+    },
+    "amendments": [
+      {
+        "change": "stated which advanced candidate is served when more than one advances (lowest pooled development MAE; for the inferred output, among those that carry an ability posterior)",
+        "direction": "neutral: a selection rule fixed before the evidence it selects on",
+        "id": 1,
+        "reason": "the pre-registration said which candidates advance but not which of several is served; fixing the rule now, from development evidence only, means the holdout cannot be used to choose",
+        "when": "after the three R9.2 development runs, before any R9.2 holdout read"
+      },
+      {
+        "change": "a holdout that is a RE-READ (ts_pct, already read once in R9.1) cannot raise a candidate's status above 'development_only'; it can only lower it to 'failed' if the candidate is not confirmed",
+        "direction": "more conservative",
+        "id": 2,
+        "reason": "R9.1's baseline results on that holdout were published before R9.2's candidates were designed, so a confirmation there is not independent confirmation",
+        "when": "after the three R9.2 development runs, before any R9.2 holdout read"
+      },
+      {
+        "change": "an inferred (ability) record's evaluation status is capped at 'development_only' however its model's forecasts fared on the holdout",
+        "direction": "more conservative: a cap applied after seeing the holdout results, and it lowers what is claimed",
+        "id": 3,
+        "reason": "latent ability is never observed, so 'holdout_confirmed' on an ability estimate would read as definitive validation of ability; the forecast skill of the same model is reported on the projected record instead",
+        "when": "after the R9.2 holdout reads (fg3_pct, ft_pct first reads; ts_pct re-read), before any status was served"
+      }
+    ],
+    "claims_not_made": [
+      "that any model measures underlying ability",
+      "that results hold for seasons after 2025-26",
+      "that any candidate should be promoted",
+      "that a forecast conditional on playing is a forecast of a player's total future contribution"
+    ],
+    "confirm_on_holdout_if": "pooled holdout player-cluster interval vs the development-chosen reference lies entirely below 0 and the candidate improves MAE in every holdout fold",
+    "confirmatory_targets": [
+      "fg3_pct",
+      "ft_pct"
+    ],
+    "disclosures": [
+      "the 2025-26 totals CSV used to validate the shot-count reconstruction is not used in any model",
+      "the ts_pct holdout was read once in R9.1 (baselines); R9.1's ledger is loaded as a prior ledger so a second read is refused unless acknowledged"
+    ],
+    "exploratory_targets": [
+      "ts_pct"
+    ],
+    "extends": "r9.1-prereg-2",
+    "folds": "rolling origin; >= 2 training transitions; development = origins 2018-19..2022-23; locked holdout = origins 2023-24 and 2024-25 (R9.1's hard-coded split, unchanged)",
+    "hypothesis": "H1: on three-point and free-throw accuracy, an attempts-aware state-space or beta-binomial forecaster has lower out-of-time MAE than ols_history. H0 is the default: the best simple baseline stays the recommended forecaster",
+    "multiplicity": "three targets x six candidates (R9.1's eb_shrinkage, ridge_history, ridge_boxscore and R9.2's state_space, state_space_role, beta_binomial where applicable) are examined. fg3_pct and ft_pct are confirmatory: their holdout has never been read by any protocol and the hypothesis (a method that weights each season by the attempts behind it beats a regression whose slope is the same for 30 and 500 attempts) is stated here. ts_pct is exploratory: R9.1 already read its holdout (baselines only; no candidate advanced), so any ts_pct holdout read in R9.2 is a RE-READ, is recorded as one, and is weaker evidence. No correction for multiple comparisons is applied",
+    "population": {
+      "evaluated": "scored players who played >= 500 minutes in the target season AND, for fg3_pct and ft_pct, took >= 50 attempts of that type (same rows for every model); training uses the same rule. ts_pct: R9.1's rule unchanged",
+      "scored": "players with >= 200 minutes over the last 3 seasons ending at the cutoff (R9.1, unchanged)",
+      "sensitivity": "evaluation-only attempt cuts at 25 and 100 for fg3_pct and ft_pct, training unchanged",
+      "unit": "a player-season rate on fewer than 50 attempts is not an outcome worth scoring; its sampling SD exceeds 7 points"
+    },
+    "reference_baseline": "the baseline with the lowest pooled development MAE for that target (ols_history is expected)",
+    "selection_rule": "(added as amendment 1, see below) when several candidates advance and are confirmed, the recommended forecaster is the one with the lowest pooled DEVELOPMENT MAE; the inferred (ability) output is served from the lowest-development-MAE advanced candidate that carries a posterior of ability",
+    "serving_rules": {
+      "inferred": "an ability estimate is served as 'experimental' only if its own next-season forecast is not worse than the reference baseline's MAE by more than 2% on the development folds AND its model-based predictive interval covered between 75% and 85% of development outcomes. Otherwise it is withheld. Meeting this is evidence of predictive validity, never a claim that ability has been measured",
+      "measured": "served when the data-integrity checks pass (counts reconstructed and reconciled to the published rates); no model is involved",
+      "projected": "the recommended projection is the best-validated method: a candidate only if it advanced under the rule above and was confirmed on the holdout; otherwise the reference baseline, labelled a benchmark, never an improvement",
+      "promotion": "no R9.2 output is promoted; serving status is 'experimental' or 'benchmarked' at most (see docs/r9-2/model-safety-and-promotion.md)"
+    },
+    "version": "r9.2-prereg-1"
+  },
+  "stage": "development"
+}

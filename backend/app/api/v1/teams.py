@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.analytics.impact import TEI_BAND_CALIBRATION
 from app.api.schemas import Provenance, RosterPlayerOut, TeamOut, describe_providers
 from app.canonical.provenance import build_source_meta
 from app.canonical.records import SINGLE_SEASON_CONTRACT_SOURCE
@@ -191,6 +192,8 @@ def get_roster(team_id: str, db: Session = Depends(get_db)) -> dict:
         "roster_season": snapshot.season,
         "season_context": seasons,
         "roster": players,
+        # R9.2: the per-player tei_low / tei_high are a model-spread band that tested at 57-61% coverage, not 80%.
+        "tei_band_calibration": TEI_BAND_CALIBRATION,
         # Read off the rows, not assumed. A demo-seeded roster says so here.
         "source": describe_providers(providers),
         "source_providers": sorted(providers),
