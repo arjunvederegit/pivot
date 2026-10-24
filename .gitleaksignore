@@ -2,3 +2,6 @@
 # Not real secrets; reported by gitleaks' generic-api-key rule because of the `lsv2_pt_` prefix.
 1bd4ceb9c078e8bff4bd123793a00cc6c792f852:backend/tests/unit/test_assistant_service.py:generic-api-key:342
 1bd4ceb9c078e8bff4bd123793a00cc6c792f852:backend/tests/unit/test_assistant_api.py:generic-api-key:193
+# Synthetic placeholder credentials in the first R8 commit (sequential-digit literals); replaced by "not-a-real-key-…" in the next commit.
+ad535cf93acd4bd6278d4836c3fd4eba46e19d72:backend/tests/unit/test_balldontlie_harness.py:generic-api-key:22
+ad535cf93acd4bd6278d4836c3fd4eba46e19d72:backend/tests/integration/test_r8_cross_tool_consistency.py:generic-api-key:233
