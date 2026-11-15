@@ -309,13 +309,15 @@ def validate_data(db: Session) -> list[dict]:
             )
         )
 
-    cap = db.scalar(select(LeagueCapParameters).where(LeagueCapParameters.league_year == stats_season))
+    # Cap data is keyed by the league year that governs trade legality, not by the statistics season.
+    cap_year = settings.cap_league_year
+    cap = db.scalar(select(LeagueCapParameters).where(LeagueCapParameters.league_year == cap_year))
     if cap is None:
         issues.append(
             _record(
                 db,
                 "cap_parameters_missing",
-                f"no cap parameters loaded for league year {stats_season}; run `make seed-config`",
+                f"no cap parameters loaded for league year {cap_year}; run `make seed-config`",
                 "error",
             )
         )

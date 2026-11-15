@@ -482,7 +482,7 @@ def data_health(db: Session) -> dict:
             "last_update": models[0]["trained_at"] if models else None,
             "coverage": f"{len(models)} active models",
             "source": "trained locally on ingested data (validation metrics below)",
-            "action": None if models else "Run `make train && make score`.",
+            "action": None if models else "No active models are available.",
         },
     ]
 

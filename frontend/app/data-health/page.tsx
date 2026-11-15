@@ -439,11 +439,21 @@ function SourceRow({ card, generatedAt }: { card: SourceCard; generatedAt: strin
       {card.action && (
         <div className="col-span-2 rounded-lg border border-hairline bg-panel2/70 px-3.5 py-2.5 lg:col-span-3 lg:col-start-2">
           <p className="min-w-0 text-[13px] leading-relaxed text-foreground">
-            <span className="mr-1.5 font-semibold text-signal">Next step</span>
-            <CommandText
-              text={card.action}
-              codeClassName="break-all rounded bg-signal/10 px-1 py-px text-[0.88em] text-signal"
-            />
+            {/* The Models card's action is a plain availability statement, not a command. */}
+            {card.key === "models" ? (
+              <>
+                <span className="mr-1.5 font-semibold text-signal">Note</span>
+                {card.action}
+              </>
+            ) : (
+              <>
+                <span className="mr-1.5 font-semibold text-signal">Next step</span>
+                <CommandText
+                  text={card.action}
+                  codeClassName="break-all rounded bg-signal/10 px-1 py-px text-[0.88em] text-signal"
+                />
+              </>
+            )}
           </p>
         </div>
       )}
@@ -715,7 +725,7 @@ function ModelsTab({ data }: { data: DataHealth }) {
     return (
       <EmptyState
         title="No active models"
-        hint="Run `make train && make score` to fit and publish the impact model."
+        hint="No active models are available."
       />
     );
   }

@@ -338,8 +338,7 @@ class EvaluationService:
                         "reason": "impact_estimates_from_earlier_season",
                         "message": (
                             f"The active impact model has no estimates for {performance}; player "
-                            f"impact is read from its {', '.join(estimate_seasons)} estimates. Run "
-                            "`make train && make score` to produce them."
+                            f"impact is read from its {', '.join(estimate_seasons)} estimates."
                         ),
                     }
                 )
@@ -442,7 +441,7 @@ class EvaluationService:
     ) -> tuple[float | None, dict]:
         needs = self._team_needs(team_id)
         if not needs:
-            return None, {"unavailable": "team needs not computed; run `make score`"}
+            return None, {"unavailable": "team needs have not been computed"}
 
         # Fit compares the arriving package against the departing one. R1 found the old
         # code substituting a flat 50th-percentile player for an empty side — so trading

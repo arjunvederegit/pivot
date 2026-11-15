@@ -35,12 +35,41 @@ const suppressed = {
   uncertainty: {},
 };
 
+// W2.5: the evaluate response is validated for the fields the Trade Evaluator page reads unguarded, so its
+// fixtures carry them. `scored` / `suppressed` above stay minimal for `tradeDetailSchema`, which does not.
+const evaluatorFields = {
+  legality: { status: "conditionally_valid", abbreviation: "AAA" },
+  weights: { performance: 0.5, fit: 0.5 },
+  sensitivity_tornado: [{ component: "performance", utility_low: 49.1, utility_high: 53.4, base: 51.3 }],
+};
+const evaluatedScored = {
+  ...scored,
+  ...evaluatorFields,
+  uncertainty: {
+    n_draws: 2000,
+    median: 1.4,
+    p10: -0.6,
+    p90: 3.1,
+    prob_positive: 0.55,
+    top_uncertainty_drivers: [{ side: "after", spread_wins: 1.2 }],
+  },
+};
+const evaluatedSuppressed = {
+  ...suppressed,
+  ...evaluatorFields,
+  sensitivity_tornado: [],
+};
+const evaluateLegality = {
+  overall_status: "conditionally_valid",
+  teams: { t1: { abbreviation: "AAA", status: "conditionally_valid" } },
+};
+
 describe("evaluate response", () => {
   it("accepts a scored evaluation", () => {
     expect(
       evaluateResponseSchema.safeParse({
-        legality: { overall_status: "conditionally_valid" },
-        evaluations: { t1: scored },
+        legality: evaluateLegality,
+        evaluations: { t1: evaluatedScored },
       }).success,
     ).toBe(true);
   });
@@ -48,17 +77,17 @@ describe("evaluate response", () => {
   it("accepts a suppressed evaluation with no score", () => {
     expect(
       evaluateResponseSchema.safeParse({
-        legality: { overall_status: "verified_illegal" },
-        evaluations: { t1: suppressed },
+        legality: { ...evaluateLegality, overall_status: "verified_illegal" },
+        evaluations: { t1: evaluatedSuppressed },
       }).success,
     ).toBe(true);
   });
 
   it("rejects a scored evaluation with no score", () => {
-    const bad = { ...scored, composite_utility: null };
+    const bad = { ...evaluatedScored, composite_utility: null };
     expect(
       evaluateResponseSchema.safeParse({
-        legality: { overall_status: "x" },
+        legality: evaluateLegality,
         evaluations: { t1: bad },
       }).success,
     ).toBe(false);
@@ -67,10 +96,10 @@ describe("evaluate response", () => {
   it("rejects a suppressed evaluation that still carries a score", () => {
     // This is the shape the product must never render: an affirmative number on a
     // deal that cannot be executed.
-    const bad = { ...suppressed, composite_utility: 72.85 };
+    const bad = { ...evaluatedSuppressed, composite_utility: 72.85 };
     expect(
       evaluateResponseSchema.safeParse({
-        legality: { overall_status: "verified_illegal" },
+        legality: { ...evaluateLegality, overall_status: "verified_illegal" },
         evaluations: { t1: bad },
       }).success,
     ).toBe(false);
@@ -79,26 +108,91 @@ describe("evaluate response", () => {
   it("tolerates unknown keys, so an additive backend change never breaks the client", () => {
     expect(
       evaluateResponseSchema.safeParse({
-        legality: { overall_status: "x", something_new: 1 },
-        evaluations: { t1: { ...scored, brand_new_field: true } },
+        legality: { ...evaluateLegality, something_new: 1 },
+        evaluations: { t1: { ...evaluatedScored, brand_new_field: true } },
       }).success,
     ).toBe(true);
   });
 
   it("requires a scored evaluation to report prob_positive, even as null", () => {
-    const bad = { ...scored, uncertainty: {} };
+    const bad = { ...evaluatedScored, uncertainty: {} };
     expect(
-      evaluateResponseSchema.safeParse({ legality: { overall_status: "x" }, evaluations: { t1: bad } })
-        .success,
+      evaluateResponseSchema.safeParse({ legality: evaluateLegality, evaluations: { t1: bad } }).success,
     ).toBe(false);
   });
 
   it("rejects a TEI that arrived as a string", () => {
-    const bad = { ...scored, incoming: [{ player_id: "p", name: "n", tei: "1.2" }] };
+    const bad = { ...evaluatedScored, incoming: [{ player_id: "p", name: "n", tei: "1.2" }] };
     expect(
-      evaluateResponseSchema.safeParse({ legality: { overall_status: "x" }, evaluations: { t1: bad } })
-        .success,
+      evaluateResponseSchema.safeParse({ legality: evaluateLegality, evaluations: { t1: bad } }).success,
     ).toBe(false);
+  });
+
+  const parse = (evaluation: object) =>
+    evaluateResponseSchema.safeParse({ legality: evaluateLegality, evaluations: { t1: evaluation } });
+
+  it("accepts a scored evaluation that has no outcome distribution", () => {
+    // The producer's no-distribution block: nothing moves, so nothing to project (n_draws 0, null probability).
+    const noDistribution = {
+      ...evaluatedScored,
+      uncertainty: {
+        n_draws: 0,
+        median: 0,
+        p10: 0,
+        p90: 0,
+        prob_positive: null,
+        unavailable: "no players move, so there is no outcome distribution",
+        top_uncertainty_drivers: [],
+      },
+    };
+    expect(parse(noDistribution).success).toBe(true);
+    // ... and the band numbers are only required where the page prints them.
+    expect(parse({ ...noDistribution, uncertainty: { ...noDistribution.uncertainty, p10: null, median: null } }).success).toBe(true);
+  });
+
+  it("requires the band numbers whenever prob_positive is a number, zero included", () => {
+    const noP10: Record<string, unknown> = { ...evaluatedScored.uncertainty };
+    delete noP10.p10;
+    expect(parse({ ...evaluatedScored, uncertainty: { ...noP10, prob_positive: 0 } }).success).toBe(false);
+    expect(parse({ ...evaluatedScored, uncertainty: { ...evaluatedScored.uncertainty, prob_positive: 0 } }).success).toBe(true);
+  });
+
+  it("keeps zero and negative values as valid", () => {
+    expect(
+      parse({
+        ...evaluatedScored,
+        composite_utility: 0,
+        components: { performance: 0, fit: null },
+        incoming: [{ player_id: "p", name: "n", tei: -1.5 }],
+        uncertainty: { ...evaluatedScored.uncertainty, median: -2, p10: -4.5, p90: 0 },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("does not coerce a numeric string into a weight or a draw count", () => {
+    expect(parse({ ...evaluatedScored, weights: { performance: "0.5" } }).success).toBe(false);
+    expect(parse({ ...evaluatedScored, uncertainty: { ...evaluatedScored.uncertainty, n_draws: "2000" } }).success).toBe(false);
+  });
+
+  it("requires what the page reads unguarded: team legality, weights, tornado, per-team legality", () => {
+    expect(evaluateResponseSchema.safeParse({ legality: { overall_status: "x" }, evaluations: { t1: evaluatedScored } }).success).toBe(false);
+    for (const key of ["legality", "weights", "sensitivity_tornado"] as const) {
+      const rest: Record<string, unknown> = { ...evaluatedScored };
+      delete rest[key];
+      expect(parse(rest).success).toBe(false);
+    }
+  });
+
+  it("leaves the saved-trade schema as it was", () => {
+    // tradeDetailSchema shares the base team-evaluation rules but not the evaluator's page-read requirements.
+    expect(
+      tradeDetailSchema.safeParse({
+        id: "x",
+        name: "Deal",
+        legality: { overall_status: "verified_legal" },
+        evaluations: { t1: scored },
+      }).success,
+    ).toBe(true);
   });
 });
 

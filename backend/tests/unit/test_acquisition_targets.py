@@ -61,7 +61,7 @@ def test_a_team_with_no_computed_needs_says_so(db, seeded_league):
     db.commit()
     result = acquisition_targets(db, seeded_league["team_a"].id)
     assert result["available"] is False
-    assert "make score" in result["unavailable_reason"]
+    assert "team needs have not been computed" in result["unavailable_reason"]
 
 
 def test_the_ranking_and_filter_rules_are_stated_in_the_response(db, league):

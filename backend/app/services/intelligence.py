@@ -233,7 +233,7 @@ class IntelligenceService:
                 "100 possessions."
             ),
             source="player_impact_estimates, from the registered player_impact model",
-            confidence=Confidence.VALIDATED,
+            confidence=Confidence.HEURISTIC,
             limitations=(
                 "Box-score derived. It cannot see on-ball defence, screen navigation or "
                 "off-ball gravity.",
@@ -296,7 +296,7 @@ class IntelligenceService:
             ],
             "needs_available": bool(need_rows),
             "needs_unavailable_reason": (
-                "" if need_rows else "team needs have not been computed; run `make score`"
+                "" if need_rows else "team needs have not been computed"
             ),
             "classification_note": (
                 f"A need is a headline weakness at severity >= "

@@ -511,7 +511,7 @@ class TestSeasonContextBlock:
         on(date(2026, 11, 4))  # the statistics have rolled over; no 2026-27 estimates exist
         context = tool_seasons(db, performance_season="2026-27")
         assert context["projection"]["estimates_for_input_season"] is False
-        assert any("make train && make score" in n for n in context["notes"])
+        assert any("has no estimates for 2026-27" in n for n in context["notes"])
 
     def test_after_the_regular_season_starts_the_snapshot_stops_being_called_preseason(
         self, db, staged, on
@@ -557,7 +557,7 @@ class TestAfterTheStatisticsRollover:
         assert context["performance"]["season"] == "2026-27"
         assert context["performance"]["is_baseline"] is False
         assert context["projection"]["estimates_for_input_season"] is False
-        assert any("make train && make score" in n for n in context["notes"])
+        assert any("has no estimates for 2026-27" in n for n in context["notes"])
 
     def test_an_evaluation_names_the_estimates_it_is_still_reading(self, client, rolled):
         a, b = rolled["team_a"], rolled["team_b"]

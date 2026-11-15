@@ -453,7 +453,7 @@ def rollover_readiness(db: Session, *, now: datetime | None = None) -> dict[str,
         "impact_estimates": {
             "present": impact > 0,
             "rows": impact,
-            "note": "produced by `make train && make score`; run it before the rollover date",
+            "note": "impact estimates for the league season must exist before the rollover date",
         },
     }
     # The cap year is configuration (CAP_LEAGUE_YEAR) and the league year turns over on 1 July, so it

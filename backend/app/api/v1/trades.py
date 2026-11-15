@@ -219,7 +219,10 @@ def create_trade(payload: TradeIn, db: Session = Depends(get_db)) -> dict:
                 is_hypothetical=True,
             )
         )
-    db.commit()
+    # Flush, not commit: `_trade_detail` still validates the trade (cap data, duplicate and
+    # phantom moves, unknown scenario or player) and commits once, after persisting results.
+    # A request it rejects must leave no proposal, team or asset rows behind.
+    db.flush()
     return _trade_detail(db, trade.id, persist_results=True)
 
 

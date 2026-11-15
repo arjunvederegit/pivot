@@ -33,11 +33,14 @@ import { LEGALITY_VISUAL, RULE_STATUS_WORD, RuleItem } from "@/components/trade/
 export function RulesCheck({
   validation,
   validating,
+  validationError = null,
   hasMoves,
   className,
 }: {
   validation: LegalityResponse | null;
   validating: boolean;
+  /** Why the current check could not be completed (the request failed); never a verdict about the deal. */
+  validationError?: string | null;
   hasMoves: boolean;
   className?: string;
 }) {
@@ -59,7 +62,9 @@ export function RulesCheck({
       subtitle={
         validation
           ? `Cap year ${validation.league_year} · every result below comes from the backend rules engine, not the browser.`
-          : "The check runs automatically the moment a player crosses the lane."
+          : validationError && !validating
+            ? "The automatic check did not finish."
+            : "The check runs automatically the moment a player crosses the lane."
       }
       accent={visual?.color ?? "var(--signal)"}
       actions={
@@ -72,7 +77,12 @@ export function RulesCheck({
       }
     >
       {!validation ? (
-        validating || hasMoves ? (
+        validationError && !validating ? (
+          <div role="status" className="rounded-lg border border-dashed border-unavail/50 bg-unavail/6 px-4 py-3">
+            <p className="text-sm font-semibold text-foreground">Live rules check could not be completed.</p>
+            <p className="mt-1 text-sm text-muted [overflow-wrap:anywhere]">{validationError}</p>
+          </div>
+        ) : validating || hasMoves ? (
           <div className="space-y-3">
             <Skeleton className="h-28" />
             <SkeletonRows rows={3} height="h-12" />

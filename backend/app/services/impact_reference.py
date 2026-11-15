@@ -72,7 +72,7 @@ def impact_reference(db: Session) -> dict:
     if model is None:
         return {
             "available": False,
-            "reason": "No impact model is active — run `make train`. Pivot does not rank "
+            "reason": "No active impact model is available. Pivot does not rank "
             "players it has not scored.",
         }
 

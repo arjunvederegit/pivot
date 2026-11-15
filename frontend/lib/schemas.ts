@@ -64,10 +64,79 @@ const teamEvaluation = z
     { message: "a scored evaluation must report prob_positive, even as null" },
   );
 
+/**
+ * What the Trade Evaluator page reads from an evaluation without a guard (W2.5), on top of
+ * `teamEvaluation`. Kept apart from it because `tradeDetailSchema` shares that schema and a saved
+ * trade's evaluation is not the page's concern here.
+ *
+ * - `legality`, `weights` and `sensitivity_tornado` are on every branch the producer returns; a
+ *   refused evaluation carries its weights and an empty tornado.
+ * - `uncertainty` is `{}` only when the deal is refused. Every other evaluation, scored or not,
+ *   carries `n_draws` and `top_uncertainty_drivers` (also when there is no distribution:
+ *   `n_draws: 0`, no drivers, `prob_positive: null`). The band numbers are required only when
+ *   `prob_positive` is a number, because that is exactly when the page prints them.
+ */
+const tornadoBar = z
+  .object({
+    component: z.string(),
+    utility_low: z.number(),
+    utility_high: z.number(),
+    base: z.number(),
+  })
+  .passthrough();
+
+const simulatedOutcome = z
+  .object({
+    n_draws: z.number(),
+    top_uncertainty_drivers: z.array(
+      z.object({ side: z.string(), spread_wins: z.number() }).passthrough(),
+    ),
+  })
+  .passthrough();
+
+const outcomeBand = z
+  .object({ median: z.number(), p10: z.number(), p90: z.number() })
+  .passthrough();
+
+const evaluatorTeamEvaluation = teamEvaluation
+  .and(
+    z
+      .object({
+        legality: z.object({}).passthrough(),
+        weights: z.record(z.string(), z.number()),
+        sensitivity_tornado: z.array(tornadoBar),
+      })
+      .passthrough(),
+  )
+  .superRefine((e, ctx) => {
+    if (e.decision_status === "suppressed_illegal") return;
+    const required =
+      typeof e.uncertainty.prob_positive === "number"
+        ? [simulatedOutcome, outcomeBand]
+        : [simulatedOutcome];
+    for (const schema of required) {
+      const result = schema.safeParse(e.uncertainty);
+      if (result.success) continue;
+      for (const issue of result.error.issues) {
+        ctx.addIssue({
+          code: "custom",
+          message: issue.message,
+          path: ["uncertainty", ...issue.path],
+        });
+      }
+    }
+  });
+
 export const evaluateResponseSchema = z
   .object({
-    legality: z.object({ overall_status: z.string() }).passthrough(),
-    evaluations: z.record(z.string(), teamEvaluation),
+    legality: z
+      .object({
+        overall_status: z.string(),
+        // The page maps this to team abbreviations with no guard.
+        teams: z.record(z.string(), z.object({ abbreviation: z.string() }).passthrough()),
+      })
+      .passthrough(),
+    evaluations: z.record(z.string(), evaluatorTeamEvaluation),
   })
   .passthrough();
 

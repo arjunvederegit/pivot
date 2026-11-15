@@ -224,8 +224,7 @@ def acquisition_targets(
             "team": {"id": team.id, "abbreviation": team.abbreviation, "name": team.full_name},
             "available": False,
             "unavailable_reason": (
-                "team needs have not been computed for "
-                f"{settings.current_season}; run `make score`"
+                f"team needs have not been computed for {settings.current_season}"
             ),
             "diagnosis": [],
             "targets": [],

@@ -247,7 +247,7 @@ def generate_candidates(
     focal_roster = service._roster_cards(focal_team_id)
     focal_needs = service._team_needs(focal_team_id)
     if not focal_needs:
-        return {"error": "team needs not computed; run `make score` first", "candidates": []}
+        return {"error": "team needs have not been computed", "candidates": []}
 
     # The generator can only reason about players the impact model has scored; an
     # unmodelled player has no TEI to balance a package against (R1-4).

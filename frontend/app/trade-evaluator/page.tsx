@@ -30,6 +30,9 @@ import { api } from "@/lib/api";
 import { useHydrated } from "@/lib/hydrated";
 import { tradeDetailSchema } from "@/lib/schemas";
 import { decodeShareState, encodeShareState } from "@/lib/shareState";
+import { resolveActiveTeam, useSelectedTeam } from "@/lib/useSelectedTeam";
+import { useRevealResults } from "@/lib/useRevealResults";
+import { useTradeAnalysis } from "@/lib/useTradeAnalysis";
 import { LEGALITY_LABEL, LEGALITY_SHORT, formatDate } from "@/lib/format";
 import { getFavoriteTeam } from "@/lib/favoriteTeam";
 import { teamIdentity } from "@/lib/teamIdentity";
@@ -72,16 +75,6 @@ import { Badge, Button, PageHeader, Skeleton, SourceRail, Tabs } from "@/compone
 
 const LEDE =
   "Build a two- or three-team deal, check it against the rules, and see what it does to every side — before, the move, and after.";
-
-/** After an evaluation lands, bring its first line into view (instantly under reduced motion). */
-function revealResults() {
-  window.setTimeout(() => {
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    document
-      .getElementById("deal-evaluation")
-      ?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-  }, 80);
-}
 
 /* --------------------------------------------------------------------- page */
 
@@ -134,10 +127,6 @@ function TradeEvaluator() {
   const [activeDrag, setActiveDrag] = useState<{ id: string; name: string } | null>(null);
   const [drawerPlayer, setDrawerPlayer] = useState<{ id: string; name: string } | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [evaluation, setEvaluation] = useState<{
-    legality: LegalityResponse;
-    evaluations: Record<string, TeamEvaluation>;
-  } | null>(null);
 
   // ---- state seeding (render-phase adjustments, no setState-in-effect) ----
   // Gated on hydration: the shell above these pages hydrates first and warms the shared
@@ -239,31 +228,38 @@ function TradeEvaluator() {
     [moves, originOf],
   );
 
-  // ---- live rules check (backend-authoritative; debounced) ----
-  const [validation, setValidation] = useState<LegalityResponse | null>(null);
-  const [validating, setValidating] = useState(false);
-  useEffect(() => {
-    const handle = setTimeout(async () => {
-      if (teamIds.length < 2 || playerMoves.length === 0) {
-        setValidation(null);
-        return;
-      }
-      setValidating(true);
-      try {
-        const result = await api.post<LegalityResponse>("/trades/validate", {
-          team_ids: teamIds,
-          player_moves: playerMoves,
-          pick_moves: picks,
-        });
-        setValidation(result);
-      } catch {
-        setValidation(null);
-      } finally {
-        setValidating(false);
-      }
-    }, 450);
-    return () => clearTimeout(handle);
-  }, [teamIds, playerMoves, picks]);
+  // ---- live rules check (backend-authoritative; debounced) and evaluation ----
+  // One hook owns both asynchronous channels, so a response can only land on the screen state
+  // it was requested for (see lib/useTradeAnalysis.ts).
+  const {
+    evaluation,
+    evaluating,
+    evaluate,
+    clearEvaluation,
+    validation,
+    validating,
+    validationError,
+  } = useTradeAnalysis({
+    draftKey: appliedTradeId,
+    evaluationRequest: {
+      team_ids: teamIds,
+      player_moves: playerMoves,
+      pick_moves: picks,
+      scenario_id: scenarioId,
+      strategy: scenario?.strategy ?? "custom",
+    },
+    validationRequest:
+      teamIds.length < 2 || playerMoves.length === 0
+        ? null
+        : { team_ids: teamIds, player_moves: playerMoves, pick_moves: picks },
+    onEvaluationError: (e) => toast("error", `Evaluation failed: ${String(e)}`),
+  });
+  // After an accepted evaluation's results section has appeared, bring it into view (instantly under
+  // reduced motion) -- once, for that request only (see lib/useRevealResults.ts).
+  const reveal = useRevealResults(evaluation);
+  const evaluateAndReveal = () => evaluate({ onSuccess: (_result, accepted) => reveal.arm(accepted) });
+  // Held here, above the conditional EvaluationSection, so it survives the result being cleared.
+  const [selectedTeam, selectTeam] = useSelectedTeam(teamIds, appliedTradeId);
 
   // R9.3A: keep the deal in the address bar (replaceState, no navigation) so opening a participant's
   // player file and pressing Back restores the scenario instead of an empty builder. Transient link
@@ -279,22 +275,6 @@ function TradeEvaluator() {
       window.history.replaceState(window.history.state, "", next);
     }
   }, [hydrated, seeded, teamIds, moves, picks, tradeName]);
-
-  const evaluate = useMutation({
-    mutationFn: () =>
-      api.post<{ legality: LegalityResponse; evaluations: Record<string, TeamEvaluation> }>(
-        "/trades/evaluate",
-        {
-          team_ids: teamIds,
-          player_moves: playerMoves,
-          pick_moves: picks,
-          scenario_id: scenarioId,
-          strategy: scenario?.strategy ?? "custom",
-        },
-      ),
-    onSuccess: setEvaluation,
-    onError: (e) => toast("error", `Evaluation failed: ${String(e)}`),
-  });
 
   /**
    * The memo is the artifact a front office actually circulates, and it used to be
@@ -356,7 +336,7 @@ function TradeEvaluator() {
       // does not have to be found again. Applied only if he is verifiably on the origin roster.
       if (stagedPlayerId && teamIds.length === 1 && id !== teamIds[0] && originOf[stagedPlayerId] === teamIds[0]) {
         setMoves((m) => (m[stagedPlayerId] ? m : { ...m, [stagedPlayerId]: id }));
-        setEvaluation(null);
+        clearEvaluation();
       }
   };
 
@@ -366,18 +346,18 @@ function TradeEvaluator() {
       Object.fromEntries(Object.entries(m).filter(([pid, to]) => to !== id && originOf[pid] !== id)),
     );
     setPicks((p) => p.filter((x) => x.from_team_id !== id && x.to_team_id !== id));
-    setEvaluation(null);
+    clearEvaluation();
   }
 
   // A pick changes the deal, so an evaluation of the deal without it no longer describes
   // what is on the sheet — clear it, exactly as moving a player does.
   function updatePicks(next: React.SetStateAction<PickMove[]>) {
-    setEvaluation(null);
+    clearEvaluation();
     setPicks(next);
   }
 
   function movePlayer(playerId: string, toTeamId: string) {
-    setEvaluation(null);
+    clearEvaluation();
     setMoves((m) => {
       if (originOf[playerId] === toTeamId) {
         const rest = { ...m };
@@ -567,6 +547,7 @@ function TradeEvaluator() {
                 <RulesCheck
                   validation={validation}
                   validating={validating}
+                  validationError={validationError}
                   hasMoves={hasMoves}
                 />
                 {validation?.financial_analysis && (
@@ -585,9 +566,9 @@ function TradeEvaluator() {
                     tradeName={tradeName}
                     setTradeName={setTradeName}
                     canAct={hasMoves}
-                    evaluating={evaluate.isPending}
+                    evaluating={evaluating}
                     saving={saveTrade.isPending}
-                    onEvaluate={() => evaluate.mutate(undefined, { onSuccess: revealResults })}
+                    onEvaluate={evaluateAndReveal}
                     onSave={() => saveTrade.mutate()}
                     onCopy={copyShareLink}
                     onMemo={() => memo.mutate()}
@@ -616,6 +597,9 @@ function TradeEvaluator() {
             pickMoves={picks}
             playerIndex={playerIndex}
             originOf={originOf}
+            selectedTeam={selectedTeam}
+            onSelectTeam={selectTeam}
+            sectionRef={reveal.sectionRef}
             inputs={{
               season: Object.values(rosters.data ?? {})[0]?.season,
               rosterSeason: Object.values(rosters.data ?? {})[0]?.roster_season,
@@ -651,6 +635,8 @@ function TradeEvaluator() {
                     rules check
                   </span>
                 </span>
+              ) : validationError ? (
+                <span className="text-[13px] text-muted">Rules check not completed</span>
               ) : (
                 <span className="text-[13px] text-muted">No check yet</span>
               )}
@@ -666,10 +652,10 @@ function TradeEvaluator() {
             <Button
               variant="primary"
               size="sm"
-              disabled={evaluate.isPending}
-              onClick={() => evaluate.mutate(undefined, { onSuccess: revealResults })}
+              disabled={evaluating}
+              onClick={evaluateAndReveal}
             >
-              {evaluate.isPending ? "Evaluating…" : "Evaluate"}
+              {evaluating ? "Evaluating…" : "Evaluate"}
             </Button>
           </div>
         </div>
@@ -904,6 +890,9 @@ function EvaluationSection({
   pickMoves,
   playerIndex,
   originOf,
+  selectedTeam,
+  onSelectTeam,
+  sectionRef,
   inputs,
 }: {
   evaluation: { legality: LegalityResponse; evaluations: Record<string, TeamEvaluation> };
@@ -913,11 +902,15 @@ function EvaluationSection({
   pickMoves: PickMove[];
   playerIndex: Record<string, RosterPlayer>;
   originOf: Record<string, string>;
+  /** The remembered team selection (see useSelectedTeam); `null` means the first team. */
+  selectedTeam: string | null;
+  onSelectTeam: (teamId: string) => void;
+  /** Receives this section's element, so the reveal scrolls it rather than looking an id up. */
+  sectionRef: (element: HTMLElement | null) => void;
   /** Where the evaluation's INPUT data came from — distinct from when the evaluation ran. */
   inputs: { season?: string; rosterSeason?: string; rosterAsOf?: string };
 }) {
-  const [activeTeam, setActiveTeam] = useState(teamIds[0]);
-  const resolvedTeam = evaluation.evaluations[activeTeam] ? activeTeam : teamIds[0];
+  const resolvedTeam = resolveActiveTeam(selectedTeam, evaluation.evaluations, teamIds);
   const teamEval = evaluation.evaluations[resolvedTeam];
   const team = teams.find((t) => t.id === resolvedTeam);
   const identity = teamIdentity(team?.abbreviation);
@@ -977,7 +970,7 @@ function EvaluationSection({
   const isRefused = (ev: TeamEvaluation) => ev.decision_status === "suppressed_illegal";
 
   function selectAndReveal(teamId: string) {
-    setActiveTeam(teamId);
+    onSelectTeam(teamId);
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     document
       .getElementById("team-perspective")
@@ -985,7 +978,7 @@ function EvaluationSection({
   }
 
   return (
-    <section id="deal-evaluation" aria-labelledby="deal-evaluation-title" className="fade-in">
+    <section ref={sectionRef} id="deal-evaluation" aria-labelledby="deal-evaluation-title" className="fade-in">
       <SectionHead
         id="deal-evaluation-title"
         eyebrow={`Deal evaluation · ${formatDate(teamEval.evaluated_at)}`}
@@ -1014,7 +1007,7 @@ function EvaluationSection({
           playerIndex={playerIndex}
           originOf={originOf}
         />
-        <Insights sides={sides} activeId={resolvedTeam} onSelect={setActiveTeam} />
+        <Insights sides={sides} activeId={resolvedTeam} onSelect={onSelectTeam} />
       </div>
 
       <h3 className="mb-3 mt-8 text-[1.15rem] font-semibold text-foreground">Before, the move, and after</h3>
@@ -1043,7 +1036,7 @@ function EvaluationSection({
             <Tabs
               ariaLabel="Team perspective"
               active={resolvedTeam}
-              onChange={setActiveTeam}
+              onChange={onSelectTeam}
               tabs={sides.map((s) => ({ id: s.teamId, label: s.name }))}
             />
           </div>

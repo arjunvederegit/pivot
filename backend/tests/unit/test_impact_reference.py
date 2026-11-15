@@ -101,7 +101,7 @@ def test_no_active_model_is_unavailable_not_empty(client, db):
     make_player(db, 100, "Fixture Only", team)
     body = client.get("/api/v1/players/impact-distribution").json()
     assert body["available"] is False
-    assert "make train" in body["reason"]
+    assert "No active impact model is available" in body["reason"]
     assert "values" not in body
 
 

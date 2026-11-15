@@ -24,6 +24,19 @@ def svc(db, seeded_league):
     return IntelligenceService(db)
 
 
+# The keys `Measurement.as_dict()` always serializes, whether or not there is a value.
+MEASUREMENT_KEYS = {
+    "value",
+    "available",
+    "evidence",
+    "confidence",
+    "method",
+    "source",
+    "limitations",
+    "reason",
+}
+
+
 # ------------------------------------------------------------------------ vocabulary
 
 
@@ -86,12 +99,49 @@ class TestPlayerIntelligence:
         assert out["impact"]["available"] is False
         assert out["impact"]["value"] is None
         assert out["impact"]["reason"]
+        # An absence keeps its own classification and the bare Measurement shape: no band,
+        # availability or minutes are invented for it.
+        assert out["impact"]["confidence"] == "unavailable"
+        assert out["impact"]["evidence"] is None
+        assert set(out["impact"]) == MEASUREMENT_KEYS
 
     def test_a_modelled_player_reports_a_number_with_its_band(self, svc, seeded_league):
         out = svc.player_intelligence(seeded_league["roster_a"][0].id)
         assert out["impact"]["available"] is True
         assert out["impact"]["value"] is not None
         assert "sigma" in out["impact"]
+
+    def test_the_impact_index_is_served_as_a_heuristic_not_a_validated_claim(
+        self, svc, seeded_league
+    ):
+        """TEI is a hand-weighted composite with no fitted parameters (docs/model-card-player-
+        impact.md), so the evidence ladder files it as a transparent rule — `heuristic`. Only
+        the classification is asserted new; the fixture's value, band, availability and minutes
+        must come through exactly as before."""
+        import json
+
+        out = svc.player_intelligence(seeded_league["roster_a"][0].id)
+        impact = json.loads(json.dumps(out["impact"]))  # the shape a client receives
+
+        assert impact["confidence"] == "heuristic"
+        assert impact["evidence"] == "derived"
+        assert impact["available"] is True
+        assert impact["reason"] == ""
+        # The fixture's first rostered player: tei -3.0, availability 0.55, 8.0 minutes, and the
+        # production-width band converted to a sigma.
+        assert impact["value"] == -3.0
+        assert impact["sigma"] == pytest.approx(2.4620966798018027, abs=1e-12)
+        assert impact["availability"] == 0.55
+        assert impact["minutes"] == 8.0
+        assert impact["source"] == (
+            "player_impact_estimates, from the registered player_impact model"
+        )
+        assert impact["method"].startswith("Pivot Estimated Impact (TEI)")
+        assert impact["limitations"] == [
+            "Box-score derived. It cannot see on-ball defence, screen navigation or "
+            "off-ball gravity."
+        ]
+        assert set(impact) == MEASUREMENT_KEYS | {"sigma", "availability", "minutes"}
 
     def test_an_unknown_player_is_a_not_found(self, svc):
         from app.core.errors import NotFoundError

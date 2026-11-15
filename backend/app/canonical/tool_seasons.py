@@ -163,10 +163,9 @@ def tool_seasons(
     estimates_for_performance = perf.label in estimate_seasons
     if not estimates_for_performance:
         notes.append(
-            f"the active impact model has no estimates for {perf.label}; run `make train && make "
-            "score` before relying on impact-based views"
+            f"the active impact model has no estimates for {perf.label}"
             if model is not None
-            else "no impact model is active; run `make train`"
+            else "no active impact model is available"
         )
 
     return {

@@ -202,4 +202,4 @@ class TestGeneratorEndToEnd:
         team = make_team(db, 999, "ZZZ", "Nowhere")
         result = generate_candidates(db, team.id, "improve")
         assert result["candidates"] == []
-        assert "run `make score`" in result["error"]
+        assert "team needs have not been computed" in result["error"]

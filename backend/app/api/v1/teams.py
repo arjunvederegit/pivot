@@ -270,7 +270,7 @@ def get_needs(team_id: str, db: Session = Depends(get_db)) -> dict:
         "computed": bool(needs),
         "note": None
         if needs
-        else "Needs not computed yet — run `make score` after ingesting data.",
+        else "Team needs have not been computed.",
         "needs": [
             {
                 "need_key": n.need_key,
