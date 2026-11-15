@@ -67,12 +67,18 @@ def create_comparison(payload: ComparisonIn, db: Session = Depends(get_db)) -> d
     for trade_id in payload.trade_ids:
         if db.get(TradeProposal, trade_id) is None:
             raise NotFoundError(f"trade {trade_id} not found")
+    if payload.scenario_id and db.get(Scenario, payload.scenario_id) is None:
+        raise NotFoundError(f"scenario {payload.scenario_id} not found")
     comparison = ComparisonSet(
         name=payload.name, scenario_id=payload.scenario_id, trade_ids=payload.trade_ids
     )
     db.add(comparison)
+    # Flush, not commit: `get_comparison` evaluates every trade and can still reject the
+    # request (for example, missing cap parameters). It must leave no comparison behind.
+    db.flush()
+    detail = get_comparison(comparison.id, db)
     db.commit()
-    return get_comparison(comparison.id, db)
+    return detail
 
 
 @router.get("/{comparison_id}")

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.schemas import ScenarioIn, ScenarioPatch
 from app.core.errors import NotFoundError
 from app.db.base import get_db
-from app.db.models import Scenario, ScenarioWeight
+from app.db.models import Scenario, ScenarioWeight, Team
 
 router = APIRouter(prefix="/scenarios", tags=["scenarios"])
 
@@ -35,6 +35,8 @@ def _scenario_out(s: Scenario) -> dict:
 
 @router.post("", status_code=201)
 def create_scenario(payload: ScenarioIn, db: Session = Depends(get_db)) -> dict:
+    if db.get(Team, payload.focal_team_id) is None:
+        raise NotFoundError(f"team {payload.focal_team_id} not found")
     scenario = Scenario(
         name=payload.name,
         focal_team_id=payload.focal_team_id,
