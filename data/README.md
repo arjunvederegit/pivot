@@ -8,15 +8,24 @@ package and stored in your local database with full provenance
 (provider, endpoint, parameters, retrieval timestamps, package version, ingestion run ID).
 
 Raw provider payloads are **not** committed to this repository because NBA.com's terms
-do not clearly permit redistribution. To populate your own database:
+do not clearly permit redistribution. To populate your own **disposable** database:
 
 ```bash
 make setup
-make migrate
+make migrate       # changes the schema of the database DATABASE_URL names
 make seed-config   # load salary-cap parameters (version-controlled YAML, officially sourced)
-make sync-data     # fetch current NBA data from NBA.com via nba_api (network required)
-make train         # build features, train impact model, compute archetypes/needs
+make sync-data     # fetch current NBA data from NBA.com via nba_api (network required); writes that database
 ```
+
+Every command after `make setup` writes to the database `DATABASE_URL` names (by default
+`backend/tradelab.db`, which on a long-lived checkout may be hand-built and irreplaceable).
+Work on a copy. **Training and scoring (`make train`, `make score`) are not setup steps** and
+are deliberately not listed here: on a database that already holds impact estimates they retire
+the active models and permanently delete superseded estimates. Which command does what, the
+season-setting checks and the 2026-11-03 statistics rollover are in
+[Operating safely](../README.md#operating-safely-data-training-and-models) and the
+[R8.2 operational runbook](../docs/r8-2/operational-runbook.md) §5; the project rules are in
+[CLAUDE.md](../CLAUDE.md) and [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Subdirectories
 
@@ -47,8 +56,8 @@ exploration — can hold rows like `E2E RosterLab deal` or `Smoke test deal`. Th
 indistinguishable from your own saved work in the UI, which is the point of this note.
 
 ```bash
-make purge-fixtures            # list what looks automated
-make purge-fixtures APPLY=1    # delete it
+make purge-fixtures            # list what looks automated (dry run)
+make purge-fixtures APPLY=1    # delete it — irreversible; back up the database first
 ```
 
 The match is deliberately narrow — `e2e`, `smoke`, `test`, `fixture`, `probe` as whole

@@ -4,6 +4,23 @@ Everything below is computed from real NBA.com data ingested via `nba_api`; vali
 numbers are from the actual trained models on this repository's July 2026 snapshot
 (also visible at `/data-health`).
 
+### Evidence vocabulary
+
+The words below are not interchangeable, and a passing test suite is none of them.
+
+* **Legacy services** (`app/domain/evidence.py`): `validated` = checked against a stated
+  threshold by a command that exits non-zero when it fails (the comparable, acquisition and
+  adversarial batteries) — a consistency check, not proof that a quantity measures what it
+  names. `measured` = computed from real data by a documented method with nothing to check it
+  against. `heuristic` = a transparent rule chosen by construct, defensible but not validated.
+  `unavailable` = no value offered.
+* **R9 player-intelligence service** (stricter, separate): `measured`, `validated` (an active
+  model whose forecasts were confirmed on a first-read holdout and promoted by a reviewed
+  decision — promotion is designed but not built, and as of R9.2 **nothing had reached this tier**), `experimental`, `benchmarked`, `withheld`.
+  See [R9.2 model safety](r9-2/model-safety-and-promotion.md) §2.
+* The two vocabularies are not harmonised: the legacy `validated` is weaker than the R9 one.
+  Read any "validated" in this document as the check it names, not as proof of accuracy.
+
 ## 1. Composite utility — not a magic score
 
 For focal team *t* and trade *d*:
@@ -63,9 +80,14 @@ suggests, and one that contradicted this document's own model card.
 
 ## 2. TEI — RosterLab Estimated Impact
 
-TEI is this project's original per-100-possession impact estimate. It is **not**
-RAPTOR, EPM, LEBRON, BPM, or any proprietary metric, and it is documented as a
-portfolio-model estimate ([model card](model-card-player-impact.md)).
+TEI is this project's original **unitless index of box-score production**: a hand-weighted
+composite of ten within-season z-scores, scaled ×2.5 (nothing is fitted). It is **not**
+points per 100 possessions — a team's minutes-weighted index reaches net-rating points only
+through a fitted coefficient of ≈15 (below), not 1 — and it is not a causal estimate of a
+player's incremental impact: it is descriptive, makes no teammate or context adjustment, and
+sees box scores only. It is **not** RAPTOR, EPM, LEBRON, BPM, or any proprietary metric, and it
+is documented as a portfolio-model estimate ([model card](model-card-player-impact.md);
+[formal assessment](r9-1/current-model-assessment.md)).
 
 ### Features
 
@@ -81,6 +103,13 @@ X̄ᵢ = Σₛ λ^(s−1)·mᵢ,ₛ·Xᵢ,ₛ / Σₛ λ^(s−1)·mᵢ,ₛ      
 
 Players under 200 window minutes are excluded (insufficient evidence), not imputed.
 Cross-season comparability comes from minutes-weighted z-scores within each season.
+
+**Known limitation — missing individual inputs.** For a player who *is* scored, a missing
+input is not excluded: `baseline_index` (and the z-scoring helpers in `features.py`) fill a
+missing z-score with 0.0, i.e. "league average"
+([assessment §1](r9-1/current-model-assessment.md)). This is legacy behaviour, unchanged here;
+it contradicts the missing-data standard applied elsewhere in Pivot and is flagged for an
+owner decision.
 
 ### Candidates and validation
 
@@ -106,6 +135,27 @@ measured there the ridge explained essentially nothing. It is also a volume metr
 stored artifacts, so the R3-2 conversion could only ever have been fitted on n = 30 of
 a metric carrying no signal.
 
+**What this validation does and does not show.** It is one forward transition, pooled over all
+464 players (27.8 % played under 500 minutes in the target season), scored against the
+incumbent's own proxy, which is 60 % PIE — and the index correlates 0.96 with same-season PIE.
+The team-level R² values are concurrent, against on-court net rating built from the same
+players. They show the index tracks quality; they are not out-of-time evidence of impact, and
+a hand-weighted composite with no fitted parameters has no held-out *fit* to report.
+
+### Out-of-time evaluation (R9.1, 2026-10-19)
+
+Evaluated without changing it, under a rolling-origin backtest with two locked holdout
+seasons, against the same proxy target: TEI beats raw "last season" (MAE 0.413 development /
+0.436 holdout vs 0.446 / 0.452), is **not distinguishable from** regressing last season toward
+the mean with an age curve, and is **10.8 % worse** than a four-parameter regression on the
+player's own recent history (holdout MAE 0.436 vs 0.394). It forecasts the individual
+statistics it is built from poorly (recalibrated TEI is 19–202 % worse than that regression
+at forecasting true shooting, assist share, rebound share and usage on the holdout), so its
+components should not be read as skill estimates. These are statements about forecasting a
+box-score proxy, not about impact. Full tables and caveats:
+[current-model-assessment.md](r9-1/current-model-assessment.md),
+[candidate-experiment-results.md](r9-1/candidate-experiment-results.md).
+
 ### Serving scale (C5)
 
 Served rows are z-scored against the **reference season's** minutes-weighted moments,
@@ -128,6 +178,14 @@ rookie. Most bands are now narrower, which reads as overconfidence and is the op
 the thinnest-evidence players' bands are now **wider**. σ here is season-to-season
 variability, which is the right input for a forward-looking interval and the wrong thing
 to call "measurement error".
+
+**The bands are not calibrated.** Evaluated out of time against the same proxy target, the
+nominal 80 % band (`tei ± 1.2816·σ`, ×2.5) contained **60.8 %** of development and **57.2 %**
+of holdout outcomes — roughly a third too narrow
+([assessment §4, §6](r9-1/current-model-assessment.md)). It is a normal-theory band whose σ was
+built around the index's season-to-season variability rather than the proxy's, so this is a
+mismatch of design as well as a miss; it should be read as an indication of relative evidence
+(wider for thin samples), not as an 80 % interval.
 
 Scores are scaled ×2.5 to index points (elite ≈ +5).
 
@@ -315,8 +373,8 @@ scenario strategy (contenders prize 25–33; rebuilds prize ≤ 25). Documented 
 
 ## 10. Uncertainty
 
-2,000 Monte Carlo draws (fixed seed) per evaluation over: player TEI (validation
-residual σ per player), availability (Beta concentrated at the historical rate),
+2,000 Monte Carlo draws (fixed seed) per evaluation over: player TEI (the per-player
+σ above — season-to-season variability, uncalibrated), availability (Beta concentrated at the historical rate),
 minutes noise (±12%), and wins-conversion slope (±15%). Reported: median, p10, p90,
 P(Δwins > 0), and top per-player uncertainty contributions. Small differences are
 never presented as certainty.
@@ -663,4 +721,7 @@ together. See [limitations.md](limitations.md) for the measurement behind that.
 Fixed seed (20260720) for all stochastic steps; every model version records
 algorithm, features, target, training window, validation metrics, artifact path,
 code commit, and timestamp in `model_versions`. `make sync-data && make train &&
-make score` reproduces the full pipeline.
+make score` reproduces the full pipeline **on a fresh, disposable database** — never on a
+database whose model versions or estimates you need: `make train` retires active models and
+deletes superseded impact estimates (see *Operating safely* in the
+[README](../README.md#operating-safely-data-training-and-models)).

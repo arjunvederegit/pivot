@@ -1,7 +1,10 @@
-# Model card — RosterLab Estimated Impact (TEI)
+# Model card — Pivot Estimated Impact (TEI)
 
-**Model:** a transparent weighted z-score index with documented fixed weights
-(`impact.py::INDEX_WEIGHTS`). Version metadata in `model_versions` (algorithm, features,
+*(Named RosterLab Estimated Impact, and TradeLab before that, through R7; the acronym is kept.)*
+
+**Model:** a transparent, hand-weighted composite of ten within-season z-scores, with documented
+fixed weights set by judgement (`impact.py::INDEX_WEIGHTS`); nothing is fitted. It is unitless,
+descriptive, and **not** a causal estimate of a player's incremental impact. Version metadata in `model_versions` (algorithm, features,
 target, metrics, commit); there is no artifact to load, because the model *is* its
 coefficients.
 
@@ -15,7 +18,7 @@ R3-2 conversion could only have been fitted on n = 30 of a metric with no signal
 ## Intended use
 
 Comparative impact estimates **on an index scale** for exploratory trade analysis in
-RosterLab: rotation-weighted team projections, player comparisons, candidate filtering.
+Pivot: rotation-weighted team projections, player comparisons, candidate filtering.
 Always displayed with uncertainty bands.
 
 The scale is deliberately **not** described as per-100-possession points. A team's
@@ -49,7 +52,8 @@ modeling follow-ups are in `docs/pivot/impact-metric-findings.md`.
 
 Player valuation for real transactions or contracts · performance management ·
 public player rankings presented as authoritative · any use that strips the
-uncertainty bands · claiming equivalence to RAPTOR/EPM/LEBRON/BPM (it is none of
+uncertainty bands · reading it as a causal or skill estimate (it is a description of
+box-score production) · claiming equivalence to RAPTOR/EPM/LEBRON/BPM (it is none of
 these).
 
 ## Training data
@@ -94,7 +98,8 @@ if a future change moves an R4 column into the index without refitting the conve
   2,500, replacing a constant 2.462 taken from the retired model's residual spread.
   Bands are narrower for rotation players and **wider** below ~257 minutes. This σ is
   season-to-season variability — the right input for a forward-looking interval, and the
-  wrong thing to call "measurement error".
+  wrong thing to call "measurement error". These bands have **not** been calibrated out of
+  time: the nominal 80 % band contained 57 % of holdout outcomes (see the R9.1 addendum).
 
 ## Limitations
 
@@ -106,6 +111,18 @@ ingested seasons and is valid only for the regressor construction recorded besid
 `model_versions`. Minutes threshold excludes fringe players (shown as
 "no estimate", not zero).
 
+**Missing inputs.** That rule applies to whole players. For a player who *is* scored, an
+individual missing input is currently filled with a z-score of 0.0 (league average) in
+`baseline_index` and the z-scoring helpers; this is legacy behaviour, not a design choice
+to rely on, and is on the owner's decision list.
+
+**Weights and team-level use.** The ten weights were set by judgement and have never been
+tested for sensitivity. The team-level R² figures above are concurrent and measured against
+on-court net rating, which is built from the same players; projecting a roster change as
+wins rests on the ≈15 conversion and inherits every limitation here, including a team-level
+out-of-time result that does not favour TEI (R9.1 addendum). Nothing in this card establishes
+that swapping one player for another changes a team's results by the amount TEI implies.
+
 ## Fairness considerations
 
 The model scores on-court production only, is not used for any employment or
@@ -115,9 +132,12 @@ under-credited).
 
 ## Update cadence
 
-Retrain weekly or after each data refresh (`make train`); every run writes a new
-version and deactivates the old one; the UI's /data-health lists the active version
-and metrics.
+There is no automatic or routine retraining. `make train` is a legacy, destructive
+operation: every run writes a new version, deactivates the old one and (by default)
+permanently deletes the superseded impact estimates, using the implicit current season. Run it
+only under the procedure in the [README](../README.md#operating-safely-data-training-and-models)
+and the [R8.2 runbook](r8-2/operational-runbook.md) §5. The UI's /data-health lists the active
+version and metrics.
 
 ## R9.1 addendum — out-of-time evaluation (2026-10-19)
 
@@ -126,5 +146,8 @@ documented target on two locked holdout seasons: TEI beats raw "last season" (as
 regressing last season's value toward the mean with an age curve**, and is **10.8 % worse** (MAE 0.436 vs 0.394) than a four-parameter
 regression on the player's own recent history. The per-player "likely range" (10th–90th percentile band) contained **57 %** of
 holdout outcomes (61 % in development) against a nominal 80 %. The index correlates 0.96 with same-season PIE, which is 60 % of the
-target. These are statements about forecasting the proxy target, not about impact. Full tables and caveats:
+target. Applying last season's scores to next season's roster to predict next-season win %, pooled R²
+was 0.36 in development and 0.20 on the holdout, against 0.39–0.43 and 0.36–0.38 for the simple
+baselines (assessment §4). These are statements about forecasting the proxy target and team
+results, not about impact. Full tables and caveats:
 `docs/r9-1/current-model-assessment.md` and `docs/r9-1/candidate-experiment-results.md`.

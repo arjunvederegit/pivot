@@ -35,9 +35,27 @@ itself, not fine print.
   comparison to make and the component is withheld rather than scored against an
   invented median player. R5 introduces a measured replacement baseline.
 - **TEI is box-score-based.** No tracking, matchup, or lineup on/off data; defense
-  is structurally under-measured. Validated against one forward transition (three
-  ingested seasons) — MAE beats persistence, but bands are approximations that
-  understate tail risk (role changes, injuries, aging outliers).
+  is structurally under-measured. It is a unitless, hand-weighted composite (not points
+  per 100 possessions) and a descriptive one: no teammate or context adjustment, and not a
+  causal estimate of a player's incremental impact. What is and is not established, kept
+  apart on purpose ([model card](model-card-player-impact.md),
+  [R9.1 assessment](r9-1/current-model-assessment.md)):
+  - *Functional implementation and testing:* the computation is deterministic and
+    reproducible, and the test suite checks its code paths. That says nothing about accuracy.
+  - *Predictive evaluation:* one stored forward transition (2024-25 → 2025-26, n = 464) has
+    MAE 0.645 against 0.717 for raw persistence. The R9.1 rolling-origin backtest found it
+    indistinguishable from regressed persistence with an age curve, and 10.8 % worse than a
+    history regression on the locked holdout (MAE 0.436 vs 0.394). All of this is
+    forecasting the index's own PIE-heavy proxy target.
+  - *Calibration:* the "likely range" is **not calibrated** — the nominal 80 % band
+    contained 57 % of holdout outcomes (61 % in development).
+  - *Empirical validation:* none for "impact". No independent target with demonstrated
+    construct validity exists in the repository; the available criteria share information
+    with the index or are team-confounded. The team-level R² (0.75) is concurrent.
+  - *Uncertainty limits:* the band is a normal-theory season-to-season σ, and still
+    understates tail risk (role changes, injuries, aging outliers).
+  - *Missing inputs:* a scored player's missing input is filled with a league-average
+    z-score of 0.0 (legacy behaviour; see [methodology](methodology.md#2-tei--rosterlab-estimated-impact)).
 - **The wins conversion is a cross-sectional fit** (same-season net rating → wins)
   applied to hypothetical roster changes; it assumes context stability.
 - **Rotation reallocation is a model of coach behavior**, proportional to
