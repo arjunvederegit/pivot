@@ -5,6 +5,8 @@ Where to look, and what to trust. Paths are relative to `docs/`; the repository 
 [CONTRIBUTING](../CONTRIBUTING.md). Nothing here is copied from the documents it points to.
 Later milestone documents supersede earlier ones where they disagree; check dates.
 
+**V1 status, known limitations and security findings:** [V1-CLOSEOUT.md](V1-CLOSEOUT.md).
+
 ## 1. Current architecture
 - [architecture.md](architecture.md) — system overview · [pivot/target-architecture.md](pivot/target-architecture.md) — layering and target (pre-R8 numbering of R9–R14, see §7) · [r8/architecture.md](r8/architecture.md) — canonical data layer
 - [pivot/audit.md](pivot/audit.md), [pivot/gap-analysis.md](pivot/gap-analysis.md) — pre-R8 audit (2026-08); *historical roadmap numbering*
@@ -30,7 +32,7 @@ Later milestone documents supersede earlier ones where they disagree; check date
 ## 5. Feature-specific documentation
 - R9.2 skills: [r9-2/skill-engine-architecture.md](r9-2/skill-engine-architecture.md), [r9-2/multidimensional-skill-coverage.md](r9-2/multidimensional-skill-coverage.md)
 - R9.3A: [r9-3a/goat-operationalization.md](r9-3a/goat-operationalization.md), [r9-3a/financial-intelligence.md](r9-3a/financial-intelligence.md), [r9-3a/player-intelligence-integration.md](r9-3a/player-intelligence-integration.md), [r9-3a/connected-workflows.md](r9-3a/connected-workflows.md)
-- Headshots (development-gated): [headshots/NBA-HEADSHOTS.md](headshots/NBA-HEADSHOTS.md)
+- Headshots (opt-in, off by default, development-only; rights not cleared): [headshots/NBA-HEADSHOTS.md](headshots/NBA-HEADSHOTS.md)
 - Ask Pivot (fictional sandbox, not the real-data assistant): [pivot/assistant-v2-runbook.md](pivot/assistant-v2-runbook.md), [pivot/assistant-v2-architecture.md](pivot/assistant-v2-architecture.md)
 
 ## 6. Architectural decisions

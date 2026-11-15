@@ -217,3 +217,6 @@ honest bounds). **RosterLab is not an official cap-management product.**
   than live CI calls. (`ingestion/jobs.py` remains at 0 %; R5 addresses it.)
 - E2E tests run in CI against a **dedicated database** seeded with a synthetic demo
   league (`make e2e`), never NBA.com and never a developer's ingested data.
+- Open engineering limitations and security findings at the V1 checkpoint (unvalidated
+  `/trades/validate` and `/comparisons` responses, seven unresolved critical `next` alerts, no branch
+  protection, and others) are listed in [V1-CLOSEOUT.md](V1-CLOSEOUT.md).

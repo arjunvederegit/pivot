@@ -12,7 +12,7 @@ OBSERVE  →  DIAGNOSE  →  COMPARE  →  SIMULATE  →  RECOMMEND  →  EXPLAI
 
 ![Pivot Command Center](docs/screenshots/overview.png)
 
-> **Status:** a fully functional **local** build — not a deployed service. The R8–R9.3A work described below lives on unmerged feature branches (`main` is the pre-R8 baseline); see [Development status](#development-status-as-of-2026-10-21). Data below was ingested live from NBA.com (July 2026), enriched from a user CSV, the Kaggle basketball database, and local image datasets. **Not affiliated with the NBA.**
+> **Status:** a fully functional **local** build — not a deployed service. The R8–R9.3A work described below was integrated into `main` in the V1 closeout (2026-11); see [Development status](#development-status-as-of-2026-11-15) and the [V1 closeout note](docs/V1-CLOSEOUT.md). V1 is a checkpoint, **not** declared production-ready. Data below was ingested live from NBA.com (July 2026), enriched from a user CSV, the Kaggle basketball database, and local image datasets. **Not affiliated with the NBA.**
 >
 > Pivot was called **RosterLab** through its R1–R7 generation; those release reports are kept under their original names as the provenance record. A few infrastructure identifiers (the `tradelab-backend` distribution, the default `tradelab.db` filename, the `tradelab:` cache prefix, and the `TEI` acronym) deliberately keep their historical spelling — renaming them would move a database, invalidate a cache namespace, or change the meaning of a persisted column without changing anything a user sees. See [ADR-24](docs/decision-log.md).
 
@@ -204,20 +204,21 @@ No NBA data, images, or licensed datasets are committed — everything is fetche
 
 Start with the **[documentation index](docs/README.md)** (and [CLAUDE.md](CLAUDE.md) for AI-agent sessions). Direct links: [Pivot audit](docs/pivot/audit.md) · [Target architecture](docs/pivot/target-architecture.md) · [Gap analysis](docs/pivot/gap-analysis.md) · [R8 readiness](docs/pivot/r8-readiness.md) · [Architecture](docs/architecture.md) · [Methodology](docs/methodology.md) · [CBA coverage](docs/cba-rule-coverage.md) · [Data sources](docs/data-sources.md) · [Data dictionary](docs/data-dictionary.md) · [Identity resolution](docs/identity-resolution.md) · [Kaggle setup](docs/kaggle-setup.md) · [Decision log](docs/decision-log.md) · [Model cards](docs/model-card-player-impact.md) · [Limitations](docs/limitations.md) · [Demo script](docs/demo-script.md) · [Interview guide](docs/interview-guide.md) · [Enhancement plan (historical)](docs/rosterlab-enhancement-plan.md)
 
-## Development status (as of 2026-10-21)
+## Development status (as of 2026-11-15)
 
-Evidence for every row is the milestone's own report under `docs/`; nothing here was re-run for this page. "Unmerged" means the work exists on a feature branch, not on `main`; nothing in this table is deployed to production.
+Evidence for every row is the milestone's own report under `docs/`; nothing here was re-run for this page except where the [V1 closeout note](docs/V1-CLOSEOUT.md) says so. Nothing in this table is deployed to production.
 
 | State | What |
 | --- | --- |
-| **Baseline (`main`)** | The pre-R8 Pivot redesign, with Ask Pivot V2 off by default. |
-| **Unmerged lineage (linear)** | `feat/r8-canonical-data-foundation` → `r8-1-operational-validation` → `r8-2-activation-checkpoint` → `r8-3-goat-live-integration` → `r9-1-player-intelligence-foundation` → `r9-2-player-skill-engine` → `r9-3a-goat-operational-tools` → `nba-headshots`. All but the headshots branch have been pushed; none is merged. Verify with `git`, not with this list. |
+| **`main` (V1 checkpoint)** | Everything below: the Pivot redesign (Ask Pivot V2 off by default), R8–R9.3A, the Wave 1 and Wave 2 maintenance and the opt-in headshots safeguard, integrated through merge-commit pull requests #1–#12. Annotated tag `pivot-v1-closeout-2026-11-15`. Not declared production-ready: see [V1 closeout](docs/V1-CLOSEOUT.md). |
+| **Integrated lineage (linear)** | `feat/r8-canonical-data-foundation` → `r8-1-operational-validation` → `r8-2-activation-checkpoint` → `r8-3-goat-live-integration` → `r9-1-player-intelligence-foundation` → `r9-2-player-skill-engine` → `r9-3a-goat-operational-tools` → `nba-headshots` are now ancestors of `main`; the branches are kept for history. Verify with `git`, not with this list. |
 | **Implemented and tested** | R8 canonical, provenance-tracked data layer · R8.1 live-validated ingestion and PostgreSQL 16 compatibility · R8.2 separate roster-season and statistics-season clocks · R8.3 BALLDONTLIE (GOAT) provider · R9.1 candidate-only training, rolling-origin backtest and preregistered-holdout infrastructure · R9.2 skill engine producing *experimental candidate* estimates (nothing promoted) · R9.3A Cap Center, contract-aware trade-legality assessment and a Player Explorer research preview. |
 | **Test evidence (dated)** | R9.3A final QA, 2026-10-19: backend 3,327 passed / 0 failed, frontend 345 passed, PostgreSQL subset 193 passed ([R9.3A report](docs/r9-3a/R9-3A-EXECUTIVE-REPORT.md)). Earlier milestones report their own counts; none was re-run by the documentation waves. Tests establish behaviour, not model accuracy (see *The analytics*). |
 | **Preview only** | R9.3A runs in an isolated preview (`make preview-up`, ports 8093/3093) over a *copy* of the data that includes GOAT contracts, injuries and stored R9.2 candidates. |
 | **Activated** | One roster-only refresh (2026-27 rosters) was applied to the owner's development database on 2026-10-18 after a verified backup ([R8.2 activation report](docs/r8-2/activation-checkpoint-report.md)); cutting the running app over is the owner's step. **R9.3A provider-data activation on the owner's database has not been performed** (rehearsed on a copy; [procedure](docs/r9-3a/local-preview-and-activation.md)). No active model has been retrained, promoted or activated by R8.2–R9.3A. |
-| **Development-gated** | Official NBA headshots (`feat/nba-headshots`, development builds only) until image-rights clearance — [details](docs/headshots/NBA-HEADSHOTS.md). |
+| **Opt-in, off by default** | Official NBA headshots: development builds only, and only with `NEXT_PUBLIC_PIVOT_OFFICIAL_HEADSHOTS=on`; image rights are not cleared — [details](docs/headshots/NBA-HEADSHOTS.md). |
 | **Ask Pivot** | A separate, loopback-only, off-by-default demonstration over a *fictional* league ([ADR-30](docs/decision-log.md)). It does not read Pivot's NBA data; a real-data assistant is not built. |
+| **Known engineering limitations** | Open at the V1 checkpoint, including seven unresolved critical dependency alerts on `next` (upgrade to 16.4.1 is the priority before any external deployment): [V1 closeout](docs/V1-CLOSEOUT.md). |
 | **Known honesty gaps** | TEI's evidence and limits: *The analytics* above and [the model card](docs/model-card-player-impact.md). |
 
 ## Roadmap

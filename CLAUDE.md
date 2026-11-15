@@ -8,12 +8,14 @@ technical depth.** Preserve the rigorous data infrastructure, validated analytic
 behavior, explanatory evidence and interconnected decision workflows.
 
 ## 2. Repository state — inspect before you edit
-- Development is a **linear R8 → R8.1 → R8.2 → R8.3 → R9.1 → R9.2 → R9.3A lineage on
-  feature branches, plus `feat/nba-headshots`**, each with its own git worktree.
-  `main` is the pre-R8 baseline, **not** the latest implementation.
+- As of the V1 closeout (2026-11-15) `main` **contains** the linear R8 → R8.1 → R8.2 → R8.3 → R9.1
+  → R9.2 → R9.3A lineage, the Wave 1 and Wave 2 maintenance and the opt-in `feat/nba-headshots`
+  safeguard, integrated through merge-commit PRs (see [V1 closeout](docs/V1-CLOSEOUT.md); annotated tag
+  `pivot-v1-closeout-2026-11-15`). The old milestone branches and worktrees may still exist for history. V1 is a checkpoint,
+  **not** declared production-ready.
 - Before any change run `git worktree list`, `git branch -vv`, `git status` and
-  `git merge-base --is-ancestor` for the lineage you assume. Hashes go stale: when written
-  (2026-10-21) the tip was `feat/nba-headshots` at `2e836dc`; verify, never trust this line.
+  `git merge-base --is-ancestor` for whatever you assume about the current state. Hashes go stale;
+  verify, never trust this line.
 - Work on an isolated branch or worktree. Do not touch other worktrees, their
   `node_modules`/venvs (some are symlinked or serve a running preview), or running services.
 
@@ -61,8 +63,9 @@ consistency (the same player or number reads the same everywhere).
 - **Ask Pivot today is a separate fictional demonstration environment** (invented league,
   optional extras, off by default, never reads the NBA database). Future real-data Ask
   Pivot and R14 integration are distinct work, not the shipped sandbox.
-- NBA CDN headshots are **development-gated** pending image-rights clearance: do not enable
-  them in production or commit NBA images.
+- NBA CDN headshots are **opt-in, off by default and development-only**
+  (`NEXT_PUBLIC_PIVOT_OFFICIAL_HEADSHOTS=on` under `next dev`) pending image-rights clearance: do not
+  enable them in tests, demos or production, and do not commit NBA images.
 - R10–R14 should reuse validated R8–R9 infrastructure rather than rebuild it.
 
 ## 6. Development workflow
@@ -79,4 +82,5 @@ consistency (the same player or number reads the same everywhere).
 - Seasons and operations: [season context](docs/r8-2/season-context-architecture.md) · [operational runbook](docs/r8-2/operational-runbook.md) · [activation checkpoint](docs/r8-2/activation-checkpoint-report.md)
 - Model safety: [versioning (R9.1)](docs/r9-1/model-versioning-and-safety.md) · [evaluation](docs/r9-1/evaluation-architecture.md) · [preregistration](docs/r9-1/preregistration.json) · [promotion and serving (R9.2)](docs/r9-2/model-safety-and-promotion.md)
 - Preview and headshots: [R9.3A preview and activation](docs/r9-3a/local-preview-and-activation.md) · [NBA headshots](docs/headshots/NBA-HEADSHOTS.md)
+- V1 status, known limitations and security findings: [V1 closeout](docs/V1-CLOSEOUT.md)
 - Roadmap and Ask Pivot: [R9 vision](docs/r9-1/R9-VISION-AND-ROADMAP.md) · [Ask Pivot runbook](docs/pivot/assistant-v2-runbook.md) · [limitations](docs/limitations.md)
