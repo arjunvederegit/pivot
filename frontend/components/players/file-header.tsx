@@ -117,6 +117,9 @@ export function PlayerFileHeader({
             name={player.full_name}
             size={152}
             square
+            // A retired player's profile is a historical view: no current-season official portrait.
+            historical={!player.is_active}
+            priority
             className="col-start-1 row-start-1 !h-[88px] !w-[88px] shadow-[0_18px_40px_-22px_rgb(0_0_0/0.9)] md:row-span-3 md:!h-[152px] md:!w-[152px] md:!rounded-xl"
           />
 

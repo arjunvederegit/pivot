@@ -13,9 +13,19 @@
 
 import clsx from "clsx";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
-import { playerPhotoSrc, teamIdentity, teamLogoSrc } from "@/lib/teamIdentity";
+import { useOfficialHeadshotStatus } from "@/lib/headshotAvailability";
+import {
+  failedHeadshotSet,
+  failedHeadshotsVersion,
+  markHeadshotFailed,
+  normalizeNbaPlayerId,
+  officialHeadshotsEnabled,
+  resolveHeadshot,
+  subscribeFailedHeadshots,
+} from "@/lib/headshots";
+import { teamIdentity, teamLogoSrc } from "@/lib/teamIdentity";
 
 interface AssetManifest {
   players: number[];
@@ -134,12 +144,25 @@ export function TeamCrest({
   );
 }
 
+/**
+ * A player's portrait. Source order (see lib/headshots.ts): the NBA's official headshot when that
+ * source is enabled (development only) and verified to exist, then Pivot's own photo, then a neutral
+ * silhouette. Callers pass the canonical NBA id and a display size; they never build a URL.
+ *
+ * - Identity-safe: what is drawn is derived from `nbaPlayerId` on every render and the `<img>` is
+ *   keyed by its URL, so navigating from one player to another can never leave the first player's
+ *   face on screen or inherit his "failed" state.
+ * - No loops: a URL that errors is remembered for the session and skipped, so each source is tried
+ *   at most once before the placeholder; the placeholder is not an image and cannot fail.
+ */
 export function PlayerPhoto({
   nbaPlayerId,
   name,
   size = 36,
   className,
   square = false,
+  historical = false,
+  priority = false,
 }: {
   nbaPlayerId: number | null | undefined;
   name: string;
@@ -147,14 +170,29 @@ export function PlayerPhoto({
   className?: string;
   /** Rounded-rect crop for card layouts; default is a circular token. */
   square?: boolean;
+  /**
+   * A past-season or retired-player view. Today's official portrait would misstate that context,
+   * so the official source is skipped and the existing photo (or the placeholder) is used.
+   */
+  historical?: boolean;
+  /** Above-the-fold portrait: load eagerly and at high priority instead of lazily. */
+  priority?: boolean;
 }) {
-  const [failed, setFailed] = useState(false);
   const manifest = useAssetManifest();
-  const known = manifest && nbaPlayerId ? manifest.players.includes(nbaPlayerId) : false;
-  const src = known ? playerPhotoSrc(nbaPlayerId) : null;
+  const id = normalizeNbaPlayerId(nbaPlayerId);
+  const official = useOfficialHeadshotStatus(id, officialHeadshotsEnabled() && !historical);
+  useSyncExternalStore(subscribeFailedHeadshots, failedHeadshotsVersion, failedHeadshotsVersion);
+  const resolution = resolveHeadshot({
+    nbaPlayerId: id,
+    size,
+    historical,
+    official,
+    localKnown: manifest && id ? manifest.players.includes(id) : false,
+    failed: failedHeadshotSet(),
+  });
   const shape = square ? "rounded-lg" : "rounded-full";
 
-  if (!src || failed) {
+  if (resolution.state !== "image") {
     const initials = name
       .split(" ")
       .map((part) => part[0])
@@ -169,6 +207,7 @@ export function PlayerPhoto({
       <span
         role="img"
         aria-label={`${name} — no photo available`}
+        data-headshot-source={resolution.state === "pending" ? "pending" : "none"}
         className={clsx(
           "relative flex shrink-0 items-center justify-center overflow-hidden border border-hairline bg-gradient-to-b from-panel3 to-panel2 text-muted",
           shape,
@@ -193,18 +232,28 @@ export function PlayerPhoto({
     );
   }
 
+  const { kind, src, srcSet } = resolution.source;
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- backend-served asset with runtime fallback
+    // eslint-disable-next-line @next/next/no-img-element -- the official CDN and the backend asset route are both runtime-verified sources with a fallback; the Next optimizer would copy NBA bytes onto Pivot's origin
     <img
+      key={src}
       src={src}
+      srcSet={srcSet}
+      sizes={srcSet ? `${size}px` : undefined}
       alt={`${name} headshot`}
       width={size}
       height={size}
-      loading="lazy"
+      data-headshot-source={kind}
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : undefined}
       decoding="async"
+      // Third-party image requests carry no referrer.
+      referrerPolicy={kind === "official" ? "no-referrer" : undefined}
+      // Official portraits are transparent 4:3 cut-outs, so the panel tone behind them is the
+      // backdrop; the crop is anchored to the top so the head survives a square or round mask.
       className={clsx("shrink-0 bg-panel3 object-cover object-top", shape, className)}
       style={{ width: size, height: size }}
-      onError={() => setFailed(true)}
+      onError={() => markHeadshotFailed(src)}
     />
   );
 }
